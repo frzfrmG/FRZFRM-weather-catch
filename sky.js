@@ -702,7 +702,7 @@
     if (s.hail) { c.hail = copy(s.hail); c.hail.n = Math.round(s.hail.n * m); }
     if (s.wind) { c.wind = copy(s.wind); c.wind.n = Math.max(1, Math.round(s.wind.n * m)); }
     if (s.leaves) c.leaves = Math.round(s.leaves * m);
-    if (s.fog) { c.fog = copy(s.fog); c.fog.alpha = Math.min(0.92, s.fog.alpha * (0.8 + 0.35 * p)); }
+    if (s.fog) { c.fog = copy(s.fog); c.fog.alpha = Math.min(0.92, s.fog.alpha * (0.8 + 0.35 * p)); c.veil = p; }
     if (s.sun) c.sun = [s.sun[0], s.sun[1], s.sun[2] * (0.9 + 0.2 * p), s.sun[3] * (0.8 + 0.45 * p), s.sun[4]];
     if (s.shimmer) c.shimmer = s.shimmer * (0.6 + 0.8 * p);
     if (s.sparkle) c.sparkle = Math.round(s.sparkle * m);
@@ -710,6 +710,37 @@
     return c;
   }
   var DEEP = { snow: true, slush: true, frost: true, ice: true };
+  /* sunny jars measured by temperature: a hotter catch glows warmer */
+  var WARM = { sunnyspells: true, clear: true, sunrise: true, goldenhour: true, hotday: true, heatwave: true, scorcher: true };
+  function warmth(ctx, W, H, sun, p) {
+    if (p <= 0) return;
+    // a bright glare round the sun, and a warm haze low in the sky
+    var cx = sun[0] * W, cy = sun[1] * H, rr = W * (0.3 + 0.4 * p);
+    var g = ctx.createRadialGradient(cx, cy, 0, cx, cy, rr);
+    g.addColorStop(0, 'rgba(255,251,236,' + (0.6 * p) + ')');
+    g.addColorStop(0.4, 'rgba(255,240,200,' + (0.25 * p) + ')');
+    g.addColorStop(1, 'rgba(255,240,200,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(cx, cy, rr, 0, TAU); ctx.fill();
+    var h = ctx.createLinearGradient(0, H * 0.45, 0, H * 0.8);
+    h.addColorStop(0, 'rgba(255,214,150,0)');
+    h.addColorStop(1, 'rgba(255,214,150,' + (0.24 * p) + ')');
+    ctx.fillStyle = h;
+    ctx.fillRect(0, H * 0.45, W, H * 0.35);
+  }
+  /* thicker fog hides the hills: nothing at 1 star, most of the ground at 5 */
+  function veilL(ctx, W, H, p) {
+    if (p <= 0) return;
+    var y0 = H * 0.38;
+    var g = ctx.createLinearGradient(0, y0, 0, H);
+    g.addColorStop(0, 'rgba(232,236,242,0)');
+    g.addColorStop(0.5, 'rgba(232,236,242,' + (0.6 * p) + ')');
+    g.addColorStop(1, 'rgba(232,236,242,' + (0.72 * p) + ')');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, y0, W, H - y0);
+    ctx.fillStyle = 'rgba(232,236,242,' + (0.18 * p) + ')';
+    ctx.fillRect(0, 0, W, H);
+  }
 
   /* draw a scene. night darkens daytime scenes for the live sky.
      opt: 'bare' leaves out falling rain, snow and lightning (the scoop game draws its own), 'nobolt' leaves out lightning.
@@ -741,6 +772,7 @@
     if (s.sun && !dark && !(decoFn(dk) && decoFn(dk).noSun)) {
       var sun = J === NOJ ? s.sun : [s.sun[0] + J.sx, s.sun[1] + J.sy, s.sun[2], s.sun[3], s.sun[4]];
       sunAt(ctx, W, H, sun);
+      if (POW !== null && WARM[id]) warmth(ctx, W, H, sun, POW);
       if (s.halo) halo(ctx, W, H, sun);
       if (s.sundogs) sundogs(ctx, W, H, sun, t);
       if (s.rays) rays(ctx, W, H, t, s.rays[0] + J.sx, s.rays[1] + J.sy);
@@ -771,6 +803,7 @@
     if (s.murk) { ctx.fillStyle = 'rgba(215,220,230,' + s.murk + ')'; ctx.fillRect(0, 0, W, H); }
     if (s.drips) drips(ctx, W, H, t);
     ground(ctx, W, H, kind, dark || !!s.night, t);
+    if (s.veil) veilL(ctx, W, H, s.veil);
     if (s.sparkle) sparkle(ctx, W, H, t, s.sparkle);
     if (s.fog && s.fogOver) fogB(ctx, W, H, t, s.fog);
     if (s.tint) { ctx.fillStyle = s.tint; ctx.fillRect(0, 0, W, H); }
