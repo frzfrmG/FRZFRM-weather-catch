@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FRZFRM Weather Catch</title>
+<meta name="description" content="Catch the real weather where you are, and fill a shelf of living jars.">
+<meta name="theme-color" content="#EDF0F5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0B1020" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Weather Catch">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="app" id="app">
+  <header class="top">
+    <div class="brand">
+      <span class="wordmark">FRZFRM</span>
+      <span class="brand-sub">Weather Catch</span>
+    </div>
+    <button class="lvl" type="button" id="lvl" aria-label="Your level">Lv 1</button>
+  </header>
+
+  <main>
+    <section class="panel" id="panel-catch" aria-label="Catch">
+      <div class="onboard" id="onboard" hidden>
+        <div class="sky sky-short"><canvas id="onboard-canvas" aria-hidden="true"></canvas></div>
+        <h1 class="ob-title">Catch the real weather where you are</h1>
+        <ul class="ob-list">
+          <li>Every kind of weather is a jar to collect. Rare weather is worth more points.</li>
+          <li>Areas are about 5 km across. You can catch each kind of weather once per area, every day.</li>
+          <li>Go for a walk, take a trip or wait for the weather to change, and there&rsquo;s always something new.</li>
+        </ul>
+        <button class="btn btn-primary" type="button" id="start-btn">Allow location and start</button>
+        <p class="small">To find your weather, the app sends your area to Open-Meteo, and your location to BigDataCloud to name your area. Your jars stay on this phone.</p>
+      </div>
+
+      <div class="problem" id="problem" hidden>
+        <h2 class="pr-title" id="problem-title">Couldn&rsquo;t find where you are</h2>
+        <p class="pr-text" id="problem-text"></p>
+        <p class="small" id="problem-detail" hidden></p>
+        <button class="btn btn-primary" type="button" id="problem-btn">Try again</button>
+      </div>
+
+      <div class="live" id="live" hidden>
+        <div class="warn" id="warn" role="status" hidden></div>
+        <div class="sky">
+          <canvas id="sky-canvas" aria-hidden="true"></canvas>
+          <div class="sky-top">
+            <div class="sky-where">
+              <div class="area-name" id="area-name">Finding you&hellip;</div>
+              <div class="area-note" id="area-note">Area about 5 km across</div>
+            </div>
+            <div class="temp" id="temp"></div>
+          </div>
+          <div class="sky-bottom">
+            <div class="cond" id="cond-name">Checking the sky</div>
+            <span class="tile-pill" id="cond-pill" data-r="common" hidden><span class="dot"></span><span id="cond-rarity"></span></span>
+          </div>
+        </div>
+        <div class="updated">
+          <span id="updated">Checking the weather&hellip;</span>
+          <button class="link-btn" type="button" id="refresh-btn">Refresh</button>
+        </div>
+
+        <div class="lock-card" id="lock-card" hidden>
+          <h2 class="lc-title">You&rsquo;re moving fast</h2>
+          <p class="lc-text">If you&rsquo;re driving, switch on Drive mode before you set off next time and it catches for you. If you&rsquo;re a passenger, carry on playing.</p>
+          <div class="stack-btns">
+            <button class="btn btn-primary btn-mid" type="button" id="lock-passenger">I&rsquo;m a passenger</button>
+            <button class="btn" type="button" id="lock-drive">About Drive mode</button>
+          </div>
+        </div>
+        <div class="pass-pill" id="pass-pill" hidden>
+          <span>Passenger mode is on</span>
+          <button class="link-btn" type="button" id="pass-off">Turn off</button>
+        </div>
+
+        <div class="catch-box" id="catch-box">
+          <button class="btn btn-primary" type="button" id="catch-btn" disabled>Catch</button>
+          <p class="catch-hint" id="catch-hint" aria-live="polite"></p>
+        </div>
+
+        <div class="block" id="also-block" hidden>
+          <h2 class="h2" id="also-title">Also here right now</h2>
+          <div class="chips" id="also"></div>
+        </div>
+
+        <div class="block" id="wonder-block" hidden>
+          <h2 class="h2">In the sky</h2>
+          <div class="cards" id="wonders"></div>
+        </div>
+
+        <div class="spot-row">
+          <div class="spot-tip" id="spot-tip" hidden></div>
+          <button class="btn btn-spot" type="button" id="spot-btn">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-2.5h6L17 8h3v11H4z"></path><circle cx="12" cy="13" r="3.5"></circle></svg>
+            <span>Spot a Sky Wonder</span>
+          </button>
+        </div>
+
+        <div class="block">
+          <h2 class="h2">Nearby</h2>
+          <div id="nearby"></div>
+        </div>
+
+        <div class="block">
+          <h2 class="h2">Coming up</h2>
+          <div id="comingup"></div>
+        </div>
+
+        <button class="btn btn-drive" type="button" id="drive-btn">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 16l1.5-5.5A2 2 0 0 1 8.4 9h7.2a2 2 0 0 1 1.9 1.5L19 16"></path><rect x="3.5" y="15" width="17" height="4" rx="1.5"></rect><circle cx="7.5" cy="19.5" r="1.2"></circle><circle cx="16.5" cy="19.5" r="1.2"></circle></svg>
+          <span>Driving? Start Drive mode</span>
+        </button>
+
+        <div class="block">
+          <h2 class="h2">Today</h2>
+          <ol class="log" id="log"></ol>
+        </div>
+      </div>
+      <p class="credit">Weather data by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a></p>
+    </section>
+
+    <section class="panel" id="panel-shelf" aria-label="Shelf" hidden>
+      <div class="level-card">
+        <div class="lv-row">
+          <span class="lv-big">Level <span id="lv-n">1</span></span>
+          <span class="lv-title" id="lv-title">Puddle Spotter</span>
+        </div>
+        <div class="bar" aria-hidden="true"><span id="lv-fill"></span></div>
+        <div class="lv-row">
+          <span class="lv-pts" id="lv-pts">0 / 50 points</span>
+        </div>
+        <p class="small" id="lv-next"></p>
+      </div>
+      <div class="shelf-head">
+        <span class="shelf-count"><span id="jar-n">0</span> of <span id="jar-total">60</span> jars</span>
+      </div>
+      <div id="shelves"></div>
+    </section>
+
+    <section class="panel" id="panel-more" aria-label="More" hidden>
+      <div class="more-card">
+        <h2 class="mc-title">How catching works</h2>
+        <ul class="mc-list">
+          <li>The map is split into <strong>areas about 5 km across</strong>. The app checks the live weather for yours.</li>
+          <li>You can catch <strong>each kind of weather once per area, every day</strong>. Move to a new area, or wait for the weather to change, to find more.</li>
+          <li>Catching is a quick game: <strong>scoop</strong> rain or snow, <strong>hold</strong> to fill a jar with fog, <strong>time a tap</strong> for sun and wind, or <strong>tap the instant lightning flashes</strong>. From Uncommon up, weather can slip away if you miss.</li>
+          <li>Points: <strong>Common 10, Uncommon 25, Rare 75, Epic 200, Legendary 500</strong>. Points level you up, and levels unlock nearby weather, the forecast and early warnings.</li>
+          <li>Catch the weather, stay put, and be there when it turns, and you earn a <strong>Change moment</strong> like Sunbreak.</li>
+          <li><strong>Sky Wonders</strong> like the full moon come from the sky calendar. Rainbows, halos and the Northern Lights are caught with a photo.</li>
+        </ul>
+      </div>
+      <div class="more-card">
+        <h2 class="mc-title">Drive mode</h2>
+        <p class="mc-text">Switch it on before you set off and put your phone in a holder with the app open. It catches the weather on your journey into sealed jars, with nothing to touch. Open them when you&rsquo;ve stopped. Passengers can play as normal.</p>
+      </div>
+      <div class="more-card" id="install-card">
+        <h2 class="mc-title">Add it to your home screen</h2>
+        <p class="mc-text" id="install-text">It opens like an app, and your jars are safer there.</p>
+        <button class="btn" type="button" id="install-btn" hidden>Add to home screen</button>
+      </div>
+      <div class="more-card">
+        <h2 class="mc-title">Back up your jars</h2>
+        <p class="mc-text">Your jars live on this phone. Copy a backup code and keep it somewhere safe, or paste one to bring jars back. Photos aren&rsquo;t included.</p>
+        <div class="row-btns">
+          <button class="btn" type="button" id="backup-btn">Copy backup code</button>
+          <button class="btn" type="button" id="restore-btn">Restore</button>
+        </div>
+      </div>
+      <div class="more-card">
+        <h2 class="mc-title">Start again</h2>
+        <p class="mc-text">Clears every jar, point and level on this phone.</p>
+        <button class="btn btn-danger" type="button" id="reset-btn">Clear everything</button>
+      </div>
+      <div class="more-card">
+        <h2 class="mc-title">About</h2>
+        <p class="mc-text">FRZFRM Weather Catch, test version <span id="version"></span>. Some rare weather is worked out from forecasts, and photo catches aren&rsquo;t checked yet.</p>
+        <p class="mc-text">Weather data by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a> (CC BY 4.0). Place names from <a href="https://www.bigdatacloud.com/" target="_blank" rel="noopener">BigDataCloud</a>.</p>
+      </div>
+    </section>
+  </main>
+</div>
+
+<nav class="nav" aria-label="Main">
+  <button class="nav-btn" type="button" id="nav-catch" aria-current="page">
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18.5h9.5a4 4 0 0 0 .4-7.98 5.5 5.5 0 0 0-10.6 1.2A3.4 3.4 0 0 0 7 18.5z"></path></svg>
+    <span>Catch</span>
+  </button>
+  <button class="nav-btn" type="button" id="nav-shelf">
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 4h8v3l1.5 2v10a1.5 1.5 0 0 1-1.5 1.5H8A1.5 1.5 0 0 1 6.5 19V9L8 7z"></path><path d="M8 7h8"></path></svg>
+    <span>Shelf <span class="nav-n" id="nav-n"></span></span>
+  </button>
+  <button class="nav-btn" type="button" id="nav-more">
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5.5" cy="12" r="1.4"></circle><circle cx="12" cy="12" r="1.4"></circle><circle cx="18.5" cy="12" r="1.4"></circle></svg>
+    <span>More</span>
+  </button>
+</nav>
+
+<div class="overlay" id="overlay" hidden>
+  <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+    <div class="view" id="game-view" hidden>
+      <div class="ov-label" id="g-label">Catch it</div>
+      <h2 class="g-title" id="g-title">Catch</h2>
+      <p class="g-instr" id="g-instr"></p>
+      <div class="g-stage" id="g-stage" tabindex="0" aria-label="Catching area. Use the arrow keys to move the jar, or the space bar to tap and hold.">
+        <canvas id="g-canvas" aria-hidden="true"></canvas>
+        <div class="g-msg" id="g-msg" role="status" aria-live="polite" hidden></div>
+      </div>
+      <div class="g-meter" aria-hidden="true"><span id="g-fill"></span></div>
+      <div class="g-row"><span id="g-status">Get ready</span><span id="g-flee"></span></div>
+      <div class="actions" id="g-actions"></div>
+    </div>
+    <div class="view" id="card-view" hidden>
+      <div class="ov-label" id="c-label">New jar</div>
+      <div class="ov-jar"><canvas id="c-canvas" aria-hidden="true"></canvas></div>
+      <div class="ov-head">
+        <h2 class="ov-name" id="c-title">Overcast</h2>
+        <span class="pill" id="c-pill">Common</span>
+      </div>
+      <p class="ov-points" id="c-points"></p>
+      <p class="ov-line" id="c-line"></p>
+      <p class="ov-stats" id="c-stats"></p>
+      <p class="ov-verify" id="c-verify" hidden></p>
+      <div class="actions" id="c-actions"></div>
+    </div>
+    <div class="view" id="info-view" hidden>
+      <div class="ov-label" id="i-label"></div>
+      <h2 class="g-title" id="i-title"></h2>
+      <div class="i-body" id="i-body"></div>
+      <div class="actions" id="i-actions"></div>
+    </div>
+  </div>
+</div>
+
+<div class="drive" id="drive" hidden>
+  <div class="drive-inner">
+    <svg viewBox="0 0 24 24" width="56" height="56" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 16l1.5-5.5A2 2 0 0 1 8.4 9h7.2a2 2 0 0 1 1.9 1.5L19 16"></path><rect x="3.5" y="15" width="17" height="4" rx="1.5"></rect><circle cx="7.5" cy="19.5" r="1.2"></circle><circle cx="16.5" cy="19.5" r="1.2"></circle></svg>
+    <h2 class="drive-title">Drive mode on</h2>
+    <p class="drive-text">Eyes on the road. Weather Catch is catching for you.</p>
+    <p class="drive-note" id="drive-note"></p>
+  </div>
+  <button class="btn btn-end" type="button" id="drive-end">End trip</button>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<input type="file" id="photo-input" accept="image/*" capture="environment" hidden>
+
+<script src="rules.js" defer></script>
+<script src="sky.js" defer></script>
+<script src="game.js" defer></script>
+<script src="app.js" defer></script>
+</body>
+</html>
