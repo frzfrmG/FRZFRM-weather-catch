@@ -17,7 +17,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap">
-<link rel="stylesheet" href="app.css">
+<!-- bump ?v= on every release so a phone never mixes old and new files -->
+<link rel="stylesheet" href="app.css?v=0.2.0">
 </head>
 <body>
 <div class="app" id="app">
@@ -142,10 +143,24 @@
         </div>
         <p class="small" id="lv-next"></p>
       </div>
-      <div class="shelf-head">
-        <span class="shelf-count"><span id="jar-n">0</span> of <span id="jar-total">60</span> jars</span>
+      <div class="reward-card" id="reward-card">
+        <div class="rw-top">
+          <div class="rw-text">
+            <div class="h2" id="rw-label">Next reward</div>
+            <div class="rw-name" id="rw-name">Oak shelves</div>
+            <p class="small" id="rw-sub"></p>
+          </div>
+          <div class="rw-swatch" id="rw-swatch" aria-hidden="true"></div>
+        </div>
+        <div class="bar" id="rw-bar" aria-hidden="true"><span id="rw-fill"></span></div>
+        <span class="lv-pts" id="rw-count"></span>
+        <button class="btn" type="button" id="style-btn">Shelf style and rewards</button>
       </div>
-      <div id="shelves"></div>
+      <div class="shelf-head">
+        <span class="shelf-count"><span id="jar-n">0</span> of <span id="jar-total">58</span> jars</span>
+        <p class="small" id="shelf-note"></p>
+      </div>
+      <div class="shelves" id="shelves"></div>
     </section>
 
     <section class="panel" id="panel-more" aria-label="More" hidden>
@@ -158,6 +173,8 @@
           <li>Points: <strong>Common 10, Uncommon 25, Rare 75, Epic 200, Legendary 500</strong>. Points level you up, and levels unlock nearby weather, the forecast and early warnings.</li>
           <li>Catch the weather, stay put, and be there when it turns, and you earn a <strong>Change moment</strong> like Sunbreak.</li>
           <li><strong>Sky Wonders</strong> like the full moon come from the sky calendar. Rainbows, halos and the Northern Lights are caught with a photo.</li>
+          <li>Catch the same weather <strong>5 times for a silver jar and 15 for gold</strong>.</li>
+          <li><strong>Shelf rewards:</strong> every 10 jars unlocks a new wood or lights for your shelf, with bonus points. Finish a row and that shelf changes for good. Get every jar in a row to gold and the shelf turns gold. Fill the whole shelf to earn the Sky Jar.</li>
         </ul>
       </div>
       <div class="more-card">
@@ -233,6 +250,15 @@
       <p class="ov-verify" id="c-verify" hidden></p>
       <div class="actions" id="c-actions"></div>
     </div>
+    <div class="view" id="reward-view" hidden>
+      <div class="ov-label" id="r-label">Shelf reward</div>
+      <div class="r-preview" id="r-preview"></div>
+      <h2 class="ov-name" id="r-title"></h2>
+      <p class="ov-points" id="r-points"></p>
+      <p class="ov-line" id="r-line"></p>
+      <p class="ov-stats" id="r-stats"></p>
+      <div class="actions" id="r-actions"></div>
+    </div>
     <div class="view" id="info-view" hidden>
       <div class="ov-label" id="i-label"></div>
       <h2 class="g-title" id="i-title"></h2>
@@ -240,6 +266,7 @@
       <div class="actions" id="i-actions"></div>
     </div>
   </div>
+  <div class="confetti" id="confetti" aria-hidden="true"></div>
 </div>
 
 <div class="drive" id="drive" hidden>
@@ -255,9 +282,9 @@
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 <input type="file" id="photo-input" accept="image/*" capture="environment" hidden>
 
-<script src="rules.js" defer></script>
-<script src="sky.js" defer></script>
-<script src="game.js" defer></script>
-<script src="app.js" defer></script>
+<script src="rules.js?v=0.2.0" defer></script>
+<script src="sky.js?v=0.2.0" defer></script>
+<script src="game.js?v=0.2.0" defer></script>
+<script src="app.js?v=0.2.0" defer></script>
 </body>
 </html>

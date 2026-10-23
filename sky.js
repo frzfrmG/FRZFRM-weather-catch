@@ -708,16 +708,18 @@
     ctx.quadraticCurveTo(bx, by, nx, by);
     ctx.closePath();
   }
-  function lid(ctx, cx, bottom, w, h, k) {
+  /* tone: 'gold' for gold jars and the Sky Jar, otherwise a plain metal lid */
+  function lid(ctx, cx, bottom, w, h, k, tone) {
     var x = cx - w / 2;
     var g = ctx.createLinearGradient(x, 0, x + w, 0);
-    g.addColorStop(0, '#9AA3B5');
-    g.addColorStop(0.45, '#E3E7EE');
-    g.addColorStop(1, '#7E879A');
+    var gold = tone === 'gold';
+    g.addColorStop(0, gold ? '#B8862B' : '#9AA3B5');
+    g.addColorStop(0.45, gold ? '#FBE29A' : '#E3E7EE');
+    g.addColorStop(1, gold ? '#9A6B17' : '#7E879A');
     ctx.fillStyle = g;
     roundRect(ctx, x, bottom - h, w, h, 3 * k);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(40,46,64,0.35)';
+    ctx.strokeStyle = gold ? 'rgba(90,58,8,0.4)' : 'rgba(40,46,64,0.35)';
     ctx.lineWidth = Math.max(1, 0.9 * k);
     for (var i = 1; i < 6; i++) {
       var lx = x + (w * i) / 6;
@@ -738,15 +740,17 @@
     var dw = iw * s, dh = ih * s;
     ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
   }
-  /* st: { id, locked, sealed, glow (hex), drip, hat, img, lift }
-     look: { glass, q } colours that follow the page theme */
+  /* st: { id, locked, later, ghost, sealed, glow (hex), drip, hat, img, lift, night, lidTone }
+     ghost: a locked jar that shows a faint picture of what's inside. night: darken a daytime scene.
+     look: { glass, q, veil } colours that follow the page theme */
   function jar(ctx, W, H, st, t, look) {
     ctx.clearRect(0, 0, W, H);
     var k = W / 120;
     var x = W * 0.1, top = H * 0.17, w = W * 0.8, h = H * 0.8, cx = W / 2;
     if (st.glow) {
-      var a = 0.3 + 0.12 * Math.sin(t * 2);
-      var gl = ctx.createRadialGradient(cx, top + h * 0.55, W * 0.05, cx, top + h * 0.55, W * 0.62);
+      /* the glow fades out before the canvas edge, so it never shows as a box */
+      var a = 0.4 + 0.14 * Math.sin(t * 2);
+      var gl = ctx.createRadialGradient(cx, top + h * 0.55, W * 0.06, cx, top + h * 0.55, W * 0.5);
       gl.addColorStop(0, hexA(st.glow, a));
       gl.addColorStop(1, hexA(st.glow, 0));
       ctx.fillStyle = gl;
@@ -755,7 +759,11 @@
     ctx.save();
     jarShape(ctx, x, top, w, h);
     ctx.clip();
-    if (st.locked) {
+    if (st.locked && st.ghost) {
+      paint(ctx, W, H, st.ghost, t, false);
+      ctx.fillStyle = look.veil || 'rgba(200,206,220,0.72)';
+      ctx.fillRect(0, 0, W, H);
+    } else if (st.locked) {
       ctx.fillStyle = 'rgba(150,160,182,0.14)';
       ctx.fillRect(0, 0, W, H);
     } else if (st.sealed) {
@@ -772,7 +780,7 @@
     } else if (st.img && typeof st.img === 'object' && (st.img.naturalWidth || st.img.width)) {
       cover(ctx, st.img, x, top, w, h);
     } else {
-      paint(ctx, W, H, st.id, t, false);
+      paint(ctx, W, H, st.id, t, !!st.night);
     }
     var sh = ctx.createLinearGradient(x, 0, x + w, 0);
     sh.addColorStop(0, 'rgba(0,0,0,0.12)');
@@ -790,7 +798,7 @@
     ctx.fillStyle = 'rgba(255,255,255,0.3)';
     roundRect(ctx, x + w * 0.12, top + h * 0.3, w * 0.07, h * 0.42, w * 0.035);
     ctx.fill();
-    lid(ctx, cx, top + 1 - (st.lift || 0) * h * 0.3, w * 0.66, h * 0.11, k);
+    lid(ctx, cx, top + 1 - (st.lift || 0) * h * 0.3, w * 0.66, h * 0.11, k, st.lidTone);
     if (st.hat) {
       var hy = top + 1 - h * 0.11;
       ctx.fillStyle = '#FFFFFF';

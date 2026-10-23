@@ -1,11 +1,11 @@
 /* FRZFRM Weather Catch: the app.
    Finds your area, gets the live weather, works out what you can catch, runs the catching games,
-   and keeps your shelf, points, levels and Drive mode trips. Everything is saved on the phone. */
+   and keeps your shelf, points, levels, shelf rewards and Drive mode trips. Everything is saved on the phone. */
 (function () {
   'use strict';
   var WC = window.WC;
   var RU = WC.rules, SKY = WC.sky;
-  var VERSION = '0.1.0';
+  var VERSION = '0.2.0';
   var TEST = /[?&]test=1(&|$)/.test(location.search);
   var KEY = 'frzfrm-wc-state-1';
   var WX_KEY = 'frzfrm-wc-weather-1';
@@ -41,19 +41,27 @@
   /* ---------- saved state ---------- */
 
   function freshState() {
-    return { v: 1, created: Date.now(), points: 0, book: {}, caught: {}, cool: {}, recent: {}, names: {}, log: [], haul: null, drive: false, passengerUntil: 0, onboarded: false };
+    return {
+      v: 1, created: Date.now(), points: 0, book: {}, caught: {}, cool: {}, recent: {}, names: {}, log: [], haul: null, drive: false, passengerUntil: 0, onboarded: false,
+      rewards: {}, style: { wood: 'pine', lights: 'off' }
+    };
   }
+  function known(list, id) { return list.some(function (x) { return x.id === id; }); }
   function cleanState(o) {
     if (!o || o.v !== 1 || typeof o.points !== 'number' || !isFinite(o.points) || !o.book || typeof o.book !== 'object') return null;
     var f = freshState();
     Object.keys(f).forEach(function (k) { if (!(k in o)) o[k] = f[k]; });
-    ['caught', 'cool', 'recent', 'names'].forEach(function (k) { if (!o[k] || typeof o[k] !== 'object' || Array.isArray(o[k])) o[k] = {}; });
+    ['caught', 'cool', 'recent', 'names', 'rewards'].forEach(function (k) { if (!o[k] || typeof o[k] !== 'object' || Array.isArray(o[k])) o[k] = {}; });
     if (!Array.isArray(o.log)) o.log = [];
     Object.keys(o.book).forEach(function (id) {
       var e = o.book[id];
       if (!T(id) || !e || typeof e.n !== 'number') { delete o.book[id]; return; }
       if (!Array.isArray(e.places)) e.places = [];
     });
+    Object.keys(o.rewards).forEach(function (id) { if (!RU.reward(id)) delete o.rewards[id]; });
+    if (!o.style || typeof o.style !== 'object' || Array.isArray(o.style)) o.style = f.style;
+    if (!known(RU.WOODS, o.style.wood)) o.style.wood = 'pine';
+    if (!known(RU.LIGHTS, o.style.lights)) o.style.lights = 'off';
     if (o.haul && !Array.isArray(o.haul.jars)) o.haul = null;
     return o;
   }
@@ -169,7 +177,7 @@
     area: null, place: null, wx: null, wxError: null, fetching: null,
     reading: null, ctx: null, cls: null, wonders: [], spots: [], near: {}, coming: [], warning: null,
     watchId: null, game: null, view: null, queue: [], cardState: null, lastFocus: null,
-    installEvt: null, wake: null, wakeOk: null, photos: {}, pendingSpot: null, shelfJars: [], visibleJars: {}
+    installEvt: null, wake: null, wakeOk: null, photos: {}, pendingSpot: null, shelfJars: [], previewJars: null
   };
 
   /* ---------- location ---------- */
@@ -541,16 +549,12 @@
     else renderMore();
     if (S.drive) renderDrive();
   }
-  function jarCount() {
-    var n = 0;
-    Object.keys(S.book).forEach(function (id) { if (S.book[id].n > 0) n += 1; });
-    return n;
-  }
+  function jarCount() { return RU.shelfProgress(S.book).jars; }
   function renderTop() {
     var L = RU.levelFor(S.points);
     $('lvl').textContent = 'Lv ' + L;
     $('lvl').setAttribute('aria-label', 'Level ' + L + ', ' + S.points + ' points. Open your shelf');
-    $('nav-n').textContent = jarCount() + '/' + RU.ORDERED.length;
+    $('nav-n').textContent = jarCount() + '/' + RU.SHELF_TOTAL;
   }
   function showProblem(kind) {
     R.problem = kind;
@@ -760,66 +764,187 @@
   /* ---------- the shelf ---------- */
 
   function tierText(n) {
-    if (n >= 15) return 'Gold';
-    if (n >= 5) return 'Silver, ' + (15 - n) + ' more for gold';
-    return (5 - n) + ' more for silver';
+    if (n >= RU.GOLD_AT) return 'Gold';
+    if (n >= RU.SILVER_AT) return 'Silver, ' + (RU.GOLD_AT - n) + ' more for gold';
+    return (RU.SILVER_AT - n) + ' more for silver';
   }
-  function tierOf(n) { return n >= 15 ? 'gold' : n >= 5 ? 'silver' : ''; }
+  function tierOf(n) { return n >= RU.GOLD_AT ? 'gold' : n >= RU.SILVER_AT ? 'silver' : ''; }
+  function listText(a) { return a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]; }
+  function dateLabel(t) { return new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }); }
+  function shelfIds() { return RU.ORDERED.filter(RU.catchable).map(function (t) { return t.id; }); }
+  function rowIds(elId) { return RU.rowTypes(elId).map(function (t) { return t.id; }); }
+  function elName(elId) { var el = RU.ELEMENTS.filter(function (x) { return x.id === elId; })[0]; return el ? el.name : ''; }
+  /* up to n jars to show off: the rarest ones you have first, then ones still to catch */
+  function bestJars(ids, n) {
+    var have = ids.filter(function (id) { return S.book[id] && S.book[id].n; });
+    var rest = ids.filter(function (id) { return have.indexOf(id) === -1; });
+    have.sort(function (a, b) { return RU.rank(b) - RU.rank(a) || T(a).order - T(b).order; });
+    return have.concat(rest).slice(0, n || 3);
+  }
+  /* the live sky in words, for the Sky Jar */
+  function skyName() {
+    if (!R.cls) return 'waiting for the weather';
+    if (R.cls.headline) return T(R.cls.headline).name;
+    return R.reading && !R.reading.isDay ? 'a quiet night' : 'calm and quiet';
+  }
+  function skyMeta() { return S.rewards.full ? 'Live · ' + skyName() : 'Fill your shelf'; }
+
+  var DARK_ROWS = { storm: true, wonder: true };
+  var DARK_LOOK = { glass: 'rgba(255,255,255,0.62)', q: '#9AA6C2', veil: 'rgba(22,28,50,0.74)' };
+  var CHEVRON = '<svg class="chev" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>';
+  var BULBS = ['#FFE3A6', '#FFB547', '#FF94A8', '#8FD3FF', '#9BF0C4'];
+  /* shelf lights: a glowing strip, or fairy lights hanging in swags across the top */
+  function lightsFor(kind, swags) {
+    if (kind === 'glow') return '<span class="shelf-lights glow" aria-hidden="true"></span>';
+    if (kind !== 'fairy') return '';
+    swags = swags || 3;
+    var w = 300 / swags, d = 'M0 2.5', bulbs = '', i = 0;
+    for (var s = 0; s < swags; s++) {
+      d += 'Q' + (s * w + w / 2) + ' 37.5 ' + ((s + 1) * w) + ' 2.5';
+      [0.15, 0.38, 0.62, 0.85].forEach(function (u) {
+        var x = (s + u) / swags * 100, y = 2 + 14 * 4 * u * (1 - u);
+        bulbs += '<i style="left:' + x.toFixed(1) + '%;top:' + y.toFixed(1) + 'px;--b:' + BULBS[i % BULBS.length] + ';animation-delay:-' + ((i * 0.53) % 2.4).toFixed(2) + 's"></i>';
+        i += 1;
+      });
+    }
+    return '<span class="shelf-lights fairy" aria-hidden="true"><svg viewBox="0 0 300 30" preserveAspectRatio="none"><path d="' + d + '" vector-effect="non-scaling-stroke"></path></svg>' + bulbs + '</span>';
+  }
+  function rowState(elId) { return { themed: !!S.rewards['row-' + elId], gold: !!S.rewards['gold-' + elId] }; }
+  function shelfClass(elId, themed, gold) { return 'shelf' + (themed ? ' th-' + elId : '') + (gold ? ' gold' : ''); }
+  function jarCell(t, dark) {
+    var e = S.book[t.id];
+    var n = e ? e.n : 0;
+    var later = !RU.catchable(t);
+    var label = t.name + ', ' + rlabel(t.id) + (n ? ', caught ' + n + ' ' + plural(n, 'time') + (tierOf(n) ? ', ' + tierOf(n) : '') : later ? ', coming in a later version' : ', not caught yet');
+    var meta = n ? rlabel(t.id) + (tierOf(n) ? ' · ' + tierOf(n) : '') : later ? 'Later' : rlabel(t.id);
+    return '<button type="button" class="jarcell' + (n ? '' : ' locked') + '" data-jar="' + t.id + '" aria-label="' + esc(label) + '">' +
+      '<canvas data-id="' + t.id + '"' + (dark ? ' data-dark="1"' : '') + ' aria-hidden="true"></canvas><span class="plank"></span>' +
+      '<span class="jar-name">' + esc(t.name) + (n > 1 ? ' ×' + n : '') + '</span><span class="jar-meta rc-' + t.r + '">' + esc(meta) + '</span></button>';
+  }
+  /* a small shelf for previews. o: { el, themed, gold, wood, lights } */
+  function miniShelf(ids, o) {
+    o = o || {};
+    var lights = o.lights || S.style.lights;
+    var dark = o.themed && DARK_ROWS[o.el];
+    var cells = ids.map(function (id) {
+      return '<div class="jarcell"><canvas data-id="' + id + '"' + (dark ? ' data-dark="1"' : '') + ' aria-hidden="true"></canvas><span class="plank"></span></div>';
+    }).join('');
+    return '<div class="mini wood-' + (o.wood || S.style.wood) + ' lights-' + lights + '"><div class="' + shelfClass(o.el, o.themed, o.gold) + '">' + lightsFor(lights) + cells + '</div></div>';
+  }
+  function collectPreview(box) { R.previewJars = Array.prototype.slice.call(box.querySelectorAll('canvas[data-id]')); }
+  function skySection() {
+    var have = !!S.rewards.full;
+    var label = 'The Sky Jar, ' + (have ? 'showing the live sky: ' + skyName() : 'not earned yet. Fill your shelf to earn it');
+    return '<section class="shelf-sec sky-sec" id="row-sky"><h2 class="shelf-h"><span class="row-static"><span class="row-name">The Sky Jar</span>' +
+      (have ? '<span class="row-pill gold-pill">' + esc(RU.KEEPER) + '</span>' : '<span class="shelf-sec-n">' + jarCount() + ' of ' + RU.SHELF_TOTAL + '</span>') + '</span></h2>' +
+      '<div class="shelf sky-shelf' + (have ? ' sky-have' : '') + '">' + lightsFor(S.style.lights) +
+      '<button type="button" class="jarcell sky-cell' + (have ? '' : ' locked') + '" data-jar="sky" aria-label="' + esc(label) + '">' +
+      '<canvas data-id="sky" aria-hidden="true"></canvas><span class="plank"></span><span class="jar-name">The Sky Jar</span>' +
+      '<span class="jar-meta rc-legendary" id="sky-meta">' + esc(skyMeta()) + '</span></button>' +
+      '<p class="sky-note">' + (have ? 'It always shows the live sky wherever you are.' : 'Fill every jar on your shelf to earn it. It always shows the live sky wherever you are.') + '</p></div></section>';
+  }
+  function swatchHtml(kind) {
+    if (kind === 'sky') return '<canvas class="sw-jar" data-id="sky" aria-hidden="true"></canvas>';
+    if (kind.indexOf('lights-') === 0) return '<span class="sw-box ' + kind + '">' + lightsFor(kind.slice(7), 1) + '<span class="plank"></span></span>';
+    return '<span class="sw-box ' + (kind === 'gold' ? 'gold' : kind) + '"><span class="plank"></span></span>';
+  }
+  function renderRewardCard(prog) {
+    var next = RU.nextJarReward(prog.jars);
+    var kind;
+    if (next) {
+      $('rw-label').textContent = 'Next reward';
+      $('rw-name').textContent = next.prize || next.name;
+      $('rw-sub').textContent = (next.id === 'full' ? 'Fill your whole shelf · ' + RU.KEEPER + ' title · ' : 'At ' + next.need + ' jars · ') + '+' + next.bonus + ' bonus points';
+      $('rw-bar').hidden = false;
+      $('rw-fill').style.width = Math.round(Math.min(1, prog.jars / next.need) * 100) + '%';
+      $('rw-count').textContent = prog.jars + ' of ' + next.need + ' jars';
+      kind = next.wood ? 'wood-' + next.wood : next.lights ? 'lights-' + next.lights : 'sky';
+    } else {
+      var gold = prog.rows.filter(function (r) { return S.rewards['gold-' + r.el]; }).length;
+      $('rw-label').textContent = RU.KEEPER;
+      $('rw-name').textContent = gold < prog.rows.length ? 'Gold shelves' : 'Every shelf is gold';
+      $('rw-sub').textContent = gold < prog.rows.length ? 'Get every jar in a row to gold for +1000 bonus points. ' + gold + ' of ' + prog.rows.length + ' gold so far.' : 'You’ve won everything there is to win.';
+      $('rw-bar').hidden = true;
+      $('rw-count').textContent = '';
+      kind = 'gold';
+    }
+    var sw = $('rw-swatch');
+    if (sw.getAttribute('data-k') !== kind) {
+      sw.setAttribute('data-k', kind);
+      sw.innerHTML = swatchHtml(kind);
+      var cv = sw.querySelector('canvas');
+      if (cv) { R.shelfJars.push(cv); if (jarObserver) jarObserver.observe(cv); }
+    }
+  }
   function renderShelfHead() {
     var L = RU.levelFor(S.points);
     var lo = RU.pointsFor(L), hi = RU.pointsFor(L + 1);
     $('lv-n').textContent = L;
-    $('lv-title').textContent = RU.titleFor(L);
+    $('lv-title').textContent = S.rewards.full ? RU.KEEPER : RU.titleFor(L);
     $('lv-pts').textContent = S.points + ' / ' + hi + ' points';
     $('lv-fill').style.width = Math.round((S.points - lo) / (hi - lo) * 100) + '%';
     var next = RU.UNLOCKS.filter(function (u) { return u.level > L; })[0];
     $('lv-next').textContent = next ? 'Level ' + next.level + ' unlocks ' + next.name.toLowerCase() + ': ' + next.text.charAt(0).toLowerCase() + next.text.slice(1) : 'Every forecast power is unlocked.';
-    $('jar-n').textContent = jarCount();
-    $('jar-total').textContent = RU.ORDERED.length;
+    var prog = RU.shelfProgress(S.book);
+    $('jar-n').textContent = prog.jars;
+    $('jar-total').textContent = prog.total;
+    if (!$('reward-card')) return;
+    var later = RU.ORDERED.filter(function (t) { return !RU.catchable(t); }).map(function (t) { return t.name; });
+    $('shelf-note').textContent = later.length ? listText(later) + ' arrive in a later version.' : '';
+    $('shelf-note').hidden = !later.length;
+    renderRewardCard(prog);
+    var sm = $('sky-meta');
+    if (sm && sm.textContent !== skyMeta()) sm.textContent = skyMeta();
   }
   function renderShelf() {
-    renderShelfHead();
-    var html = RU.ELEMENTS.map(function (el) {
-      var types = RU.ORDERED.filter(function (t) { return t.el === el.id; });
-      var have = types.filter(function (t) { return S.book[t.id] && S.book[t.id].n; }).length;
-      return '<section class="shelf-sec"><div class="shelf-sec-head"><h2 class="h2">' + esc(el.name) + '</h2><span class="shelf-sec-n">' + have + ' of ' + types.length + '</span></div><div class="shelf">' +
-        types.map(function (t) {
-          var e = S.book[t.id];
-          var n = e ? e.n : 0;
-          var later = t.how === 'later';
-          var label = t.name + ', ' + rlabel(t.id) + (n ? ', caught ' + n + ' ' + plural(n, 'time') : later ? ', coming in a later version' : ', not caught yet');
-          var meta = n ? rlabel(t.id) + (tierOf(n) ? ' · ' + tierOf(n) : '') : later ? 'Later' : rlabel(t.id);
-          return '<button type="button" class="jarcell' + (n ? '' : ' locked') + '" data-jar="' + t.id + '" aria-label="' + esc(label) + '">' +
-            '<canvas data-id="' + t.id + '" aria-hidden="true"></canvas><span class="plank"></span>' +
-            '<span class="jar-name">' + esc(t.name) + (n > 1 ? ' ×' + n : '') + '</span><span class="jar-meta rc-' + t.r + '">' + esc(meta) + '</span></button>';
-        }).join('') + '</div></section>';
-    }).join('');
-    $('shelves').innerHTML = html;
     R.shelfJars = [];
-    R.visibleJars = {};
-    var cvs = $('shelves').querySelectorAll('canvas');
+    var sw = $('rw-swatch');
+    if (sw) sw.removeAttribute('data-k');
+    renderShelfHead();
+    var prog = RU.shelfProgress(S.book);
+    var box = $('shelves');
+    box.className = 'shelves wood-' + S.style.wood + ' lights-' + S.style.lights;
+    var html = RU.ELEMENTS.map(function (el, i) {
+      var row = prog.rows[i];
+      var types = RU.ORDERED.filter(function (t) { return t.el === el.id; });
+      var st = rowState(el.id);
+      var dark = st.themed && DARK_ROWS[el.id];
+      var pill = st.gold ? '<span class="row-pill gold-pill">Gold</span>' : st.themed ? '<span class="row-pill">Complete</span>' : '';
+      var label = el.name + ' shelf, ' + row.have + ' of ' + row.need + (st.gold ? ', gold' : st.themed ? ', complete' : '') + '. See what this shelf earns';
+      return '<section class="shelf-sec" id="row-' + el.id + '"><h2 class="shelf-h"><button type="button" class="row-btn" data-row="' + el.id + '" aria-label="' + esc(label) + '">' +
+        '<span class="row-name">' + esc(el.name) + '</span>' + pill + '<span class="shelf-sec-n">' + row.have + ' of ' + row.need + '</span>' + CHEVRON + '</button></h2>' +
+        '<div class="' + shelfClass(el.id, st.themed, st.gold) + '">' + lightsFor(S.style.lights) + types.map(function (t) { return jarCell(t, dark); }).join('') + '</div></section>';
+    }).join('');
+    box.innerHTML = S.rewards.full ? skySection() + html : html + skySection();
+    var cvs = box.querySelectorAll('canvas');
     for (var i = 0; i < cvs.length; i++) R.shelfJars.push(cvs[i]);
     if (jarObserver) R.shelfJars.forEach(function (cv) { jarObserver.observe(cv); });
     requestAnimationFrame(function () { drawShelf(2, true); });
   }
   var jarObserver = typeof IntersectionObserver !== 'undefined' ? new IntersectionObserver(function (entries) {
-    entries.forEach(function (en) { R.visibleJars[en.target.getAttribute('data-id')] = en.isIntersecting; });
+    entries.forEach(function (en) { en.target.wcSeen = en.isIntersecting; });
   }) : null;
   function glassLook() {
     var cs = getComputedStyle(document.documentElement);
-    return { glass: cs.getPropertyValue('--glass').trim() || 'rgba(120,130,150,0.6)', q: cs.getPropertyValue('--muted').trim() || '#7A839C' };
+    return { glass: cs.getPropertyValue('--glass').trim() || 'rgba(120,130,150,0.6)', q: cs.getPropertyValue('--muted').trim() || '#7A839C', veil: cs.getPropertyValue('--veil').trim() || 'rgba(200,206,220,0.72)' };
   }
+  function lookFor(cv, base) { return cv.getAttribute('data-dark') ? DARK_LOOK : base; }
   function jarState(id) {
+    if (id === 'sky') {
+      if (!S.rewards.full) return { locked: true, ghost: skyScene() };
+      return { id: skyScene(), night: R.reading ? !R.reading.isDay : false, glow: '#FFC766', lidTone: 'gold' };
+    }
     var t = T(id);
     var e = S.book[id];
-    if (!e || !e.n) return { locked: true, later: t.how === 'later' };
+    if (!e || !e.n) return { locked: true, later: !RU.catchable(t) };
     var cur = R.cls ? R.cls.ids : [];
     var sunny = cur.indexOf('clear') !== -1 || cur.indexOf('sunnyspells') !== -1 || cur.indexOf('hotday') !== -1 || cur.indexOf('heatwave') !== -1;
     var snowy = cur.indexOf('snow') !== -1 || cur.indexOf('heavysnow') !== -1 || cur.indexOf('blizzard') !== -1 || cur.indexOf('sleet') !== -1;
     var frosty = id === 'snow' || id === 'heavysnow' || id === 'blizzard' || id === 'firstflakes' || id === 'frost' || id === 'hardfrost';
     return {
       id: id, glow: RU.rank(id) >= 3 ? { rare: '#7DB4FF', epic: '#C4A0FF', legendary: '#FFC766' }[t.r] : null,
-      drip: frosty && sunny, hat: frosty && snowy, img: e.photo ? photoImg(e.photo) : null
+      drip: frosty && sunny, hat: frosty && snowy, img: e.photo ? photoImg(e.photo) : null,
+      lidTone: e.n >= RU.GOLD_AT ? 'gold' : null
     };
   }
   function drawJarOn(cv, st, t, look) {
@@ -831,12 +956,171 @@
   function drawShelf(t, all) {
     var look = glassLook();
     R.shelfJars.forEach(function (cv) {
-      var id = cv.getAttribute('data-id');
-      if (!all && jarObserver && !R.visibleJars[id]) return;
-      var st = jarState(id);
-      if (st.locked && !all) return;
-      drawJarOn(cv, st, t, look);
+      if (!all && jarObserver && !cv.wcSeen) return;
+      var st = jarState(cv.getAttribute('data-id'));
+      if (st.locked && !st.ghost && !all) return;
+      drawJarOn(cv, st, t, lookFor(cv, look));
     });
+  }
+  function drawPreview(t) {
+    var look = glassLook();
+    R.previewJars.forEach(function (cv) { drawJarOn(cv, jarState(cv.getAttribute('data-id')), t, lookFor(cv, look)); });
+  }
+
+  /* ---------- shelf rewards ---------- */
+
+  /* award every reward the shelf has earned but not yet been given: bonus points, and new woods and lights go straight on */
+  function claimRewards() {
+    var fresh = RU.rewardsEarned(S.book).filter(function (id) { return !S.rewards[id]; });
+    fresh.forEach(function (id) {
+      var rw = RU.reward(id);
+      S.rewards[id] = now();
+      S.points += rw.bonus;
+      if (rw.wood) S.style.wood = rw.wood;
+      if (rw.lights) S.style.lights = rw.lights;
+      addLog('Reward: ' + rw.name + ' (+' + rw.bonus + ')');
+    });
+    return fresh.map(function (id) { return { reward: id }; });
+  }
+  /* rewards earned before this version, or brought back with a backup code */
+  function checkPendingRewards() {
+    if (S.drive || !$('overlay').hidden) return;
+    var before = RU.levelFor(S.points);
+    var cards = claimRewards();
+    if (!cards.length) return;
+    var after = RU.levelFor(S.points);
+    if (after > before) { cards[cards.length - 1].lvUp = after; addLog('Level ' + after + '!'); }
+    save();
+    render();
+    if (R.tab === 'shelf') renderShelf();
+    openReveal(cards);
+  }
+  function rewardLabel(rw) { return rw.kind === 'jars' ? 'Shelf reward' : rw.kind === 'row' ? 'Row complete' : rw.kind === 'gold' ? 'Gold shelf' : 'Shelf complete'; }
+  function rewardStats(rw) {
+    var prog = RU.shelfProgress(S.book);
+    if (rw.kind === 'jars') {
+      var next = RU.nextJarReward(prog.jars);
+      return (rw.wood ? 'You can switch woods any time in Shelf style.' : 'You can switch the lights any time in Shelf style.') +
+        (next ? ' Next: ' + (next.prize || next.name).replace(/^The /, 'the ') + (next.id === 'full' ? ' when your shelf is full.' : ' at ' + next.need + ' jars.') : '');
+    }
+    if (rw.kind === 'row') return 'Rows finished: ' + prog.rows.filter(function (r) { return S.rewards['row-' + r.el]; }).length + ' of ' + prog.rows.length + '. ' + RU.reward('gold-' + rw.el).hint;
+    if (rw.kind === 'gold') return 'Gold shelves: ' + prog.rows.filter(function (r) { return S.rewards['gold-' + r.el]; }).length + ' of ' + prog.rows.length + '.';
+    return 'Your title is now ' + RU.KEEPER + '.';
+  }
+  var CONF = ['#F5B759', '#7DB4FF', '#C4A0FF', '#6FD6A8', '#FF94A8', '#FFFFFF'];
+  var confTimer = 0;
+  function confetti(n) {
+    var box = $('confetti');
+    clearTimeout(confTimer);
+    box.innerHTML = '';
+    if (reduce) return;
+    var html = '';
+    for (var i = 0; i < n; i++) {
+      html += '<i style="left:' + (Math.random() * 100).toFixed(1) + '%;background:' + CONF[i % CONF.length] + ';animation-delay:' + (Math.random() * 0.6).toFixed(2) + 's;--dx:' +
+        Math.round(Math.random() * 140 - 70) + 'px;--rot:' + Math.round(Math.random() * 900 - 450) + 'deg"></i>';
+    }
+    box.innerHTML = html;
+    confTimer = setTimeout(function () { box.innerHTML = ''; }, 3600);
+  }
+  function showReward(r) {
+    var rw = RU.reward(r.reward);
+    if (!$('reward-view')) { toast('Reward: ' + rw.name + '! +' + rw.bonus + ' points'); nextReveal(); return; }
+    showView('reward');
+    R.cardState = null;
+    var v = $('reward-view');
+    v.classList.remove('pop');
+    void v.offsetWidth;
+    v.classList.add('pop');
+    $('r-label').textContent = rewardLabel(rw);
+    $('r-label').className = 'ov-label ' + (rw.kind === 'jars' ? 'rc-rare' : 'rc-legendary');
+    $('r-title').textContent = rw.name;
+    var pts = '+' + rw.bonus + ' bonus points';
+    if (r.lvUp) pts += ' · Level ' + r.lvUp + '! ' + unlockText(r.lvUp);
+    $('r-points').textContent = pts;
+    $('r-line').textContent = rw.done;
+    $('r-stats').textContent = rewardStats(rw);
+    var prev = $('r-preview');
+    if (rw.kind === 'full') prev.innerHTML = '<div class="r-sky"><div class="ov-jar"><canvas data-id="sky" aria-hidden="true"></canvas></div></div>';
+    else if (rw.kind === 'jars') prev.innerHTML = miniShelf(bestJars(shelfIds()));
+    else prev.innerHTML = miniShelf(bestJars(rowIds(rw.el)), { el: rw.el, themed: true, gold: rw.kind === 'gold' });
+    collectPreview(prev);
+    setActions('r-actions', R.queue.length ? [{ label: 'Next', primary: true, fn: nextReveal }] :
+      [{ label: 'Keep catching', fn: closeSheet }, { label: 'See your shelf', primary: true, fn: function () { seeShelf(rw); } }]);
+    openSheet();
+    confetti(rw.kind === 'jars' ? 18 : rw.kind === 'full' ? 60 : 36);
+    try { if (navigator.vibrate) navigator.vibrate([30, 60, 30]); } catch (e) {}
+    if (r.lvUp) toast('Level ' + r.lvUp + '! ' + unlockText(r.lvUp));
+  }
+  function seeShelf(rw) {
+    closeSheet();
+    selectTab('shelf');
+    var target = rw.kind === 'full' ? $('row-sky') : rw.el ? $('row-' + rw.el) : null;
+    if (target) try { target.scrollIntoView({ block: 'start' }); } catch (e) { target.scrollIntoView(); }
+  }
+  function openRowInfo(elId) {
+    var name = elName(elId);
+    if (!name) return;
+    var row = RU.shelfProgress(S.book).rows.filter(function (r) { return r.el === elId; })[0];
+    var st = rowState(elId);
+    var rowRw = RU.reward('row-' + elId), goldRw = RU.reward('gold-' + elId);
+    var missing = RU.rowTypes(elId).filter(function (t) { return !(S.book[t.id] && S.book[t.id].n); }).map(function (t) { return t.name; });
+    var later = RU.ORDERED.filter(function (t) { return t.el === elId && !RU.catchable(t); }).map(function (t) { return t.name; });
+    var body = miniShelf(bestJars(rowIds(elId)), { el: elId, themed: true, gold: st.gold }) +
+      '<p class="rw-p"><strong>' + (st.themed ? 'Earned.' : '+' + rowRw.bonus + ' points.') + '</strong> ' + esc(st.themed ? rowRw.done : rowRw.hint) + '</p>' +
+      (st.themed ? '' : '<p class="muted">' + row.have + ' of ' + row.need + ' caught. Still to find: ' + esc(listText(missing)) + '.</p>') +
+      '<p class="rw-p"><strong>' + (st.gold ? 'Gold.' : '+' + goldRw.bonus + ' points.') + '</strong> ' + esc(st.gold ? goldRw.done : goldRw.hint) + '</p>' +
+      (st.gold ? '' : '<p class="muted">' + row.gold + ' of ' + row.need + ' gold so far.</p>') +
+      (later.length ? '<p class="muted">' + esc(listText(later)) + ' arrive in a later version and don’t count yet.</p>' : '');
+    showInfo({ label: name + ' shelf', title: rowRw.name, body: body });
+    collectPreview($('i-body'));
+  }
+  function styleChips(kind, list) {
+    return '<div class="chips style-chips" role="group" aria-label="' + (kind === 'wood' ? 'Shelves' : 'Lights') + '">' + list.map(function (o) {
+      var rw = RU.styleReward(kind, o.id);
+      var open = !rw || !!S.rewards[rw.id];
+      var on = S.style[kind] === o.id;
+      return '<button type="button" class="chip' + (on ? ' on' : '') + '" data-style="' + kind + ':' + o.id + '" aria-pressed="' + on + '"' + (open ? '' : ' disabled') + '>' +
+        (on ? icon('check', 14) : open ? '' : icon('lock', 14)) + '<span>' + esc(o.name) + '</span>' + (open ? '' : '<span class="chip-pts">' + rw.need + ' jars</span>') + '</button>';
+    }).join('') + '</div>';
+  }
+  function rewardItem(name, sub, done, status) {
+    return '<li class="rw-item' + (done ? ' done' : '') + '"><span class="rw-ic">' + icon(done ? 'check' : 'lock', 16) + '</span><span class="rw-body"><span class="rw-n">' + esc(name) +
+      '</span><span class="rw-s">' + esc(sub) + '</span></span><span class="rw-st">' + esc(done ? 'Earned' : status) + '</span></li>';
+  }
+  function styleBody() {
+    var prog = RU.shelfProgress(S.book);
+    var rows = prog.rows.filter(function (r) { return S.rewards['row-' + r.el]; }).length;
+    var golds = prog.rows.filter(function (r) { return S.rewards['gold-' + r.el]; }).length;
+    var items = RU.JAR_REWARDS.map(function (rw) {
+      return rewardItem(rw.name, rw.need + ' jars · +' + rw.bonus + ' points', !!S.rewards[rw.id], prog.jars + ' of ' + rw.need);
+    }).join('') +
+      rewardItem('Finish a row', 'Each row gets its own look · +500 points', rows === prog.rows.length, rows + ' of ' + prog.rows.length) +
+      rewardItem('Gold rows', 'Every jar in a row at gold · +1000 points', golds === prog.rows.length, golds + ' of ' + prog.rows.length) +
+      rewardItem('The Sky Jar', 'Fill your whole shelf · ' + RU.KEEPER + ' · +2000 points', !!S.rewards.full, prog.jars + ' of ' + prog.total);
+    return miniShelf(bestJars(shelfIds())) +
+      '<h3 class="h2">Shelves</h3>' + styleChips('wood', RU.WOODS) +
+      '<h3 class="h2">Lights</h3>' + styleChips('lights', RU.LIGHTS) +
+      '<h3 class="h2">Rewards</h3><ul class="rw-list">' + items + '</ul>' +
+      '<p class="muted">Tap the name of a row on your shelf to see what it needs.</p>';
+  }
+  function openStyle() {
+    showInfo({ label: 'Your shelf', title: 'Shelf style and rewards', body: styleBody() });
+    collectPreview($('i-body'));
+  }
+  function setStyle(val) {
+    var p = val.split(':');
+    var kind = p[0], id = p[1];
+    var list = kind === 'wood' ? RU.WOODS : kind === 'lights' ? RU.LIGHTS : null;
+    if (!list || !known(list, id)) return;
+    var rw = RU.styleReward(kind, id);
+    if (rw && !S.rewards[rw.id]) return;
+    S.style[kind] = id;
+    save();
+    var body = $('i-body');
+    body.innerHTML = styleBody();
+    collectPreview(body);
+    var b = body.querySelector('[data-style="' + val + '"]');
+    if (b) try { b.focus({ preventScroll: true }); } catch (e) { b.focus(); }
   }
 
   /* ---------- the More tab ---------- */
@@ -871,10 +1155,12 @@
 
   function showView(name) {
     R.view = name;
+    R.previewJars = null;
     $('game-view').hidden = name !== 'game';
     $('card-view').hidden = name !== 'card';
+    if ($('reward-view')) $('reward-view').hidden = name !== 'reward';
     $('info-view').hidden = name !== 'info';
-    $('sheet').setAttribute('aria-labelledby', name === 'game' ? 'g-title' : name === 'card' ? 'c-title' : 'i-title');
+    $('sheet').setAttribute('aria-labelledby', name === 'game' ? 'g-title' : name === 'card' ? 'c-title' : name === 'reward' ? 'r-title' : 'i-title');
   }
   function setActions(boxId, list) {
     var box = $(boxId);
@@ -895,7 +1181,7 @@
     ov.hidden = false;
     kick();
     if (R.view !== 'game') {
-      var btns = $(R.view === 'card' ? 'c-actions' : 'i-actions').querySelectorAll('button');
+      var btns = $(R.view === 'card' ? 'c-actions' : R.view === 'reward' ? 'r-actions' : 'i-actions').querySelectorAll('button');
       var target = btns[btns.length - 1];
       if (target) try { target.focus({ preventScroll: true }); } catch (e) { target.focus(); }
     }
@@ -904,8 +1190,11 @@
     $('overlay').hidden = true;
     R.game = null;
     R.cardState = null;
+    R.previewJars = null;
     R.queue = [];
     R.view = null;
+    clearTimeout(confTimer);
+    if ($('confetti')) $('confetti').innerHTML = '';
     if (R.lastFocus && R.lastFocus.focus && document.contains(R.lastFocus)) try { R.lastFocus.focus({ preventScroll: true }); } catch (e) {}
     render();
     if (R.tab === 'shelf') renderShelf();
@@ -1051,16 +1340,18 @@
     }
     afterAward(list, before);
   }
+  /* after jars go on the shelf: any shelf rewards they've earned follow the jar cards */
   function afterAward(list, before) {
+    var cards = list.concat(claimRewards());
     var after = RU.levelFor(S.points);
-    if (after > before && list.length) {
-      list[list.length - 1].lvUp = after;
+    if (after > before && cards.length) {
+      cards[cards.length - 1].lvUp = after;
       addLog('Level ' + after + '!');
     }
     save();
     render();
     try { if (navigator.vibrate) navigator.vibrate(40); } catch (e) {}
-    openReveal(list);
+    openReveal(cards);
   }
   function unlockText(L) {
     for (var i = 0; i < RU.UNLOCKS.length; i++) if (RU.UNLOCKS[i].level === L) return 'Unlocked: ' + RU.UNLOCKS[i].name.toLowerCase() + '.';
@@ -1073,6 +1364,7 @@
   function nextReveal() {
     var r = R.queue.shift();
     if (!r) { closeSheet(); return; }
+    if (r.reward) { showReward(r); return; }
     var t = T(r.id);
     var e = S.book[r.id];
     showView('card');
@@ -1098,7 +1390,26 @@
     openSheet();
     if (r.lvUp) toast('Level ' + r.lvUp + '! ' + unlockText(r.lvUp));
   }
+  function openSkyDetail() {
+    var have = !!S.rewards.full;
+    var full = RU.reward('full');
+    showView('card');
+    $('c-label').textContent = have ? RU.KEEPER : 'The last jar';
+    $('c-label').className = 'ov-label rc-legendary';
+    $('c-title').textContent = 'The Sky Jar';
+    var p = $('c-pill');
+    p.className = 'pill rc-legendary';
+    p.textContent = have ? 'Live' : 'Not earned yet';
+    $('c-points').textContent = have ? 'Earned ' + dateLabel(S.rewards.full) : '+' + full.bonus + ' bonus points when you earn it';
+    $('c-line').textContent = have ? 'The sky over ' + (R.place ? R.place.name : 'you') + ' right now: ' + skyName() + '.' : full.hint;
+    $('c-stats').textContent = have ? 'It changes with the weather wherever you go.' : jarCount() + ' of ' + RU.SHELF_TOTAL + ' jars so far.';
+    setVerify('');
+    R.cardState = jarState('sky');
+    setActions('c-actions', [{ label: 'Close', primary: true, fn: closeSheet }]);
+    openSheet();
+  }
   function openDetail(id) {
+    if (id === 'sky') { openSkyDetail(); return; }
     var t = T(id);
     var e = S.book[id];
     var n = e ? e.n : 0;
@@ -1352,7 +1663,9 @@
     closeSheet();
     if (R.area) evaluate();
     render();
+    if (R.tab === 'shelf') renderShelf();
     toast('Jars restored.');
+    setTimeout(checkPendingRewards, 500);
   }
 
   /* ---------- toast ---------- */
@@ -1399,6 +1712,7 @@
       } else if (R.cardState && R.view === 'card') {
         drawJarOn($('c-canvas'), R.cardState, t, glassLook());
       }
+      if (R.previewJars && R.view !== 'game') drawPreview(t);
     }
     if (R.tab === 'shelf' && !reduce && ts - lastShelf > 110) {
       lastShelf = ts;
@@ -1449,8 +1763,11 @@
     $('spot-btn').addEventListener('click', openSpots);
     $('i-body').addEventListener('click', function (ev) {
       var b = ev.target.closest ? ev.target.closest('[data-photo]') : null;
-      if (b) takePhoto(b.getAttribute('data-photo'));
+      if (b) { takePhoto(b.getAttribute('data-photo')); return; }
+      var s = ev.target.closest ? ev.target.closest('[data-style]') : null;
+      if (s && !s.disabled) setStyle(s.getAttribute('data-style'));
     });
+    if ($('style-btn')) $('style-btn').addEventListener('click', openStyle);
     $('photo-input').addEventListener('change', function () { closeSheet(); onPhoto(); });
     $('drive-btn').addEventListener('click', openDriveIntro);
     $('lock-drive').addEventListener('click', openDriveIntro);
@@ -1462,6 +1779,8 @@
     $('nav-shelf').addEventListener('click', function () { selectTab('shelf'); });
     $('nav-more').addEventListener('click', function () { selectTab('more'); });
     $('shelves').addEventListener('click', function (ev) {
+      var row = ev.target.closest ? ev.target.closest('[data-row]') : null;
+      if (row) { openRowInfo(row.getAttribute('data-row')); return; }
       var b = ev.target.closest ? ev.target.closest('[data-jar]') : null;
       if (b) openDetail(b.getAttribute('data-jar'));
     });
@@ -1506,6 +1825,7 @@
       R.photos = {};
       if (R.area) evaluate();
       render();
+      if (R.tab === 'shelf') renderShelf();
       toast('Everything is cleared. Happy catching.');
     });
     $('install-btn').addEventListener('click', function () {
@@ -1549,6 +1869,7 @@
     if (S.onboarded) locate();
     if (S.drive) { $('drive').hidden = false; requestWake(); }
     else if (S.haul && S.haul.jars && S.haul.jars.length) setTimeout(openTrip, 600);
+    else if (S.onboarded) setTimeout(checkPendingRewards, 900);
     render();
     kick();
     setInterval(tick, 15000);
@@ -1556,6 +1877,13 @@
     if ('serviceWorker' in navigator && !TEST && (location.protocol === 'https:' || location.hostname === 'localhost')) {
       navigator.serviceWorker.register('sw.js').catch(function () {});
     }
+  }
+
+  /* straight after an update a phone can briefly pair the old page with the new code: reload once to get both */
+  if (!$('reward-view')) {
+    var tried = false;
+    try { tried = sessionStorage.getItem('wc-reload') === VERSION; sessionStorage.setItem('wc-reload', VERSION); } catch (e) { tried = true; }
+    if (!tried) { location.reload(); return; }
   }
 
   if (TEST) {
@@ -1566,7 +1894,9 @@
       miss: function (text) { if (R.game) R.game.g.miss(text || 'Missed.'); },
       speed: function (mps) { noteSpeed(mps); noteSpeed(mps); render(); },
       refresh: function () { return refreshWeather(true); },
-      evaluate: function () { evaluate(); render(); }
+      evaluate: function () { evaluate(); render(); },
+      pending: function () { checkPendingRewards(); },
+      shelf: function () { renderShelf(); }
     };
   }
 

@@ -502,6 +502,93 @@
   ];
   function unlocked(id, L) { for (var i = 0; i < UNLOCKS.length; i++) if (UNLOCKS[i].id === id) return L >= UNLOCKS[i].level; return false; }
 
+  /* ---------- shelf rewards ----------
+     Every 10 jars unlocks a new shelf wood or lights. Finishing a row gives that shelf its own look for good,
+     every jar in a row at gold turns the shelf gold, and a full shelf earns the Sky Jar and the top title.
+     Jars marked 'later' can't be caught yet, so they don't count towards any of it. */
+
+  var SILVER_AT = 5, GOLD_AT = 15;
+  function catchable(t) { return !!t && t.how !== 'later'; }
+  var SHELF = ORDERED.filter(catchable);
+  var SHELF_TOTAL = SHELF.length;
+  var WOODS = [{ id: 'pine', name: 'Pine' }, { id: 'oak', name: 'Oak' }, { id: 'walnut', name: 'Walnut' }, { id: 'glass', name: 'Glass' }];
+  var LIGHTS = [{ id: 'off', name: 'No lights' }, { id: 'glow', name: 'Shelf lights' }, { id: 'fairy', name: 'Fairy lights' }];
+  var JAR_REWARDS = [
+    { id: 'jars10', kind: 'jars', need: 10, name: 'Oak shelves', wood: 'oak', bonus: 100, done: 'Ten jars on your shelf, so your shelves are oak now.' },
+    { id: 'jars20', kind: 'jars', need: 20, name: 'Shelf lights', lights: 'glow', bonus: 200, done: 'Twenty jars on your shelf, so every jar has its own light now.' },
+    { id: 'jars30', kind: 'jars', need: 30, name: 'Walnut shelves', wood: 'walnut', bonus: 300, done: 'Thirty jars on your shelf, so your shelves are dark walnut now.' },
+    { id: 'jars40', kind: 'jars', need: 40, name: 'Fairy lights', lights: 'fairy', bonus: 400, done: 'Forty jars on your shelf, so there are fairy lights across it now.' },
+    { id: 'jars50', kind: 'jars', need: 50, name: 'Glass shelves', wood: 'glass', bonus: 500, done: 'Fifty jars on your shelf, so your jars sit on glass shelves now.' }
+  ];
+  var ROW_BONUS = 500, GOLD_BONUS = 1000, FULL_BONUS = 2000;
+  var KEEPER = 'Keeper of the Sky';
+  /* what each finished row looks like. noun: what one jar in the row is called */
+  var ROW_LOOKS = {
+    sun: { noun: 'Sun jar', name: 'Sunlit shelf', hint: 'Catch every Sun jar and sunshine fills this shelf, for good.', done: 'Every Sun jar is on your shelf, so sunshine fills it for good.' },
+    rain: { noun: 'Rain jar', name: 'Rainy shelf', hint: 'Catch every Rain jar and rain runs down the back of this shelf, for good.', done: 'Every Rain jar is on your shelf, so rain runs down the back of it for good.' },
+    frost: { noun: 'Frost jar', name: 'Frozen shelf', hint: 'Catch every Frost jar and this shelf ices over, for good.', done: 'Every Frost jar is on your shelf, so it’s iced over for good.' },
+    wind: { noun: 'Wind jar', name: 'Windswept shelf', hint: 'Catch every Wind jar and leaves blow across this shelf, for good.', done: 'Every Wind jar is on your shelf, so leaves blow across it for good.' },
+    storm: { noun: 'Storm jar', name: 'Storm shelf', hint: 'Catch every Storm jar and this shelf flickers with lightning, for good.', done: 'Every Storm jar is on your shelf, so it flickers with lightning for good.' },
+    mist: { noun: 'Mist jar', name: 'Misty shelf', hint: 'Catch every Mist jar and fog drifts through this shelf, for good.', done: 'Every Mist jar is on your shelf, so fog drifts through it for good.' },
+    wonder: { noun: 'Sky Wonder', name: 'Starlit shelf', hint: 'Catch every Sky Wonder and this shelf glows with stars and the Northern Lights, for good.', done: 'Every Sky Wonder is on your shelf, so it glows with stars and the Northern Lights for good.' },
+    change: { noun: 'Change moment', name: 'Turning shelf', hint: 'Catch every Change moment and the sky behind this shelf turns from storm to sun, for good.', done: 'Every Change moment is on your shelf, so the sky behind it turns from storm to sun for good.' }
+  };
+  var REWARD = {};
+  JAR_REWARDS.forEach(function (r) { REWARD[r.id] = r; });
+  ELEMENTS.forEach(function (el) {
+    var look = ROW_LOOKS[el.id];
+    REWARD['row-' + el.id] = { id: 'row-' + el.id, kind: 'row', el: el.id, name: look.name, bonus: ROW_BONUS, done: look.done, hint: look.hint };
+    REWARD['gold-' + el.id] = {
+      id: 'gold-' + el.id, kind: 'gold', el: el.id, name: 'Gold ' + el.name + ' shelf', bonus: GOLD_BONUS,
+      done: 'Every ' + look.noun + ' is gold, so the whole shelf is gold now.',
+      hint: 'Get every ' + look.noun + ' to gold, 15 catches each, and this shelf turns gold.'
+    };
+  });
+  REWARD.full = {
+    id: 'full', kind: 'full', need: SHELF_TOTAL, name: KEEPER, prize: 'The Sky Jar', bonus: FULL_BONUS,
+    done: 'You’ve caught every jar there is. The Sky Jar is yours, and it always shows the live sky wherever you are.',
+    hint: 'Fill every jar on your shelf to earn the Sky Jar, which always shows the live sky wherever you are.'
+  };
+  function reward(id) { return REWARD[id] || null; }
+  function rowTypes(elId) { return SHELF.filter(function (t) { return t.el === elId; }); }
+  function shelfProgress(book) {
+    book = book || {};
+    var jars = 0;
+    var rows = ELEMENTS.map(function (el) {
+      var types = rowTypes(el.id);
+      var have = 0, gold = 0;
+      types.forEach(function (t) {
+        var e = book[t.id];
+        var n = e && typeof e.n === 'number' ? e.n : 0;
+        if (n > 0) have += 1;
+        if (n >= GOLD_AT) gold += 1;
+      });
+      jars += have;
+      return { el: el.id, name: el.name, need: types.length, have: have, gold: gold, complete: have === types.length, allGold: gold === types.length };
+    });
+    return { jars: jars, total: SHELF_TOTAL, rows: rows, full: jars === SHELF_TOTAL };
+  }
+  /* every reward this shelf has earned, smallest first: jar counts, then rows, then gold rows, then the full shelf */
+  function rewardsEarned(book) {
+    var p = shelfProgress(book);
+    var out = [];
+    JAR_REWARDS.forEach(function (r) { if (p.jars >= r.need) out.push(r.id); });
+    p.rows.forEach(function (r) { if (r.complete) out.push('row-' + r.el); });
+    p.rows.forEach(function (r) { if (r.allGold) out.push('gold-' + r.el); });
+    if (p.full) out.push('full');
+    return out;
+  }
+  /* the next jar-count reward, ending with the full shelf; null once the shelf is full */
+  function nextJarReward(jars) {
+    for (var i = 0; i < JAR_REWARDS.length; i++) if (jars < JAR_REWARDS[i].need) return JAR_REWARDS[i];
+    return jars < SHELF_TOTAL ? REWARD.full : null;
+  }
+  /* which reward unlocks a shelf wood or lights; null for the ones you start with */
+  function styleReward(kind, id) {
+    for (var i = 0; i < JAR_REWARDS.length; i++) if (JAR_REWARDS[i][kind] === id) return JAR_REWARDS[i];
+    return null;
+  }
+
   WC.rules = {
     RARITY: RARITY, ELEMENTS: ELEMENTS, TYPES: TYPES, ORDERED: ORDERED, CODES: CODES,
     type: type, rank: rank, points: points, facetOf: function (id) { return FACET_OF[id] || null; },
@@ -510,6 +597,9 @@
     sunElevation: sunElevation, nearestFullMoon: nearestFullMoon, moonDistance: moonDistance,
     isSupermoon: isSupermoon, moonIllumination: moonIllumination, meteorShower: meteorShower, eclipseNow: eclipseNow,
     dayKey: dayKey, nightKey: nightKey,
-    levelFor: levelFor, pointsFor: pointsFor, titleFor: titleFor, UNLOCKS: UNLOCKS, unlocked: unlocked
+    levelFor: levelFor, pointsFor: pointsFor, titleFor: titleFor, UNLOCKS: UNLOCKS, unlocked: unlocked,
+    SILVER_AT: SILVER_AT, GOLD_AT: GOLD_AT, catchable: catchable, SHELF_TOTAL: SHELF_TOTAL, rowTypes: rowTypes,
+    WOODS: WOODS, LIGHTS: LIGHTS, JAR_REWARDS: JAR_REWARDS, ROW_LOOKS: ROW_LOOKS, KEEPER: KEEPER,
+    reward: reward, shelfProgress: shelfProgress, rewardsEarned: rewardsEarned, nextJarReward: nextJarReward, styleReward: styleReward
   };
 })(typeof window !== 'undefined' ? window : globalThis);
