@@ -371,6 +371,18 @@ textarea{width:100%;min-height:110px;padding:10px;border-radius:12px;border:1px 
 .rw-n{font-weight:700;font-size:14px;line-height:1.3}
 .rw-s{font-size:12px;color:var(--muted);line-height:1.35}
 .rw-st{font-family:var(--font-mono);font-size:12px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+/* mystery variants */
+.ov-var{margin:-4px 0 0;display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;font-size:15px;line-height:1.3}
+.v-name{font-weight:800}
+.v-odds{font-family:var(--font-mono);font-size:12px;color:var(--muted)}
+.v-new{display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;background:var(--ink);color:var(--surface);font-family:var(--font-mono);font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+.prism-text{background:linear-gradient(90deg,#C8312F,#C2620F,#8A6D00,#227A3B,#1B5FB8,#6A33AD);-webkit-background-clip:text;background-clip:text;color:transparent}
+.var-box{display:flex;flex-direction:column;gap:8px;padding-top:2px}
+.var-h{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.var-n{font-family:var(--font-mono);font-size:12px;color:var(--muted)}
+.var-chips{gap:6px}
+.var-chips .chip{padding:6px 12px 6px 10px;font-size:13px}
+.var-chips .chip:not(:disabled){cursor:pointer}
 .confetti{position:absolute;inset:0;z-index:2;overflow:hidden;pointer-events:none}
 .confetti i{position:absolute;top:-16px;width:8px;height:12px;border-radius:2px;opacity:0;animation:conf 2.6s cubic-bezier(.25,.6,.4,1) forwards}
 @keyframes conf{0%{opacity:1;transform:translate(0,0) rotate(0)}100%{opacity:.9;transform:translate(var(--dx),105vh) rotate(var(--rot))}}
@@ -393,6 +405,7 @@ textarea{width:100%;min-height:110px;padding:10px;border-radius:12px;border:1px 
   .th-change{--rain-c:rgba(160,190,240,.28);background:linear-gradient(180deg,#1A2030,#151B2A)}
   .th-change::before{background:radial-gradient(120% 50% at 85% 0%,rgba(255,190,90,.3),rgba(255,190,90,0) 60%),linear-gradient(180deg,#14284A,#0F2038)}
   .sky-have{background:radial-gradient(80% 55% at 50% 30%,rgba(255,199,102,.16),rgba(255,199,102,0) 70%),var(--shelf)}
+  .prism-text{background-image:linear-gradient(90deg,#FF7A7A,#FFB547,#FFE066,#6FE08A,#6FB6FF,#C4A0FF)}
 }
 
 @media (prefers-reduced-motion: reduce){

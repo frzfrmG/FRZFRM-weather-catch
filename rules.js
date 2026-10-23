@@ -641,6 +641,43 @@
     return null;
   }
 
+  /* ---------- mystery variants ----------
+     Everyone nearby catches the same weather, but each jar opens as one of four variants, with published odds:
+     Classic, two variants that depend on the row (a kite in a sunny jar, a snowman in a frosty one) and Prism.
+     Sky Wonders use night variants or day variants depending on their sky. */
+  var VARIANT_SETS = {
+    sun: [['kite', 'Kite'], ['balloon', 'Hot-air Balloon']],
+    rain: [['ripples', 'Puddle Ripples'], ['umbrella', 'Red Umbrella']],
+    frost: [['crystals', 'Ice Crystals'], ['snowman', 'Snowman']],
+    wind: [['windsock', 'Windsock'], ['flyaway', 'Runaway Umbrella']],
+    storm: [['ball', 'Ball Lightning'], ['sprite', 'Red Sprite']],
+    mist: [['lamp', 'Lamplight'], ['wisps', 'Will-o’-the-wisp']],
+    night: [['shooting', 'Shooting Star'], ['plough', 'The Plough']],
+    day: [['birds', 'Birds'], ['balloon', 'Hot-air Balloon']],
+    change: [['birds', 'Birds'], ['rainbow', 'Rainbow']]
+  };
+  var NIGHT_WONDERS = { starry: true, fullmoon: true, meteor: true, supermoon: true, moonbow: true, aurora: true, eclipse: true };
+  var VRANK = { c: 0, a: 1, b: 2, p: 3 };
+  function variants(id) {
+    var t = TYPES[id];
+    if (!t) return [];
+    var set = VARIANT_SETS[t.el === 'wonder' ? (NIGHT_WONDERS[id] ? 'night' : 'day') : t.el];
+    return [
+      { id: 'c', name: 'Classic', odds: '2 in 3', chance: 0.65, deco: null, prism: false },
+      { id: 'a', name: set[0][1], odds: '1 in 4', chance: 0.25, deco: set[0][0], prism: false },
+      { id: 'b', name: set[1][1], odds: '1 in 11', chance: 0.09, deco: set[1][0], prism: false },
+      { id: 'p', name: 'Prism', odds: '1 in 100', chance: 0.01, deco: null, prism: true }
+    ];
+  }
+  function variant(id, v) {
+    var list = variants(id);
+    for (var i = 0; i < list.length; i++) if (list[i].id === v) return list[i];
+    return list[0] || null;
+  }
+  function variantRank(v) { return VRANK[v] || 0; }
+  /* r: a random number from 0 up to 1 */
+  function rollVariant(r) { return r < 0.01 ? 'p' : r < 0.10 ? 'b' : r < 0.35 ? 'a' : 'c'; }
+
   WC.rules = {
     RARITY: RARITY, ELEMENTS: ELEMENTS, TYPES: TYPES, ORDERED: ORDERED, CODES: CODES,
     type: type, rank: rank, points: points, facetOf: function (id) { return FACET_OF[id] || null; },
@@ -652,6 +689,7 @@
     levelFor: levelFor, pointsFor: pointsFor, titleFor: titleFor, UNLOCKS: UNLOCKS, unlocked: unlocked,
     SILVER_AT: SILVER_AT, GOLD_AT: GOLD_AT, catchable: catchable, SHELF_TOTAL: SHELF_TOTAL, rowTypes: rowTypes,
     WOODS: WOODS, LIGHTS: LIGHTS, JAR_REWARDS: JAR_REWARDS, ROW_LOOKS: ROW_LOOKS, KEEPER: KEEPER,
-    reward: reward, shelfProgress: shelfProgress, rewardsEarned: rewardsEarned, nextJarReward: nextJarReward, styleReward: styleReward
+    reward: reward, shelfProgress: shelfProgress, rewardsEarned: rewardsEarned, nextJarReward: nextJarReward, styleReward: styleReward,
+    variants: variants, variant: variant, variantRank: variantRank, rollVariant: rollVariant
   };
 })(typeof window !== 'undefined' ? window : globalThis);
