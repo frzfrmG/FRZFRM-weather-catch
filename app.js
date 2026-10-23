@@ -5,7 +5,7 @@
   'use strict';
   var WC = window.WC;
   var RU = WC.rules, SKY = WC.sky;
-  var VERSION = '0.3.0';
+  var VERSION = '0.3.1';
   var TEST = /[?&]test=1(&|$)/.test(location.search);
   var KEY = 'frzfrm-wc-state-1';
   var WX_KEY = 'frzfrm-wc-weather-1';
@@ -44,7 +44,7 @@
   function freshState() {
     return {
       v: 1, created: Date.now(), points: 0, book: {}, caught: {}, cool: {}, recent: {}, names: {}, log: [], haul: null, drive: false, passengerUntil: 0, onboarded: false,
-      rewards: {}, style: { wood: 'pine', lights: 'off' }
+      rewards: {}, style: { wood: 'pine', lights: 'off' }, oldJars: null
     };
   }
   function known(list, id) { return list.some(function (x) { return x.id === id; }); }
@@ -86,6 +86,7 @@
     if (!known(RU.WOODS, o.style.wood)) o.style.wood = 'pine';
     if (!known(RU.LIGHTS, o.style.lights)) o.style.lights = 'off';
     if (o.haul && !Array.isArray(o.haul.jars)) o.haul = null;
+    if (o.oldJars && (typeof o.oldJars !== 'object' || !Array.isArray(o.oldJars.found) || typeof o.oldJars.n !== 'number')) o.oldJars = null;
     return o;
   }
   function loadState() {
@@ -201,7 +202,7 @@
     reading: null, ctx: null, cls: null, wonders: [], spots: [], seen: [], near: {}, coming: [], warning: null,
     watchId: null, game: null, view: null, queue: [], cardState: null, lastFocus: null,
     installEvt: null, wake: null, wakeOk: null, photos: {}, pendingSpot: null, shelfJars: [], previewJars: null, share: null,
-    cardId: null, cardV: null, forceV: null
+    cardId: null, cardV: null, forceV: TEST ? ((location.search.match(/[?&]force=([cabp])(?:&|$)/) || [])[1] || null) : null
   };
 
   /* ---------- location ---------- */
@@ -1020,6 +1021,7 @@
     if (S.drive || !$('overlay').hidden) return;
     var before = RU.levelFor(S.points);
     var cards = claimRewards();
+    if (S.oldJars) { cards.unshift({ oldJars: S.oldJars }); S.oldJars = null; }
     if (!cards.length) return;
     var after = RU.levelFor(S.points);
     if (after > before) { cards[cards.length - 1].lvUp = after; addLog('Level ' + after + '!'); }
@@ -1083,6 +1085,36 @@
     confetti(rw.kind === 'jars' ? 18 : rw.kind === 'full' ? 60 : 36);
     try { if (navigator.vibrate) navigator.vibrate([30, 60, 30]); } catch (e) {}
     if (r.lvUp) toast('Level ' + r.lvUp + '! ' + unlockText(r.lvUp));
+  }
+  /* after old jars are opened: what turned up, with the best of them on a little shelf */
+  function showOldJars(r) {
+    var o = r.oldJars;
+    var best = {};
+    o.found.forEach(function (f) { if (T(f.id) && (!best[f.id] || RU.variantRank(f.v) > RU.variantRank(best[f.id]))) best[f.id] = f.v; });
+    var ids = Object.keys(best).sort(function (a, b) { return RU.variantRank(best[b]) - RU.variantRank(best[a]) || RU.rank(b) - RU.rank(a); });
+    var n = o.found.length;
+    if (!$('reward-view')) { toast('Your old jars are open: ' + n + ' ' + plural(n, 'surprise') + '.'); nextReveal(); return; }
+    showView('reward');
+    R.cardState = null;
+    var v = $('reward-view');
+    v.classList.remove('pop');
+    void v.offsetWidth;
+    v.classList.add('pop');
+    $('r-label').textContent = 'Mystery variants';
+    $('r-label').className = 'ov-label rc-epic';
+    $('r-title').textContent = 'Your old jars are open';
+    $('r-points').textContent = n ? n + ' ' + plural(n, 'surprise') + ' in ' + o.n + ' old ' + plural(o.n, 'catch', 'catches') : 'All ' + o.n + ' came out Classic';
+    $('r-line').textContent = 'Every jar you caught before variants just had its own mystery roll.';
+    $('r-stats').textContent = n ? ids.slice(0, 4).map(function (id) { return T(id).name + ': ' + RU.variant(id, best[id]).name; }).join(' · ') +
+      (ids.length > 4 ? ' · and ' + (ids.length - 4) + ' more' : '') : 'Classic turns up in 2 of every 3 jars. Every new catch is a fresh chance.';
+    var show = ids.slice(0, 3);
+    bestJars(shelfIds(), 6).forEach(function (id) { if (show.length < 3 && show.indexOf(id) === -1 && S.book[id] && S.book[id].n) show.push(id); });
+    $('r-preview').innerHTML = miniShelf(show);
+    collectPreview($('r-preview'));
+    setActions('r-actions', R.queue.length ? [{ label: 'Next', primary: true, fn: nextReveal }] :
+      [{ label: 'Keep catching', fn: closeSheet }, { label: 'See your shelf', primary: true, fn: function () { closeSheet(); selectTab('shelf'); } }]);
+    openSheet();
+    if (n) confetti(o.found.some(function (f) { return f.v === 'p'; }) ? 60 : 24);
   }
   function seeShelf(rw) {
     closeSheet();
@@ -1574,6 +1606,34 @@
     return x ? { t: x.t, place: x.place, v: v, seed: seed } : lastCatch(e);
   }
   function variantNote(id, v) { var vr = RU.variant(id, v); return vr && vr.id !== 'c' ? ' (' + vr.name + ')' : ''; }
+  /* jars caught before variants existed: each of those catches gets one mystery roll, once, at the usual odds.
+     They're the Classic ones with no seed. A card then shows what turned up. */
+  function openOldJars() {
+    var total = 0, found = [];
+    Object.keys(S.book).forEach(function (id) {
+      var e = S.book[id];
+      var x = e.vars && e.vars.c;
+      if (!x || x.seed) return;
+      var n = x.n;
+      delete e.vars.c;
+      var old = (e.catches || []).filter(function (r) { return !r.v; }).slice(-n);
+      var recs = [];
+      for (var i = old.length; i < n; i++) recs.push({ t: (e.first && e.first.t) || 0, place: x.place });
+      recs.concat(old).forEach(function (rec) {
+        rollCatch(rec);
+        var y = e.vars[rec.v] || (e.vars[rec.v] = { n: 0, seed: 0, t: -1, place: '' });
+        y.n += 1;
+        if ((rec.t || 0) >= y.t) { y.seed = rec.seed; y.t = rec.t || 0; y.place = rec.place || ''; }
+        if (rec.v !== 'c') found.push({ id: id, v: rec.v });
+      });
+      total += n;
+    });
+    if (total) {
+      S.oldJars = { n: total, found: found };
+      addLog('Opened ' + total + ' old ' + plural(total, 'jar') + ': ' + found.length + ' ' + plural(found.length, 'surprise'));
+    }
+    return total;
+  }
 
   /* how: live, spotted, change, sky or photo */
   function awardOne(id, key, place, verify, how, areaId) {
@@ -1628,6 +1688,7 @@
   /* after jars go on the shelf: any shelf rewards they've earned follow the jar cards */
   function afterAward(list, before) {
     var cards = list.concat(claimRewards());
+    if (S.oldJars) { cards.push({ oldJars: S.oldJars }); S.oldJars = null; }
     var after = RU.levelFor(S.points);
     if (after > before && cards.length) {
       cards[cards.length - 1].lvUp = after;
@@ -1650,6 +1711,7 @@
     var r = R.queue.shift();
     if (!r) { closeSheet(); return; }
     if (r.reward) { showReward(r); return; }
+    if (r.oldJars) { showOldJars(r); return; }
     var t = T(r.id);
     var e = S.book[r.id];
     showView('card');
@@ -1688,40 +1750,52 @@
     } else if (v === 'b' && (r.newV || r.isNew)) confetti(18);
     if (r.lvUp) toast('Level ' + r.lvUp + '! ' + unlockText(r.lvUp));
   }
-  /* the variant line under a jar's name: which one it is, its odds, and whether it's a new find */
-  function setVariant(id, v, fresh) {
+  /* the variant line under a jar's name: which one it is, its odds, and whether it's a new find or not found yet */
+  function setVariant(id, v, fresh, locked) {
     var el = $('c-var');
     if (!el) return;
     var vr = id && RU.variant(id, v);
     if (!vr) { el.hidden = true; el.innerHTML = ''; return; }
     el.hidden = false;
     el.innerHTML = '<span class="v-name' + (vr.prism ? ' prism-text' : '') + '">' + esc(vr.name) + '</span><span class="v-odds">' + esc(vr.odds) + ' jars</span>' +
-      (fresh ? '<span class="v-new">New variant</span>' : '');
+      (fresh ? '<span class="v-new">New variant</span>' : locked ? '<span class="v-lock">' + icon('lock', 13) + 'Not found yet</span>' : '');
   }
-  /* on a jar's card: the four variants, the ones found so far tappable to see them */
+  /* on a jar's card: the four variants. Tap one to see it, even one not found yet */
+  var PREVIEW_SEED = 1;
   function renderVars(id) {
     var box = $('c-vars');
     if (!box) return;
     var e = id && S.book[id];
     if (!e || !e.n) { box.hidden = true; box.innerHTML = ''; return; }
     box.hidden = false;
+    var list = RU.variants(id);
     box.innerHTML = '<div class="var-h"><span class="h2">Variants</span><span class="var-n">' + varsFound(e) + ' of 4 found</span></div>' +
-      '<div class="chips var-chips" role="group" aria-label="Variants of this jar">' + RU.variants(id).map(function (vr) {
+      '<div class="chips var-chips" role="group" aria-label="Variants of this jar">' + list.map(function (vr) {
         var x = e.vars && e.vars[vr.id];
         var on = R.cardV === vr.id;
-        return '<button type="button" class="chip' + (on ? ' on' : '') + '" data-var="' + vr.id + '" aria-pressed="' + on + '"' + (x ? '' : ' disabled') +
+        return '<button type="button" class="chip' + (on ? ' on' : '') + (x ? '' : ' locked') + '" data-var="' + vr.id + '" aria-pressed="' + on + '"' +
           ' aria-label="' + esc(vr.name + (x ? ', found ' + x.n + ' ' + plural(x.n, 'time') : ', not found yet, ' + vr.odds + ' jars')) + '">' +
-          (x ? '' : icon('lock', 14)) + '<span' + (vr.prism && x ? ' class="prism-text"' : '') + '>' + esc(vr.name) + '</span><span class="chip-pts">' + (x ? '×' + x.n : esc(vr.odds)) + '</span></button>';
-      }).join('') + '</div>';
+          (x ? '' : icon('lock', 14)) + '<span' + (vr.prism ? ' class="prism-text"' : '') + '>' + esc(vr.name) + '</span><span class="chip-pts">' + (x ? '×' + x.n : esc(vr.odds)) + '</span></button>';
+      }).join('') + '</div>' +
+      (e.vars && e.vars.p ? '' : '<p class="small var-note"><span class="prism-text">Prism</span> is the rarest find there is: rainbow glass that shimmers, in about 1 of every 100 catches. Any weather can come out as Prism.</p>');
   }
   function pickVariant(v) {
     var id = R.cardId, e = id && S.book[id];
-    if (!e || !e.vars || !e.vars[v] || R.view !== 'card') return;
+    var vr = e && RU.variant(id, v);
+    if (!vr || vr.id !== v || R.view !== 'card') return;
+    var x = e.vars && e.vars[v];
     R.cardV = v;
-    R.cardState.mark = markOf(id, v, e.vars[v].seed);
-    setVariant(id, v, false);
+    R.cardState.mark = markOf(id, v, x ? x.seed : PREVIEW_SEED);
+    R.cardState.preview = !x;
+    setVariant(id, v, false, !x);
     renderVars(id);
-    prepareShare(id, recFor(e, v));
+    if (x) {
+      prepareShare(id, recFor(e, v));
+      setActions('c-actions', [{ label: 'Share', fn: function () { doShare(closeSheet); } }, { label: 'Close', primary: true, fn: closeSheet }]);
+    } else {
+      R.share = null;
+      setActions('c-actions', [{ label: 'Close', primary: true, fn: closeSheet }]);
+    }
     var b = $('c-vars').querySelector('[data-var="' + v + '"]');
     if (b) try { b.focus({ preventScroll: true }); } catch (err) { b.focus(); }
   }
@@ -2048,6 +2122,7 @@
     o.drive = false;
     o.onboarded = true;
     S = o;
+    openOldJars();
     save();
     closeSheet();
     if (R.area) evaluate();
@@ -2239,6 +2314,7 @@
         if (!S.drive) stopWatch();
       } else {
         kick();
+        checkForUpdate();
         if (S.onboarded && !R.problem) {
           if (R.watchId === null) startWatch();
           if (S.drive) requestWake();
@@ -2249,6 +2325,21 @@
     });
     window.addEventListener('resize', function () { if (R.tab === 'shelf') requestAnimationFrame(function () { drawShelf(2, true); }); });
   }
+  /* updates: when the app opens or comes back on screen, check whether a newer version is online and switch to it,
+     so nobody has to close the app to get one. Once per version, and never mid-catch, on a card or in Drive mode. */
+  var lastUpdateCheck = 0;
+  function checkForUpdate(force) {
+    if (!force && (TEST || Date.now() - lastUpdateCheck < 5 * MIN)) return;
+    lastUpdateCheck = Date.now();
+    if (!window.fetch) return;
+    fetch('index.html', { cache: 'no-store' }).then(function (res) { return res.ok ? res.text() : ''; }).then(function (html) {
+      var m = /data-v="([^"]+)"/.exec(html);
+      if (!m || m[1] === VERSION || S.drive || R.game || !$('overlay').hidden || document.hidden) return;
+      var tried = false;
+      try { tried = sessionStorage.getItem('wc-update') === m[1]; sessionStorage.setItem('wc-update', m[1]); } catch (e) { tried = true; }
+      if (!tried) location.reload();
+    }).catch(function () {});
+  }
   function tick() {
     if (R.speedAt && now() - R.speedAt > 3 * MIN) { R.fast = false; R.moving = false; }
     if (document.hidden) return;
@@ -2258,6 +2349,7 @@
   }
 
   function boot() {
+    openOldJars();
     prune();
     save();
     bind();
@@ -2268,6 +2360,7 @@
     render();
     kick();
     setInterval(tick, 15000);
+    setTimeout(checkForUpdate, 4000);
     try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
     if ('serviceWorker' in navigator && !TEST && (location.protocol === 'https:' || location.hostname === 'localhost')) {
       navigator.serviceWorker.register('sw.js').catch(function () {});
@@ -2294,7 +2387,8 @@
       pending: function () { checkPendingRewards(); },
       shelf: function () { renderShelf(); },
       variant: function (v) { R.forceV = v || null; },
-      jarState: function (id) { return jarState(id); }
+      jarState: function (id) { return jarState(id); },
+      checkUpdate: function () { checkForUpdate(true); }
     };
   }
 

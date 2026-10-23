@@ -1336,9 +1336,29 @@
     });
   }
 
-  /* st: { id, locked, later, ghost, sealed, glow (hex), drip, hat, img, lift, night, lidTone, mark }
+  /* a padlock badge, on a variant that hasn't been found yet */
+  function padlock(ctx, cx, cy, s) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(12,16,34,0.66)';
+    ctx.beginPath(); ctx.arc(cx, cy, s * 1.2, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.fillStyle = '#FFFFFF';
+    ctx.lineWidth = s * 0.2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(cx - s * 0.34, cy - s * 0.1);
+    ctx.lineTo(cx - s * 0.34, cy - s * 0.3);
+    ctx.arc(cx, cy - s * 0.3, s * 0.34, Math.PI, 0);
+    ctx.lineTo(cx + s * 0.34, cy - s * 0.1);
+    ctx.stroke();
+    roundRect(ctx, cx - s * 0.54, cy - s * 0.14, s * 1.08, s * 0.76, s * 0.14);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  /* st: { id, locked, later, ghost, sealed, glow (hex), drip, hat, img, lift, night, lidTone, mark, preview }
      ghost: a locked jar that shows a faint picture of what's inside. night: darken a daytime scene.
-     mark: this catch's { seed, deco, prism }, so it's one of a kind.
+     mark: this catch's { seed, deco, prism }, so it's one of a kind. preview: a variant not found yet, frosted with a padlock.
      look: { glass, q, veil } colours that follow the page theme */
   function jar(ctx, W, H, st, t, look) {
     ctx.clearRect(0, 0, W, H);
@@ -1384,6 +1404,7 @@
       paint(ctx, W, H, st.id, t, !!st.night, null, mk);
     }
     if (pr && !st.sealed) prismSheen(ctx, x, top, w, h, t);
+    if (st.preview) { ctx.fillStyle = 'rgba(150,160,182,0.3)'; ctx.fillRect(x, top, w, h); }
     var sh = ctx.createLinearGradient(x, 0, x + w, 0);
     sh.addColorStop(0, 'rgba(0,0,0,0.12)');
     sh.addColorStop(0.3, 'rgba(255,255,255,0.06)');
@@ -1405,6 +1426,7 @@
     ctx.stroke();
     ctx.restore();
     if (pr) prismGlints(ctx, x, top, w, h, t, k);
+    if (st.preview) padlock(ctx, x + w * 0.8, top + h * 0.85, 8 * k);
     ctx.fillStyle = 'rgba(255,255,255,0.3)';
     roundRect(ctx, x + w * 0.12, top + h * 0.3, w * 0.07, h * 0.42, w * 0.035);
     ctx.fill();
