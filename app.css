@@ -52,7 +52,6 @@ main{display:flex;flex-direction:column}
 .btn-primary:disabled{opacity:1;background:var(--surface-2);color:var(--muted);border-color:var(--line);font-size:16px;font-weight:700}
 .btn-mid{min-height:48px;font-size:16px}
 .btn-spot{width:100%;border:1.5px solid var(--ice);color:var(--ice);font-weight:700}
-.btn-seen{width:100%;font-weight:700}
 .btn-drive{width:100%}
 .btn-danger{color:var(--danger);border-color:var(--danger)}
 .link-btn{border:0;background:transparent;padding:6px 4px;min-height:36px;color:var(--ice);font-weight:700;font-size:14px;text-decoration:underline;text-underline-offset:3px}
@@ -227,6 +226,15 @@ main{display:flex;flex-direction:column}
 .spot-item .btn{min-height:44px;flex:1 1 100%}
 .spot-item .pill{margin-left:34px}
 .spot-item.off{opacity:.75}
+.not-box{border:1px solid var(--line);border-radius:14px;padding:0 12px}
+.not-box summary{min-height:44px;display:flex;align-items:center;gap:10px;font-weight:700;font-size:14px;cursor:pointer;color:var(--muted);list-style:none}
+.not-box summary::-webkit-details-marker{display:none}
+.not-box summary::after{content:'';flex:none;margin-left:auto;width:8px;height:8px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:translateY(-2px) rotate(45deg)}
+.not-box[open] summary::after{transform:translateY(2px) rotate(225deg)}
+.not-box summary:focus-visible{outline:2px solid var(--ice);outline-offset:2px;border-radius:8px}
+.not-list{list-style:none;margin:0 0 10px;padding:0;display:flex;flex-direction:column;gap:6px;font-size:13px;line-height:1.4;color:var(--muted)}
+.not-list strong{color:var(--ink)}
+.share-img{display:block;width:100%;height:auto;border-radius:14px;box-shadow:var(--shadow)}
 .trip-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:14px}
 .trip-list li{display:flex;justify-content:space-between;gap:10px;padding:9px 12px;border-top:1px solid var(--line);font-size:14px}
 .trip-list li:first-child{border-top:0}
@@ -244,7 +252,7 @@ textarea{width:100%;min-height:110px;padding:10px;border-radius:12px;border:1px 
 
 /* ---------- shelf rewards ---------- */
 
-.reward-card{display:flex;flex-direction:column;gap:8px;padding:16px;border-radius:16px;background:var(--surface);border:1px solid var(--line)}
+.reward-card{display:flex;flex-direction:column;gap:8px;padding:14px 16px;border-radius:16px;background:var(--surface);border:1px solid var(--line)}
 .rw-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .rw-text{min-width:0;display:flex;flex-direction:column;gap:2px}
 .rw-name{font-family:var(--font-display);font-stretch:112%;font-weight:800;font-size:20px;line-height:1.15}
@@ -253,7 +261,8 @@ textarea{width:100%;min-height:110px;padding:10px;border-radius:12px;border:1px 
 .sw-box .plank{position:absolute;left:8px;right:8px;bottom:16px;margin:0}
 .sw-box .shelf-lights.glow{left:18%;right:18%}
 .sw-jar{display:block;width:45px;height:60px}
-.reward-card .btn{width:100%}
+.rw-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:-2px 0 -6px}
+.rw-row .link-btn{margin-left:auto}
 .reward-card .lv-pts{font-variant-numeric:tabular-nums}
 #shelf-note{margin:0}
 

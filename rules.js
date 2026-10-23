@@ -353,8 +353,8 @@
     var wetOrSnowy = rainWhy || snowWhy;
     add('sleet', wetOrSnowy && temp <= 4 ? 'It’s cold enough for rain and snow to fall together.' : null,
       temp > 4 ? 'It’s too warm for sleet.' : 'There’s no rain or snow about near you right now.');
-    add('snow', snowWhy || (rainWhy && temp <= 1 ? 'It’s cold enough for the rain about to fall as snow.' : null),
-      temp > 3 ? 'It’s too warm for snow.' : 'There’s no snow about near you right now.');
+    add('snow', snowWhy && temp <= 4 ? snowWhy : rainWhy && temp <= 1 ? 'It’s cold enough for the rain about to fall as snow.' : null,
+      temp > 4 ? 'It’s too warm for snow here.' : 'There’s no snow about near you right now.');
     add('hail', about(hailIn) || near.hail ? 'There’s hail about near you.' : about(stormIn) || near.thunder ? 'There are storms about, and storms can bring hail.' : null,
       'Hail comes with storms, and there are none near you right now.');
     var fogWhy = about(fogIn) ? 'There’s fog about in your area this hour.' : near.fog ? 'There’s fog in an area next to yours.' : null;

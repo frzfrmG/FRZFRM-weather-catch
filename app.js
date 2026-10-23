@@ -5,7 +5,7 @@
   'use strict';
   var WC = window.WC;
   var RU = WC.rules, SKY = WC.sky;
-  var VERSION = '0.2.1';
+  var VERSION = '0.2.2';
   var TEST = /[?&]test=1(&|$)/.test(location.search);
   var KEY = 'frzfrm-wc-state-1';
   var WX_KEY = 'frzfrm-wc-weather-1';
@@ -57,6 +57,7 @@
       var e = o.book[id];
       if (!T(id) || !e || typeof e.n !== 'number') { delete o.book[id]; return; }
       if (!Array.isArray(e.places)) e.places = [];
+      if (e.catches && !Array.isArray(e.catches)) delete e.catches;
     });
     Object.keys(o.rewards).forEach(function (id) { if (!RU.reward(id)) delete o.rewards[id]; });
     if (!o.style || typeof o.style !== 'object' || Array.isArray(o.style)) o.style = f.style;
@@ -177,7 +178,7 @@
     area: null, place: null, wx: null, wxError: null, fetching: null,
     reading: null, ctx: null, cls: null, wonders: [], spots: [], seen: [], near: {}, coming: [], warning: null,
     watchId: null, game: null, view: null, queue: [], cardState: null, lastFocus: null,
-    installEvt: null, wake: null, wakeOk: null, photos: {}, pendingSpot: null, shelfJars: [], previewJars: null
+    installEvt: null, wake: null, wakeOk: null, photos: {}, pendingSpot: null, shelfJars: [], previewJars: null, share: null
   };
 
   /* ---------- location ---------- */
@@ -228,6 +229,7 @@
     var c = p.coords;
     var t = p.timestamp || now();
     var pos = { lat: c.latitude, lon: c.longitude, acc: c.accuracy || 9999, t: t };
+    if (typeof c.altitude === 'number' && isFinite(c.altitude) && typeof c.altitudeAccuracy === 'number' && c.altitudeAccuracy <= 50) pos.alt = c.altitude;
     var sp = typeof c.speed === 'number' && isFinite(c.speed) && c.speed >= 0 ? c.speed : null;
     var prev = R.pos;
     if (sp === null && prev && pos.acc <= 150 && prev.acc <= 150 && t - prev.t >= 8000) sp = distM(prev, pos) / ((t - prev.t) / 1000);
@@ -594,7 +596,6 @@
     renderSky();
     renderCatchBox();
     renderAlso();
-    if ($('seen-btn')) $('seen-btn').hidden = !R.cls || blockedByMoving();
     renderWonders();
     renderSpotTip();
     renderNearby();
@@ -649,7 +650,7 @@
     if (!list.length) {
       btn.disabled = true;
       btn.textContent = 'Nothing to catch right now';
-      hint.innerHTML = R.reading && !R.reading.isDay ? 'A quiet night. Look for Sky Wonders below, or come back when the weather changes.' : 'Nothing to catch here right now. If you can see rain or fog, tap Seeing different weather.';
+      hint.innerHTML = R.reading && !R.reading.isDay ? 'A quiet night. Look for Sky Wonders below, or come back when the weather changes.' : 'Nothing to catch here right now. If you can see rain or fog, tap Spot something.';
       return;
     }
     if (!target) {
@@ -1132,6 +1133,162 @@
     if (b) try { b.focus({ preventScroll: true }); } catch (e) { b.focus(); }
   }
 
+  /* ---------- sharing a jar ----------
+     A picture of the jar with its label, for the phone's share menu. It's drawn as soon as a card with a
+     Share button opens, so the share menu can open straight away when the button is tapped. */
+
+  var SHARE_W = 1080, SHARE_H = 1350;
+  var INK_R = { common: '#5B647F', uncommon: '#1F7A5C', rare: '#1D5FBF', epic: '#7A3FC2', legendary: '#915500' };
+  function appUrl() { return location.href.split(/[?#]/)[0]; }
+  function dateLong(t) { return new Date(t).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) + ' · ' + hm(t); }
+  function detailLine(rec) {
+    var bits = [];
+    if (typeof rec.temp === 'number') bits.push(Math.round(rec.temp) + '°C');
+    if (typeof rec.gust === 'number' && rec.gust >= 20) bits.push('gusts ' + rec.gust + ' mph');
+    else if (typeof rec.wind === 'number' && rec.wind > 0) bits.push('wind ' + rec.wind + ' mph');
+    if (typeof rec.rain === 'number') bits.push('rain ' + rec.rain + ' mm/h');
+    if (typeof rec.snow === 'number') bits.push('snow ' + rec.snow + ' cm/h');
+    var up = typeof rec.alt === 'number' ? rec.alt : rec.elev;
+    if (typeof up === 'number' && up >= 150) bits.push(up + ' m up');
+    return bits.join(' · ');
+  }
+  /* a moment in the scene's animation that looks good still: lightning mid-flash */
+  function stillTime(id) {
+    var s = SKY.SCENES[id];
+    if (s && s.bolt) return (s.bolt[2] || 4.6) + 0.04;
+    if (s && s.sheet) return 3.25;
+    return 2;
+  }
+  function loadPhoto(key) {
+    if (!key) return Promise.resolve(null);
+    return getPhoto(key).then(function (b) {
+      if (!b) return null;
+      var img = imgFromBlob(b);
+      return new Promise(function (res) {
+        if (img.complete && img.naturalWidth) { res(img); return; }
+        img.onload = function () { res(img); };
+        img.onerror = function () { res(null); };
+      });
+    }).catch(function () { return null; });
+  }
+  function fontsReady() {
+    if (!document.fonts || !document.fonts.load) return Promise.resolve();
+    return Promise.all([document.fonts.load('800 80px Archivo'), document.fonts.load('500 34px Archivo'), document.fonts.load('600 26px "IBM Plex Mono"')]).catch(function () {});
+  }
+  function fitText(ctx, text, weight, size, family, maxW) {
+    for (var s = size; s > 18; s -= 2) {
+      ctx.font = weight + ' ' + s + 'px ' + family;
+      if (ctx.measureText(text).width <= maxW) return s;
+    }
+    return 18;
+  }
+  var DISPLAY = 'Archivo, "Arial Narrow", Arial, sans-serif', MONO = '"IBM Plex Mono", Menlo, monospace';
+  function makeShareCard(id, rec) {
+    var t = T(id), e = S.book[id];
+    return Promise.all([fontsReady(), loadPhoto((rec && rec.photo) || e.photo)]).then(function (res) {
+      var cv = document.createElement('canvas');
+      cv.width = SHARE_W;
+      cv.height = SHARE_H;
+      var ctx = cv.getContext('2d');
+      var bg = ctx.createLinearGradient(0, 0, 0, SHARE_H);
+      bg.addColorStop(0, '#0B1020');
+      bg.addColorStop(1, '#1B2449');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, SHARE_W, SHARE_H);
+      ctx.textBaseline = 'alphabetic';
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#EEF2FA';
+      ctx.font = '800 52px ' + DISPLAY;
+      ctx.fillText('FRZFRM', 64, 104);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#9AA6C2';
+      ctx.font = '600 24px ' + MONO;
+      ctx.fillText('WEATHER CATCH', SHARE_W - 64, 100);
+      // the jar, still, as it looks on the shelf
+      var jw = 510, jh = 680;
+      var jc = document.createElement('canvas');
+      jc.width = jw;
+      jc.height = jh;
+      var st = jarState(id);
+      st.img = res[1] || null;
+      SKY.jar(jc.getContext('2d'), jw, jh, st, stillTime(id), DARK_LOOK);
+      ctx.drawImage(jc, (SHARE_W - jw) / 2, 150);
+      // the label
+      var lx = 60, ly = 862, lw = SHARE_W - 120, lh = 400, pad = 48, maxW = lw - pad * 2;
+      ctx.save();
+      SKY.roundRect(ctx, lx, ly, lw, lh, 28);
+      ctx.clip();
+      ctx.fillStyle = '#F3EEE7';
+      ctx.fillRect(lx, ly, lw, lh);
+      ctx.fillStyle = INK_R[t.r];
+      ctx.fillRect(lx, ly, lw, 12);
+      ctx.restore();
+      ctx.textAlign = 'left';
+      var y = ly + pad + 66;
+      ctx.fillStyle = '#121933';
+      fitText(ctx, t.name, '800', 76, DISPLAY, maxW);
+      ctx.fillText(t.name, lx + pad, y);
+      y += 52;
+      var kind = rlabel(id).toUpperCase() + (t.el === 'wonder' ? ' · SKY WONDER' : t.el === 'change' ? ' · CHANGE MOMENT' : '') + (e.n > 1 ? ' · ×' + e.n : '');
+      ctx.fillStyle = INK_R[t.r];
+      fitText(ctx, kind, '600', 26, MONO, maxW);
+      ctx.fillText(kind, lx + pad, y);
+      var where = rec ? (rec.where || rec.place || '') : '';
+      var lines = [where, rec && rec.t ? dateLong(rec.t) : '', rec ? detailLine(rec) : ''].filter(Boolean);
+      y += 64;
+      lines.forEach(function (line, i) {
+        ctx.fillStyle = i === 0 ? '#121933' : '#4F5878';
+        fitText(ctx, line, i === 0 ? '700' : '500', i === 0 ? 38 : 32, DISPLAY, maxW);
+        ctx.fillText(line, lx + pad, y);
+        y += i === 0 ? 52 : 46;
+      });
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#9AA6C2';
+      var foot = appUrl().replace(/^https?:\/\//, '').replace(/\/$/, '');
+      fitText(ctx, foot, '500', 24, MONO, SHARE_W - 128);
+      ctx.fillText(foot, SHARE_W / 2, SHARE_H - 40);
+      return new Promise(function (resolve, reject) {
+        cv.toBlob(function (b) { if (b) resolve(b); else reject(new Error('No picture')); }, 'image/png');
+      });
+    });
+  }
+  function shareText(id, rec) {
+    return 'Look what I caught' + (rec && rec.place ? ' in ' + rec.place : '') + ': ' + T(id).name + ' (' + rlabel(id) + '). Catch the weather where you are: ' + appUrl();
+  }
+  function prepareShare(id) {
+    var e = S.book[id];
+    if (!e || !e.n) { R.share = null; return; }
+    var s = { id: id, rec: lastCatch(e), blob: null };
+    s.promise = makeShareCard(id, s.rec).then(function (b) { s.blob = b; return b; });
+    s.promise.catch(function () {});
+    R.share = s;
+  }
+  /* then: what happens after sharing, like moving on to the next jar card */
+  function doShare(then) {
+    var s = R.share;
+    if (!s) return;
+    function go(blob) {
+      var file = null;
+      try { file = new File([blob], 'frzfrm-' + s.id + '.png', { type: 'image/png' }); } catch (e) {}
+      if (file && navigator.canShare && navigator.share && navigator.canShare({ files: [file] })) {
+        navigator.share({ files: [file], title: T(s.id).name, text: shareText(s.id, s.rec) }).catch(function (err) {
+          if (!err || err.name !== 'AbortError') sharePreview(blob, then);
+        });
+      } else sharePreview(blob, then);
+    }
+    if (s.blob) go(s.blob);
+    else s.promise.then(go, function () { toast('Couldn’t make the picture. Try again.'); });
+  }
+  function sharePreview(blob, then) {
+    var s = R.share;
+    var url = URL.createObjectURL(blob);
+    showInfo({
+      label: 'Share', title: 'Your jar, ready to send',
+      body: '<img class="share-img" src="' + url + '" alt="' + esc(T(s.id).name + ' jar with its label') + '"><p class="muted">Press and hold the picture to save it or send it to friends.</p>',
+      actions: [{ label: 'Done', primary: true, fn: then || closeSheet }]
+    });
+  }
+
   /* ---------- the More tab ---------- */
 
   function isStandalone() { return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true; }
@@ -1201,6 +1358,7 @@
     R.game = null;
     R.cardState = null;
     R.previewJars = null;
+    R.share = null;
     R.queue = [];
     R.view = null;
     clearTimeout(confTimer);
@@ -1306,20 +1464,54 @@
     if (e.places.length > 60) e.places.shift();
     return true;
   }
-  function awardOne(id, key, place, verify, count, spotted) {
-    count = count || 1;
+  /* the details of a catch, kept for its label: when, where, how high, how it was caught and the weather at the time */
+  var KEEP = 12;
+  function snapshot(areaId, how) {
+    var rec = { t: now(), how: how, place: placeFor(areaId) };
+    var nm = S.names[areaId];
+    if (nm && nm.name !== rec.place) rec.where = nm.name;
+    var o = R.reading;
+    if (o && R.area && R.area.id === areaId) {
+      var per = 3600 / (o.interval || 900);
+      var wet = (num(o.rain) || 0) + (num(o.showers) || 0);
+      if (num(o.temp) !== undefined) rec.temp = Math.round(o.temp * 10) / 10;
+      if (num(o.wind) !== undefined) rec.wind = Math.round(o.wind);
+      if (num(o.gusts) !== undefined) rec.gust = Math.round(o.gusts);
+      if (wet > 0) rec.rain = Math.round(wet * per * 10) / 10;
+      if ((num(o.snowfall) || 0) > 0) rec.snow = Math.round(o.snowfall * per * 10) / 10;
+      if (num(o.vis) !== undefined) rec.vis = Math.round(o.vis / 100) / 10;
+      var elev = R.wx && R.wx.here ? num(R.wx.here.elevation) : undefined;
+      if (elev !== undefined) rec.elev = Math.round(elev);
+    }
+    if (R.pos && typeof R.pos.alt === 'number' && now() - R.lastFix < 10 * MIN) rec.alt = Math.round(R.pos.alt);
+    return rec;
+  }
+  /* each jar keeps its first catch and the most recent ones */
+  function record(e, rec) {
+    if (!Array.isArray(e.catches)) e.catches = [];
+    e.catches.push(rec);
+    if (e.catches.length > KEEP) e.catches.splice(1, e.catches.length - KEEP);
+  }
+  function lastCatch(e) {
+    if (e.catches && e.catches.length) return e.catches[e.catches.length - 1];
+    return e.first ? { t: e.first.t, place: e.first.place } : null;
+  }
+  /* how: live, spotted, change, sky or photo */
+  function awardOne(id, key, place, verify, how, areaId) {
     S.caught[key] = 1;
     var e = bookEntry(id);
     var isNew = !e.n;
     var before = e.n;
-    e.n += count;
+    e.n += 1;
     var newPlace = addPlace(e, place);
     if (!e.first) e.first = { t: now(), place: place };
     e.last = now();
-    var pts = RU.points(id) * count;
+    record(e, snapshot(areaId, how));
+    var spotted = how === 'spotted';
+    var pts = RU.points(id);
     S.points += pts;
     var tier = before < 15 && e.n >= 15 ? 'Gold' : before < 5 && e.n >= 5 ? 'Silver' : null;
-    var r = { id: id, isNew: isNew, n: e.n, newPlace: newPlace && !isNew, place: place, pts: pts, tier: tier, verify: verify || '', spotted: !!spotted };
+    var r = { id: id, isNew: isNew, n: e.n, newPlace: newPlace && !isNew, place: place, pts: pts, tier: tier, verify: verify || '', spotted: spotted };
     var t = T(id);
     var lead = spotted ? (isNew ? 'Spotted a new jar: ' : 'Spotted: ') : isNew ? (t.el === 'change' ? 'Change moment: ' : t.el === 'wonder' ? 'Sky Wonder: ' : 'New jar: ') : '';
     addLog(lead + t.name + (isNew ? '' : ' again') + (place ? ' in ' + place : '') + (isNew ? ' (+' + pts + ')' : ' (×' + e.n + ', +' + pts + ')'));
@@ -1337,18 +1529,18 @@
       var nowIds = (R.cls && R.area && R.area.id === G.areaId ? R.cls.ids : []).slice();
       if (nowIds.indexOf(G.id) === -1) nowIds.push(G.id);
       var temp = R.reading ? R.reading.temp : 10;
-      if (G.kind === 'spotted') list.push(awardOne(G.id, G.key, place, 'You spotted it in ' + place + ' at ' + hm(t) + '. ' + (G.why || ''), 1, true));
-      else list.push(awardOne(G.id, G.key, place, 'Matches the live weather for ' + place + ' at ' + hm(t) + '.'));
+      if (G.kind === 'spotted') list.push(awardOne(G.id, G.key, place, 'You spotted it in ' + place + ' at ' + hm(t) + '. ' + (G.why || ''), 'spotted', G.areaId));
+      else list.push(awardOne(G.id, G.key, place, 'Matches the live weather for ' + place + ' at ' + hm(t) + '.', 'live', G.areaId));
       RU.changesFor(prev, nowIds, temp, t).forEach(function (cid) {
         var ck = today() + '|' + G.areaId + '|' + cid;
         if (S.caught[ck]) return;
-        list.push(awardOne(cid, ck, place, 'You were in ' + place + ' when the weather turned.'));
+        list.push(awardOne(cid, ck, place, 'You were in ' + place + ' when the weather turned.', 'change', G.areaId));
       });
       prev = prev.filter(function (p) { return t - p.t <= 3 * HOUR; });
       prev.push({ id: G.id, t: t });
       S.recent[G.areaId] = prev.slice(-8);
     } else {
-      list.push(awardOne(G.id, G.key, place, 'Matches the sky over ' + place + ' at ' + hm(t) + '.'));
+      list.push(awardOne(G.id, G.key, place, 'Matches the sky over ' + place + ' at ' + hm(t) + '.', 'sky', G.areaId));
     }
     afterAward(list, before);
   }
@@ -1398,7 +1590,12 @@
     setVerify(r.verify);
     R.cardState = jarState(r.id);
     if (r.img) R.cardState.img = r.img;
-    setActions('c-actions', [{ label: R.queue.length ? 'Next' : 'Put it on the shelf', primary: true, fn: nextReveal }]);
+    var next = { label: R.queue.length ? 'Next' : 'Put it on the shelf', primary: true, fn: nextReveal };
+    R.share = null;
+    if (RU.rank(r.id) >= 3) {
+      prepareShare(r.id);
+      setActions('c-actions', [{ label: 'Share', fn: function () { doShare(nextReveal); } }, next]);
+    } else setActions('c-actions', [next]);
     openSheet();
     if (r.lvUp) toast('Level ' + r.lvUp + '! ' + unlockText(r.lvUp));
   }
@@ -1440,29 +1637,18 @@
       setVerify('');
     }
     R.cardState = jarState(id);
-    setActions('c-actions', [{ label: 'Close', primary: true, fn: closeSheet }]);
+    R.share = null;
+    if (n) {
+      prepareShare(id);
+      setActions('c-actions', [{ label: 'Share', fn: function () { doShare(closeSheet); } }, { label: 'Close', primary: true, fn: closeSheet }]);
+    } else setActions('c-actions', [{ label: 'Close', primary: true, fn: closeSheet }]);
     openSheet();
   }
 
   /* ---------- photo catches ---------- */
 
-  function openSpots() {
-    if (!R.area || !R.spots.length) { toast('Sky Wonders appear once the weather has loaded.'); return; }
-    var d = today();
-    var rows = R.spots.slice().sort(function (a, b) { return (b.possible ? 1 : 0) - (a.possible ? 1 : 0); }).map(function (s) {
-      var t = T(s.id);
-      var caught = !!S.caught[s.id + '|' + d];
-      var right = caught ? '<span class="pill rc-' + t.r + '">Caught today</span>' :
-        s.possible ? '<button class="btn" type="button" data-photo="' + s.id + '"' + (blockedByMoving() ? ' disabled' : '') + '>Take photo</button>' : '';
-      return '<li class="spot-item' + (s.possible || caught ? '' : ' off') + '"><span class="rc-' + t.r + '">' + icon(s.id, 24) + '</span><div class="si-body"><div class="si-name">' + esc(t.name) +
-        ' <span class="tl-r rc-' + t.r + '">' + rlabel(s.id) + '</span></div><div class="si-why">' + esc(s.why) + '</div></div>' + right + '</li>';
-    }).join('');
-    showInfo({
-      label: 'Spot a Sky Wonder', title: 'What can you see?',
-      body: '<p class="muted">Photo catches open your camera. Only take one when you can really see it, and never look straight at the sun.</p><ul class="spot-list">' + rows + '</ul><p class="muted">In this test version photos aren’t checked yet. The full app will check each one.</p>'
-    });
-  }
-  /* ---------- spotting weather the data missed ---------- */
+  /* ---------- spotting: weather the data missed, and Sky Wonders caught with a photo ---------- */
+
 
   function seenList() {
     if (!R.cls || !R.area) return [];
@@ -1478,20 +1664,32 @@
     var s = R.seen.filter(function (x) { return x.id === id; })[0];
     return s && s.possible ? s.why : '';
   }
-  function openSeen() {
-    var list = seenList();
-    if (!list.length) { toast('Spotting works once the weather has loaded.'); return; }
-    var rows = list.slice().sort(function (a, b) { return (b.possible ? 1 : 0) - (a.possible ? 1 : 0); }).map(function (s) {
+  /* one list: what can be caught right now first, then a folded list of what can't and why */
+  function openSpot() {
+    if (!R.area || !R.cls) { toast('Spotting works once the weather has loaded.'); return; }
+    var d = today();
+    var weather = seenList().map(function (s) { return { id: s.id, possible: s.possible, why: s.why, caught: s.caught, cool: s.cool, photo: false }; });
+    var sky = R.spots.map(function (s) { return { id: s.id, possible: s.possible, why: s.why, caught: !!S.caught[s.id + '|' + d], cool: 0, photo: true }; });
+    var all = weather.concat(sky);
+    var dis = blockedByMoving() ? ' disabled' : '';
+    var can = all.filter(function (s) { return s.possible || s.caught || s.cool; });
+    var cannot = all.filter(function (s) { return !(s.possible || s.caught || s.cool); });
+    var rows = can.map(function (s) {
       var t = T(s.id);
       var right = s.caught ? '<span class="pill rc-' + t.r + '">Caught today</span>' :
         s.cool ? '<span class="small">Back in ' + minutes(s.cool) + '</span>' :
-        s.possible ? '<button class="btn" type="button" data-seen="' + s.id + '"' + (blockedByMoving() ? ' disabled' : '') + '>Catch ' + esc(t.name) + '</button>' : '';
-      return '<li class="spot-item' + (s.possible || s.caught ? '' : ' off') + '"><span class="rc-' + t.r + '">' + icon(s.id, 24) + '</span><div class="si-body"><div class="si-name">' + esc(t.name) +
-        ' <span class="tl-r rc-' + t.r + '">' + rlabel(s.id) + '</span></div><div class="si-why">' + esc(s.why) + '</div></div>' + right + '</li>';
+        s.photo ? '<button class="btn" type="button" data-photo="' + s.id + '"' + dis + '>Take a photo</button>' :
+        '<button class="btn" type="button" data-seen="' + s.id + '"' + dis + '>Catch ' + esc(t.name) + '</button>';
+      return '<li class="spot-item"><span class="rc-' + t.r + '">' + icon(s.id, 24) + '</span><div class="si-body"><div class="si-name">' + esc(t.name) +
+        ' <span class="tl-r rc-' + t.r + '">' + rlabel(s.id) + (s.photo ? ' · photo' : '') + '</span></div><div class="si-why">' + esc(s.why) + '</div></div>' + right + '</li>';
     }).join('');
+    var nots = cannot.map(function (s) { return '<li><strong>' + esc(T(s.id).name) + '.</strong> ' + esc(s.why) + '</li>'; }).join('');
     showInfo({
-      label: 'Spot the weather', title: 'What can you see?',
-      body: '<p class="muted">The weather data covers your whole area, so it can miss a passing shower or a patch of fog. If you can see one of these where you are, catch it here. Each one only works when the weather around you makes it possible.</p><ul class="spot-list">' + rows + '</ul>'
+      label: 'Spot something', title: 'What can you see?',
+      body: '<p class="muted">The weather data can miss a passing shower or a patch of fog, and Sky Wonders like rainbows are caught with a photo. Only catch what you can really see, and never look straight at the sun.</p>' +
+        (rows ? '<ul class="spot-list">' + rows + '</ul>' : '<p>Nothing else can be caught here right now.</p>') +
+        (nots ? '<details class="not-box"><summary>Not possible right now (' + cannot.length + ')</summary><ul class="not-list">' + nots + '</ul></details>' : '') +
+        '<p class="muted">In this test version photos aren’t checked yet.</p>'
     });
   }
   function takePhoto(id) {
@@ -1512,9 +1710,10 @@
     shrinkPhoto(file).then(function (blob) {
       var before = RU.levelFor(S.points);
       var place = placeFor(R.area ? R.area.id : '');
-      var r = awardOne(id, key, place, 'Photo taken in ' + place + ' at ' + hm(now()) + ', when the weather made it possible.');
+      var r = awardOne(id, key, place, 'Photo taken in ' + place + ' at ' + hm(now()) + ', when the weather made it possible.', 'photo', R.area ? R.area.id : '');
       var pk = 'p' + Date.now();
       S.book[id].photo = pk;
+      lastCatch(S.book[id]).photo = pk;
       var img = imgFromBlob(blob);
       R.photos[pk] = img;
       r.img = img;
@@ -1549,13 +1748,14 @@
   function driveSeal() {
     if (!S.drive || !R.cls || !R.area || !S.haul) return;
     var a = R.area, place = placeFor(a.id), t = now();
+    var w = snapshot(a.id, 'trip');
     var prev = (S.recent[a.id] || []).slice();
     var sealedHere = [];
     R.cls.ids.forEach(function (id) {
       var key = wKey(a.id, id);
       if (S.caught[key]) return;
       S.caught[key] = 2;
-      S.haul.jars.push({ id: id, place: place, t: t });
+      S.haul.jars.push({ id: id, place: place, t: t, w: w });
       sealedHere.push(id);
     });
     if (sealedHere.length) {
@@ -1563,16 +1763,16 @@
         var ck = wKey(a.id, cid);
         if (S.caught[ck]) return;
         S.caught[ck] = 2;
-        S.haul.jars.push({ id: cid, place: place, t: t });
+        S.haul.jars.push({ id: cid, place: place, t: t, w: w });
       });
       prev = prev.filter(function (p) { return t - p.t <= 3 * HOUR; });
       sealedHere.forEach(function (id) { prev.push({ id: id, t: t }); });
       S.recent[a.id] = prev.slice(-8);
     }
-    R.wonders.forEach(function (w) {
-      if (S.caught[w.key]) return;
-      S.caught[w.key] = 2;
-      S.haul.jars.push({ id: w.id, place: place, t: t });
+    R.wonders.forEach(function (sw) {
+      if (S.caught[sw.key]) return;
+      S.caught[sw.key] = 2;
+      S.haul.jars.push({ id: sw.id, place: place, t: t, w: w });
     });
     save();
   }
@@ -1646,6 +1846,9 @@
         tier: b4 < 15 && e.n >= 15 ? 'Gold' : b4 < 5 && e.n >= 5 ? 'Silver' : null,
         verify: 'Sealed on your trip, matching the live weather along the way.'
       };
+    });
+    h.jars.forEach(function (j) {
+      if (T(j.id)) record(bookEntry(j.id), Object.assign({}, j.w || { t: j.t, how: 'trip', place: j.place }));
     });
     Object.keys(S.caught).forEach(function (k) { if (S.caught[k] === 2) S.caught[k] = 1; });
     addLog('Opened ' + h.jars.length + ' ' + plural(h.jars.length, 'jar') + ' from your trip (+' + total + ')');
@@ -1804,7 +2007,7 @@
       var w = R.wonders.filter(function (x) { return x.id === b.getAttribute('data-wonder'); })[0];
       if (w) beginCatch(w.id, 'wonder', w.key);
     });
-    $('spot-btn').addEventListener('click', openSpots);
+    $('spot-btn').addEventListener('click', openSpot);
     $('i-body').addEventListener('click', function (ev) {
       var b = ev.target.closest ? ev.target.closest('[data-photo]') : null;
       if (b) { takePhoto(b.getAttribute('data-photo')); return; }
@@ -1814,7 +2017,6 @@
       if (s && !s.disabled) setStyle(s.getAttribute('data-style'));
     });
     if ($('style-btn')) $('style-btn').addEventListener('click', openStyle);
-    if ($('seen-btn')) $('seen-btn').addEventListener('click', openSeen);
     $('photo-input').addEventListener('change', function () { closeSheet(); onPhoto(); });
     $('drive-btn').addEventListener('click', openDriveIntro);
     $('lock-drive').addEventListener('click', openDriveIntro);

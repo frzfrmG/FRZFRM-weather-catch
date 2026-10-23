@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en-GB" data-v="0.2.1">
+<html lang="en-GB" data-v="0.2.2">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -18,7 +18,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap">
 <!-- on every release, bump data-v above and ?v= below to match VERSION in app.js, so a phone never mixes old and new files -->
-<link rel="stylesheet" href="app.css?v=0.2.1">
+<link rel="stylesheet" href="app.css?v=0.2.2">
 </head>
 <body>
 <div class="app" id="app">
@@ -95,11 +95,6 @@
           <div class="chips" id="also"></div>
         </div>
 
-        <button class="btn btn-seen" type="button" id="seen-btn" hidden>
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-          <span>Seeing different weather?</span>
-        </button>
-
         <div class="block" id="wonder-block" hidden>
           <h2 class="h2">In the sky</h2>
           <div class="cards" id="wonders"></div>
@@ -108,8 +103,8 @@
         <div class="spot-row">
           <div class="spot-tip" id="spot-tip" hidden></div>
           <button class="btn btn-spot" type="button" id="spot-btn">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-2.5h6L17 8h3v11H4z"></path><circle cx="12" cy="13" r="3.5"></circle></svg>
-            <span>Spot a Sky Wonder</span>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            <span>Spot something</span>
           </button>
         </div>
 
@@ -158,8 +153,10 @@
           <div class="rw-swatch" id="rw-swatch" aria-hidden="true"></div>
         </div>
         <div class="bar" id="rw-bar" aria-hidden="true"><span id="rw-fill"></span></div>
-        <span class="lv-pts" id="rw-count"></span>
-        <button class="btn" type="button" id="style-btn">Shelf style and rewards</button>
+        <div class="rw-row">
+          <span class="lv-pts" id="rw-count"></span>
+          <button class="link-btn" type="button" id="style-btn">Shelf style</button>
+        </div>
       </div>
       <div class="shelf-head">
         <span class="shelf-count"><span id="jar-n">0</span> of <span id="jar-total">58</span> jars</span>
@@ -178,7 +175,7 @@
           <li>Points: <strong>Common 10, Uncommon 25, Rare 75, Epic 200, Legendary 500</strong>. Points level you up, and levels unlock nearby weather, the forecast and early warnings.</li>
           <li>Catch the weather, stay put, and be there when it turns, and you earn a <strong>Change moment</strong> like Sunbreak.</li>
           <li><strong>Sky Wonders</strong> like the full moon come from the sky calendar. Rainbows, halos and the Northern Lights are caught with a photo.</li>
-          <li>The weather data can miss a passing shower or a patch of fog. If you can see weather the app hasn&rsquo;t picked up, tap <strong>Seeing different weather?</strong> The app checks the weather around you first.</li>
+          <li>The weather data can miss a passing shower or a patch of fog. If you can see weather the app hasn&rsquo;t picked up, tap <strong>Spot something</strong>. The app checks the weather around you first.</li>
           <li>Catch the same weather <strong>5 times for a silver jar and 15 for gold</strong>.</li>
           <li><strong>Shelf rewards:</strong> every 10 jars unlocks a new wood or lights for your shelf, with bonus points. Finish a row and that shelf changes for good. Get every jar in a row to gold and the shelf turns gold. Fill the whole shelf to earn the Sky Jar.</li>
         </ul>
@@ -288,9 +285,9 @@
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 <input type="file" id="photo-input" accept="image/*" capture="environment" hidden>
 
-<script src="rules.js?v=0.2.1" defer></script>
-<script src="sky.js?v=0.2.1" defer></script>
-<script src="game.js?v=0.2.1" defer></script>
-<script src="app.js?v=0.2.1" defer></script>
+<script src="rules.js?v=0.2.2" defer></script>
+<script src="sky.js?v=0.2.2" defer></script>
+<script src="game.js?v=0.2.2" defer></script>
+<script src="app.js?v=0.2.2" defer></script>
 </body>
 </html>
