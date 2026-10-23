@@ -218,12 +218,13 @@
       if (has(CODES.heavySnow, code) || snowRate >= 2) p = 'heavysnow';
       else if (snowing && wet >= 0.05) p = 'sleet';
       else if (has(CODES.snow, code) || snowing) p = 'snow';
-      else if (!thunder && (isRainCode(code) || (plainSky && rate >= 0.5))) {
+      else if (!thunder && (isRainCode(code) || (plainSky && wet >= 0.09))) {
+        /* any measurable rain counts, even when the weather code only says cloudy */
         if (Math.abs(lat) <= 23.5 && (rate >= 8 || has(CODES.heavyRain, code) || has(CODES.violent, code))) p = 'monsoon';
         else if (rate >= 25) p = 'cloudburst';
         else if (has(CODES.heavyRain, code) || has(CODES.violent, code) || rate >= 8) p = 'downpour';
         else if (has(CODES.showers, code)) p = 'showers';
-        else if (has(CODES.drizzle, code)) p = 'drizzle';
+        else if (has(CODES.drizzle, code) || (plainSky && rate < 1)) p = 'drizzle';
         else p = 'rain';
       }
     }
@@ -310,6 +311,57 @@
     if (!anyIn(recent, FAM.snow) && anyIn(now, FAM.snow)) out.push('firstflakes');
     if (!anyIn(recent, FAM.storm) && anyIn(now, FAM.storm)) out.push('stormfront');
     if (anyIn(recent, FAM.storm) && !anyIn(now, FAM.storm) && sunNow) out.push('calm');
+    return out;
+  }
+
+  /* ---------- spotting weather the data missed ----------
+     The data covers a whole area every 15 minutes, so it can miss a passing shower or a patch of fog.
+     A player who can see one can catch it, as long as the weather around them makes it possible:
+     in their area this hour or the last one, in an area next door, or air damp enough for it.
+     o: the reading now. hours: hourly readings for the last hour and this hour.
+     near: what the areas next door have now { rain, showers, snow, hail, thunder, fog }.
+     Returns [{ id, possible, why }] in the order they're offered. */
+  var SPOTTABLE = ['drizzle', 'rain', 'showers', 'sleet', 'snow', 'hail', 'mist', 'fog'];
+  function wetIn(r) { return isRainCode(num(r.code, -1)) || num(r.rain, 0) + num(r.showers, 0) >= 0.09; }
+  function showeryIn(r) { var c = num(r.code, -1); return has(CODES.showers, c) || has(CODES.violent, c) || num(r.showers, 0) >= 0.09; }
+  function snowIn(r) { var c = num(r.code, -1); return has(CODES.snow, c) || has(CODES.heavySnow, c) || num(r.snowfall, 0) > 0; }
+  function hailIn(r) { return has(CODES.hail, num(r.code, -1)); }
+  function stormIn(r) { return has(CODES.thunder, num(r.code, -1)); }
+  function fogIn(r) { return has(CODES.fog, num(r.code, -1)) || (typeof r.vis === 'number' && r.vis < 1000); }
+  function spottable(o, ctx, hours, near) {
+    hours = hours || [];
+    near = near || {};
+    var temp = num(o.temp, 10);
+    var hum = num(o.humidity, 0);
+    var cloud = num(o.cloud, 50);
+    var vis = typeof o.vis === 'number' && isFinite(o.vis) ? o.vis : null;
+    var wind = num(o.wind, 0);
+    var all = [o].concat(hours);
+    function about(test) { return all.some(test); }
+    var rainWhy = about(wetIn) ? 'There’s rain about in your area this hour.' : near.rain ? 'It’s raining in an area next to yours.' : null;
+    var snowWhy = about(snowIn) ? 'There’s snow about in your area this hour.' : near.snow ? 'It’s snowing in an area next to yours.' : null;
+    var showery = about(showeryIn) || near.showers || cloud < 85;
+    var out = [];
+    function add(id, why, whyNot) { out.push({ id: id, possible: !!why, why: why || whyNot }); }
+
+    var damp = cloud >= 70 && hum >= 80;
+    add('drizzle', rainWhy || (damp ? 'It’s grey and damp enough for drizzle.' : null),
+      cloud < 70 ? 'The sky is too clear for drizzle right now.' : 'The air is too dry for drizzle right now.');
+    add('rain', rainWhy, damp ? 'There’s no rain about near you, but it’s damp enough to catch Drizzle.' : 'There’s no rain about anywhere near you right now.');
+    add('showers', rainWhy && showery ? rainWhy : null,
+      rainWhy ? 'The rain about is steady rain, not showers that come and go.' : 'There’s no rain about anywhere near you right now.');
+    var wetOrSnowy = rainWhy || snowWhy;
+    add('sleet', wetOrSnowy && temp <= 4 ? 'It’s cold enough for rain and snow to fall together.' : null,
+      temp > 4 ? 'It’s too warm for sleet.' : 'There’s no rain or snow about near you right now.');
+    add('snow', snowWhy || (rainWhy && temp <= 1 ? 'It’s cold enough for the rain about to fall as snow.' : null),
+      temp > 3 ? 'It’s too warm for snow.' : 'There’s no snow about near you right now.');
+    add('hail', about(hailIn) || near.hail ? 'There’s hail about near you.' : about(stormIn) || near.thunder ? 'There are storms about, and storms can bring hail.' : null,
+      'Hail comes with storms, and there are none near you right now.');
+    var fogWhy = about(fogIn) ? 'There’s fog about in your area this hour.' : near.fog ? 'There’s fog in an area next to yours.' : null;
+    add('mist', fogWhy || (hum >= 85 ? 'The air is damp enough for mist.' : vis !== null && vis < 8000 ? 'It’s hazy enough for mist.' : null),
+      'The air is too dry for mist right now.');
+    add('fog', fogWhy || (vis !== null && vis < 2000 ? 'It’s murky enough for fog.' : hum >= 97 && wind < 8 ? 'The air is damp and still enough for fog.' : null),
+      'There’s no fog about, and the air is too dry for it.');
     return out;
   }
 
@@ -593,7 +645,7 @@
     RARITY: RARITY, ELEMENTS: ELEMENTS, TYPES: TYPES, ORDERED: ORDERED, CODES: CODES,
     type: type, rank: rank, points: points, facetOf: function (id) { return FACET_OF[id] || null; },
     areaOf: areaOf, neighbours: neighbours, isRainCode: isRainCode,
-    classify: classify, changesFor: changesFor, wonders: wonders, spots: spots,
+    classify: classify, changesFor: changesFor, wonders: wonders, spots: spots, spottable: spottable, SPOTTABLE: SPOTTABLE,
     sunElevation: sunElevation, nearestFullMoon: nearestFullMoon, moonDistance: moonDistance,
     isSupermoon: isSupermoon, moonIllumination: moonIllumination, meteorShower: meteorShower, eclipseNow: eclipseNow,
     dayKey: dayKey, nightKey: nightKey,

@@ -5,7 +5,7 @@
   'use strict';
   var WC = window.WC;
   var RU = WC.rules, SKY = WC.sky;
-  var VERSION = '0.2.0';
+  var VERSION = '0.2.1';
   var TEST = /[?&]test=1(&|$)/.test(location.search);
   var KEY = 'frzfrm-wc-state-1';
   var WX_KEY = 'frzfrm-wc-weather-1';
@@ -175,7 +175,7 @@
     tab: 'catch', problem: null, locating: false,
     pos: null, speeds: [], fast: false, moving: false, speedAt: 0, lastFix: 0,
     area: null, place: null, wx: null, wxError: null, fetching: null,
-    reading: null, ctx: null, cls: null, wonders: [], spots: [], near: {}, coming: [], warning: null,
+    reading: null, ctx: null, cls: null, wonders: [], spots: [], seen: [], near: {}, coming: [], warning: null,
     watchId: null, game: null, view: null, queue: [], cardState: null, lastFocus: null,
     installEvt: null, wake: null, wakeOk: null, photos: {}, pendingSpot: null, shelfJars: [], previewJars: null
   };
@@ -246,7 +246,7 @@
     var first = !R.area;
     R.area = a;
     R.place = S.names[a.id] || null;
-    R.cls = null; R.wonders = []; R.spots = []; R.coming = []; R.warning = null; R.reading = null;
+    R.cls = null; R.wonders = []; R.spots = []; R.seen = []; R.coming = []; R.warning = null; R.reading = null;
     var cached = cachedWeather(a.id);
     R.wx = cached;
     if (cached) evaluate();
@@ -412,15 +412,17 @@
     var d = dayFor(here.daily, t);
     var elev = num(here.elevation);
     if (elev === undefined) elev = 50;
-    var near = { rain: false, showers: false, fog: false, thunder: false, lowerFog: false };
+    var near = { rain: false, showers: false, snow: false, hail: false, fog: false, thunder: false, lowerFog: false };
     var sea = false;
     (wx.cells || []).forEach(function (c) {
       var l = c.loc;
       if (!l) return;
       var code = l.cur.code;
       var fogLike = code === 45 || code === 48 || (typeof l.cur.vis === 'number' && l.cur.vis < 1000);
-      if (RU.isRainCode(code)) near.rain = true;
+      if (RU.isRainCode(code) || (num(l.cur.rain) || 0) + (num(l.cur.showers) || 0) >= 0.09) near.rain = true;
       if (RU.CODES.showers.indexOf(code) !== -1 || RU.CODES.violent.indexOf(code) !== -1) near.showers = true;
+      if (RU.CODES.snow.indexOf(code) !== -1 || RU.CODES.heavySnow.indexOf(code) !== -1 || (num(l.cur.snowfall) || 0) > 0) near.snow = true;
+      if (RU.CODES.hail.indexOf(code) !== -1) near.hail = true;
       if (fogLike) near.fog = true;
       if (RU.CODES.thunder.indexOf(code) !== -1) near.thunder = true;
       if (fogLike && typeof l.elevation === 'number' && l.elevation <= elev - 100) near.lowerFog = true;
@@ -433,8 +435,14 @@
     R.cls = RU.classify(o, ctx);
     R.wonders = RU.wonders(o, ctx);
     R.spots = RU.spots(o, { lat: ctx.lat, lon: ctx.lon, elevation: elev, near: near });
+    R.seen = RU.spottable(o, ctx, hoursAround(here, t), near);
     R.coming = timeline(here, ctx);
     R.warning = warningFrom(R.coming);
+  }
+  /* hourly readings for the last hour and this one: each hourly value covers the hour before its time */
+  function hoursAround(here, t) {
+    if (!here.hourly) return [];
+    return here.hourly.filter(function (h) { return h.t > t - HOUR && h.t <= t + HOUR; });
   }
   function classifyCell(c, hereCtx) {
     if (!c || !c.loc) return null;
@@ -586,6 +594,7 @@
     renderSky();
     renderCatchBox();
     renderAlso();
+    if ($('seen-btn')) $('seen-btn').hidden = !R.cls || blockedByMoving();
     renderWonders();
     renderSpotTip();
     renderNearby();
@@ -640,7 +649,7 @@
     if (!list.length) {
       btn.disabled = true;
       btn.textContent = 'Nothing to catch right now';
-      hint.innerHTML = R.reading && !R.reading.isDay ? 'A quiet night. Look for Sky Wonders below, or come back when the weather changes.' : 'Nothing to catch here right now. Come back when the weather changes.';
+      hint.innerHTML = R.reading && !R.reading.isDay ? 'A quiet night. Look for Sky Wonders below, or come back when the weather changes.' : 'Nothing to catch here right now. If you can see rain or fog, tap Seeing different weather.';
       return;
     }
     if (!target) {
@@ -1156,6 +1165,7 @@
   function showView(name) {
     R.view = name;
     R.previewJars = null;
+    $('sheet').scrollTop = 0;
     $('game-view').hidden = name !== 'game';
     $('card-view').hidden = name !== 'card';
     if ($('reward-view')) $('reward-view').hidden = name !== 'reward';
@@ -1235,7 +1245,7 @@
       var areaId = R.area.id;
       refreshWeather(true).then(function () {
         var stillHere = R.area && R.area.id === areaId && !stale();
-        var still = stillHere && (kind === 'weather' ? R.cls && R.cls.ids.indexOf(id) !== -1 : R.wonders.some(function (w) { return w.key === key; }));
+        var still = stillHere && (kind === 'weather' ? R.cls && R.cls.ids.indexOf(id) !== -1 : kind === 'spotted' ? canSpot(id) : R.wonders.some(function (w) { return w.key === key; }));
         if (still) openGame(id, kind, key);
         else toast('The weather has changed. Have another look.');
       });
@@ -1245,9 +1255,9 @@
   }
   function openGame(id, kind, key) {
     var t = T(id);
-    R.game = { id: id, kind: kind, key: key, areaId: R.area.id, g: WC.game.create({ id: id, night: R.reading ? !R.reading.isDay : false }), missHandled: false };
+    R.game = { id: id, kind: kind, key: key, areaId: R.area.id, g: WC.game.create({ id: id, night: R.reading ? !R.reading.isDay : false }), missHandled: false, why: kind === 'spotted' ? spotWhy(id) : '' };
     showView('game');
-    $('g-label').textContent = kind === 'wonder' ? 'Sky Wonder' : 'Catch it';
+    $('g-label').textContent = kind === 'wonder' ? 'Sky Wonder' : kind === 'spotted' ? 'You spotted it' : 'Catch it';
     $('g-label').className = 'ov-label rc-' + t.r;
     $('g-title').textContent = 'Catch ' + t.name;
     $('g-instr').textContent = R.game.g.instruction;
@@ -1267,7 +1277,7 @@
     var name = T(G.id).name;
     if (chance && Math.random() < chance) {
       S.cool[G.key] = now() + COOLDOWN;
-      addLog(name + ' slipped away' + (G.kind === 'weather' ? ' in ' + placeFor(G.areaId) : ''));
+      addLog(name + ' slipped away' + (G.kind !== 'wonder' ? ' in ' + placeFor(G.areaId) : ''));
       save();
       showGameMsg(G.g.result + ' ' + name + ' slipped away. Try again in 10 minutes if it’s still here.');
       setActions('g-actions', [{ label: 'Close', primary: true, fn: closeSheet }]);
@@ -1296,7 +1306,7 @@
     if (e.places.length > 60) e.places.shift();
     return true;
   }
-  function awardOne(id, key, place, verify, count) {
+  function awardOne(id, key, place, verify, count, spotted) {
     count = count || 1;
     S.caught[key] = 1;
     var e = bookEntry(id);
@@ -1309,10 +1319,10 @@
     var pts = RU.points(id) * count;
     S.points += pts;
     var tier = before < 15 && e.n >= 15 ? 'Gold' : before < 5 && e.n >= 5 ? 'Silver' : null;
-    var r = { id: id, isNew: isNew, n: e.n, newPlace: newPlace && !isNew, place: place, pts: pts, tier: tier, verify: verify || '' };
+    var r = { id: id, isNew: isNew, n: e.n, newPlace: newPlace && !isNew, place: place, pts: pts, tier: tier, verify: verify || '', spotted: !!spotted };
     var t = T(id);
-    addLog(isNew ? (t.el === 'change' ? 'Change moment: ' : t.el === 'wonder' ? 'Sky Wonder: ' : 'New jar: ') + t.name + (place ? ' in ' + place : '') + ' (+' + pts + ')'
-      : t.name + ' again' + (place ? ' in ' + place : '') + ' (×' + e.n + ', +' + pts + ')');
+    var lead = spotted ? (isNew ? 'Spotted a new jar: ' : 'Spotted: ') : isNew ? (t.el === 'change' ? 'Change moment: ' : t.el === 'wonder' ? 'Sky Wonder: ' : 'New jar: ') : '';
+    addLog(lead + t.name + (isNew ? '' : ' again') + (place ? ' in ' + place : '') + (isNew ? ' (+' + pts + ')' : ' (×' + e.n + ', +' + pts + ')'));
     return r;
   }
   function finishCatch() {
@@ -1322,11 +1332,13 @@
     var place = placeFor(G.areaId);
     var t = now();
     var list = [];
-    if (G.kind === 'weather') {
+    if (G.kind === 'weather' || G.kind === 'spotted') {
       var prev = (S.recent[G.areaId] || []).slice();
-      var nowIds = R.cls && R.area && R.area.id === G.areaId ? R.cls.ids : [G.id];
+      var nowIds = (R.cls && R.area && R.area.id === G.areaId ? R.cls.ids : []).slice();
+      if (nowIds.indexOf(G.id) === -1) nowIds.push(G.id);
       var temp = R.reading ? R.reading.temp : 10;
-      list.push(awardOne(G.id, G.key, place, 'Matches the live weather for ' + place + ' at ' + hm(t) + '.'));
+      if (G.kind === 'spotted') list.push(awardOne(G.id, G.key, place, 'You spotted it in ' + place + ' at ' + hm(t) + '. ' + (G.why || ''), 1, true));
+      else list.push(awardOne(G.id, G.key, place, 'Matches the live weather for ' + place + ' at ' + hm(t) + '.'));
       RU.changesFor(prev, nowIds, temp, t).forEach(function (cid) {
         var ck = today() + '|' + G.areaId + '|' + cid;
         if (S.caught[ck]) return;
@@ -1368,7 +1380,7 @@
     var t = T(r.id);
     var e = S.book[r.id];
     showView('card');
-    var label = r.trip ? 'From your trip' : r.isNew ? (t.el === 'change' ? 'New Change moment' : t.el === 'wonder' ? 'New Sky Wonder' : 'New jar') : 'Caught again';
+    var label = r.trip ? 'From your trip' : r.spotted ? (r.isNew ? 'Spotted · New jar' : 'Spotted') : r.isNew ? (t.el === 'change' ? 'New Change moment' : t.el === 'wonder' ? 'New Sky Wonder' : 'New jar') : 'Caught again';
     $('c-label').textContent = label;
     $('c-label').className = 'ov-label rc-' + t.r;
     $('c-title').textContent = t.name;
@@ -1448,6 +1460,38 @@
     showInfo({
       label: 'Spot a Sky Wonder', title: 'What can you see?',
       body: '<p class="muted">Photo catches open your camera. Only take one when you can really see it, and never look straight at the sun.</p><ul class="spot-list">' + rows + '</ul><p class="muted">In this test version photos aren’t checked yet. The full app will check each one.</p>'
+    });
+  }
+  /* ---------- spotting weather the data missed ---------- */
+
+  function seenList() {
+    if (!R.cls || !R.area) return [];
+    return R.seen.filter(function (s) { return R.cls.ids.indexOf(s.id) === -1; }).map(function (s) {
+      var key = wKey(R.area.id, s.id);
+      return { id: s.id, possible: s.possible, why: s.why, key: key, caught: !!S.caught[key], cool: coolLeft(key) };
+    });
+  }
+  function canSpot(id) {
+    return !!R.cls && (R.cls.ids.indexOf(id) !== -1 || R.seen.some(function (s) { return s.id === id && s.possible; }));
+  }
+  function spotWhy(id) {
+    var s = R.seen.filter(function (x) { return x.id === id; })[0];
+    return s && s.possible ? s.why : '';
+  }
+  function openSeen() {
+    var list = seenList();
+    if (!list.length) { toast('Spotting works once the weather has loaded.'); return; }
+    var rows = list.slice().sort(function (a, b) { return (b.possible ? 1 : 0) - (a.possible ? 1 : 0); }).map(function (s) {
+      var t = T(s.id);
+      var right = s.caught ? '<span class="pill rc-' + t.r + '">Caught today</span>' :
+        s.cool ? '<span class="small">Back in ' + minutes(s.cool) + '</span>' :
+        s.possible ? '<button class="btn" type="button" data-seen="' + s.id + '"' + (blockedByMoving() ? ' disabled' : '') + '>Catch ' + esc(t.name) + '</button>' : '';
+      return '<li class="spot-item' + (s.possible || s.caught ? '' : ' off') + '"><span class="rc-' + t.r + '">' + icon(s.id, 24) + '</span><div class="si-body"><div class="si-name">' + esc(t.name) +
+        ' <span class="tl-r rc-' + t.r + '">' + rlabel(s.id) + '</span></div><div class="si-why">' + esc(s.why) + '</div></div>' + right + '</li>';
+    }).join('');
+    showInfo({
+      label: 'Spot the weather', title: 'What can you see?',
+      body: '<p class="muted">The weather data covers your whole area, so it can miss a passing shower or a patch of fog. If you can see one of these where you are, catch it here. Each one only works when the weather around you makes it possible.</p><ul class="spot-list">' + rows + '</ul>'
     });
   }
   function takePhoto(id) {
@@ -1764,10 +1808,13 @@
     $('i-body').addEventListener('click', function (ev) {
       var b = ev.target.closest ? ev.target.closest('[data-photo]') : null;
       if (b) { takePhoto(b.getAttribute('data-photo')); return; }
+      var sn = ev.target.closest ? ev.target.closest('[data-seen]') : null;
+      if (sn && !sn.disabled && R.area) { beginCatch(sn.getAttribute('data-seen'), 'spotted', wKey(R.area.id, sn.getAttribute('data-seen'))); return; }
       var s = ev.target.closest ? ev.target.closest('[data-style]') : null;
       if (s && !s.disabled) setStyle(s.getAttribute('data-style'));
     });
     if ($('style-btn')) $('style-btn').addEventListener('click', openStyle);
+    if ($('seen-btn')) $('seen-btn').addEventListener('click', openSeen);
     $('photo-input').addEventListener('change', function () { closeSheet(); onPhoto(); });
     $('drive-btn').addEventListener('click', openDriveIntro);
     $('lock-drive').addEventListener('click', openDriveIntro);
@@ -1879,8 +1926,9 @@
     }
   }
 
-  /* straight after an update a phone can briefly pair the old page with the new code: reload once to get both */
-  if (!$('reward-view')) {
+  /* straight after an update a phone can briefly pair the old page with the new code: reload once to get both.
+     The page says which version it is on its <html> tag. */
+  if (document.documentElement.getAttribute('data-v') !== VERSION) {
     var tried = false;
     try { tried = sessionStorage.getItem('wc-reload') === VERSION; sessionStorage.setItem('wc-reload', VERSION); } catch (e) { tried = true; }
     if (!tried) { location.reload(); return; }
