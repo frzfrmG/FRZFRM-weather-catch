@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en-GB" data-v="0.3.1">
+<html lang="en-GB" data-v="0.4.0">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -18,7 +18,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap">
 <!-- on every release, bump data-v above and ?v= below to match VERSION in app.js, so a phone never mixes old and new files -->
-<link rel="stylesheet" href="app.css?v=0.3.1">
+<link rel="stylesheet" href="app.css?v=0.4.0">
 </head>
 <body>
 <div class="app" id="app">
@@ -177,7 +177,8 @@
           <li><strong>Sky Wonders</strong> like the full moon come from the sky calendar. Rainbows, halos and the Northern Lights are caught with a photo.</li>
           <li>The weather data can miss a passing shower or a patch of fog. If you can see weather the app hasn&rsquo;t picked up, tap <strong>Spot something</strong>. The app checks the weather around you first.</li>
           <li>Catch the same weather <strong>5 times for a silver jar and 15 for gold</strong>.</li>
-          <li><strong>Mystery variants:</strong> every jar opens as Classic (2 in 3 jars), one of two surprises for its shelf, like a kite in a sunny jar (1 in 4) or a hot-air balloon (1 in 11), or rainbow-glass Prism (1 in 100). Each catch is drawn its own way too, with the clouds, rain, stars and hills falling differently, so even when everyone nearby catches the same storm, your jar won&rsquo;t look quite like theirs.</li>
+          <li><strong>Mystery variants:</strong> every jar opens as Classic (1 in 2 jars) or one of six surprises for its shelf, from 1 in 6 to 1 in 40, like a kite or a hot-air balloon in a sunny jar. Rarest of all is each shelf&rsquo;s legendary (1 in 60), like the Green Flash at sunset or Raining Cats and Dogs. Each catch is drawn its own way too, so even when everyone nearby catches the same storm, your jar won&rsquo;t look quite like theirs.</li>
+          <li><strong>Strength:</strong> each catch gets 1 to 5 stars for how strong the weather really was, like how hard it rained, how hot it got, how deep the snow was or how thick the fog. 4 stars are worth half as many points again, and 5 stars double. Each jar remembers its strongest catch.</li>
           <li><strong>Shelf rewards:</strong> every 10 jars unlocks a new wood or lights for your shelf, with bonus points. Finish a row and that shelf changes for good. Get every jar in a row to gold and the shelf turns gold. Fill the whole shelf to earn the Sky Jar.</li>
         </ul>
       </div>
@@ -249,6 +250,7 @@
         <span class="pill" id="c-pill">Common</span>
       </div>
       <p class="ov-var" id="c-var" hidden></p>
+      <p class="ov-str" id="c-str" hidden></p>
       <p class="ov-points" id="c-points"></p>
       <p class="ov-line" id="c-line"></p>
       <p class="ov-stats" id="c-stats"></p>
@@ -288,9 +290,10 @@
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 <input type="file" id="photo-input" accept="image/*" capture="environment" hidden>
 
-<script src="rules.js?v=0.3.1" defer></script>
-<script src="sky.js?v=0.3.1" defer></script>
-<script src="game.js?v=0.3.1" defer></script>
-<script src="app.js?v=0.3.1" defer></script>
+<script src="rules.js?v=0.4.0" defer></script>
+<script src="sky.js?v=0.4.0" defer></script>
+<script src="variants.js?v=0.4.0" defer></script>
+<script src="game.js?v=0.4.0" defer></script>
+<script src="app.js?v=0.4.0" defer></script>
 </body>
 </html>

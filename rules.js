@@ -642,32 +642,34 @@
   }
 
   /* ---------- mystery variants ----------
-     Everyone nearby catches the same weather, but each jar opens as one of four variants, with published odds:
-     Classic, two variants that depend on the row (a kite in a sunny jar, a snowman in a frosty one) and Prism.
-     Sky Wonders use night variants or day variants depending on their sky. */
+     Everyone nearby catches the same weather, but each jar opens as one of eight variants, with published odds:
+     Classic, six surprises that depend on the row (a kite in a sunny jar, a snowman in a frosty one) and a legendary
+     that fits the weather. Sky Wonders use night or day variants depending on their sky. The odds add up to exactly 1. */
   var VARIANT_SETS = {
-    sun: [['kite', 'Kite'], ['balloon', 'Hot-air Balloon']],
-    rain: [['ripples', 'Puddle Ripples'], ['umbrella', 'Red Umbrella']],
-    frost: [['crystals', 'Ice Crystals'], ['snowman', 'Snowman']],
-    wind: [['windsock', 'Windsock'], ['flyaway', 'Runaway Umbrella']],
-    storm: [['ball', 'Ball Lightning'], ['sprite', 'Red Sprite']],
-    mist: [['lamp', 'Lamplight'], ['wisps', 'Will-o’-the-wisp']],
-    night: [['shooting', 'Shooting Star'], ['plough', 'The Plough']],
-    day: [['birds', 'Birds'], ['balloon', 'Hot-air Balloon']],
-    change: [['birds', 'Birds'], ['rainbow', 'Rainbow']]
+    sun: [['kite', 'Kite'], ['balloon', 'Hot-air Balloon'], ['sunflowers', 'Sunflowers'], ['plane', 'Aeroplane'], ['butterflies', 'Butterflies'], ['seeds', 'Dandelion Seeds'], ['greenflash', 'Green Flash']],
+    rain: [['ripples', 'Puddle Ripples'], ['umbrella', 'Red Umbrella'], ['ducklings', 'Ducklings'], ['boat', 'Paper Boat'], ['frog', 'Frog'], ['snail', 'Snail'], ['catsdogs', 'Raining Cats and Dogs']],
+    frost: [['crystals', 'Ice Crystals'], ['snowman', 'Snowman'], ['robin', 'Robin'], ['sledge', 'Sledge'], ['fox', 'Fox'], ['igloo', 'Igloo'], ['diamond', 'Diamond Dust']],
+    wind: [['windsock', 'Windsock'], ['flyaway', 'Runaway Umbrella'], ['turbines', 'Wind Turbines'], ['washing', 'Washing Line'], ['windmill', 'Windmill'], ['hat', 'Flying Hat'], ['sheep', 'Flying Sheep']],
+    storm: [['cottage', 'Cosy Cottage'], ['sprite', 'Red Sprite'], ['lighthouse', 'Lighthouse'], ['scarecrow', 'Scarecrow'], ['castle', 'Castle'], ['elmo', 'St Elmo’s Fire'], ['ball', 'Ball Lightning']],
+    mist: [['lamp', 'Lamplight'], ['wisps', 'Will-o’-the-wisp'], ['owl', 'Owl'], ['web', 'Dewy Web'], ['stag', 'Stag'], ['ship', 'Ghost Ship'], ['spectre', 'Brocken Spectre']],
+    night: [['shooting', 'Shooting Star'], ['plough', 'The Plough'], ['bats', 'Bats'], ['orion', 'Orion'], ['lanterns', 'Sky Lanterns'], ['milkyway', 'Milky Way'], ['comet', 'Comet']],
+    day: [['birds', 'Birds'], ['balloon', 'Hot-air Balloon'], ['butterflies', 'Butterflies'], ['bubbles', 'Bubbles'], ['parachute', 'Parachute'], ['gold', 'Pot of Gold'], ['firerainbow', 'Fire Rainbow']],
+    change: [['birds', 'Birds'], ['rainbow', 'Rainbow'], ['jumper', 'Puddle Jumper'], ['hedgehog', 'Hedgehog'], ['wallcat', 'Cat on a Wall'], ['ladybird', 'Ladybird'], ['redsky', 'Red Sky at Night']]
   };
   var NIGHT_WONDERS = { starry: true, fullmoon: true, meteor: true, supermoon: true, moonbow: true, aurora: true, eclipse: true };
-  var VRANK = { c: 0, a: 1, b: 2, p: 3 };
+  /* the slots, commonest first, with their share of every 240 catches */
+  var SLOTS = [['c', 120, '1 in 2'], ['a', 40, '1 in 6'], ['b', 30, '1 in 8'], ['d', 20, '1 in 12'], ['e', 12, '1 in 20'], ['f', 8, '1 in 30'], ['g', 6, '1 in 40'], ['p', 4, '1 in 60']];
+  var VRANK = {};
+  SLOTS.forEach(function (s, i) { VRANK[s[0]] = i; });
+  function setFor(t) { return VARIANT_SETS[t.el === 'wonder' ? (NIGHT_WONDERS[t.id] ? 'night' : 'day') : t.el]; }
   function variants(id) {
     var t = TYPES[id];
     if (!t) return [];
-    var set = VARIANT_SETS[t.el === 'wonder' ? (NIGHT_WONDERS[id] ? 'night' : 'day') : t.el];
-    return [
-      { id: 'c', name: 'Classic', odds: '2 in 3', chance: 0.65, deco: null, prism: false },
-      { id: 'a', name: set[0][1], odds: '1 in 4', chance: 0.25, deco: set[0][0], prism: false },
-      { id: 'b', name: set[1][1], odds: '1 in 11', chance: 0.09, deco: set[1][0], prism: false },
-      { id: 'p', name: 'Prism', odds: '1 in 100', chance: 0.01, deco: null, prism: true }
-    ];
+    var set = setFor(t);
+    return SLOTS.map(function (s, i) {
+      var d = i ? set[i - 1] : [null, 'Classic'];
+      return { id: s[0], name: d[1], odds: s[2], chance: s[1] / 240, deco: d[0], legend: s[0] === 'p' };
+    });
   }
   function variant(id, v) {
     var list = variants(id);
@@ -675,8 +677,61 @@
     return list[0] || null;
   }
   function variantRank(v) { return VRANK[v] || 0; }
-  /* r: a random number from 0 up to 1 */
-  function rollVariant(r) { return r < 0.01 ? 'p' : r < 0.10 ? 'b' : r < 0.35 ? 'a' : 'c'; }
+  /* r: a random number from 0 up to 1. The rarest slots take the lowest numbers */
+  function rollVariant(r) {
+    var k = Math.floor(r * 240), acc = 0;
+    for (var i = SLOTS.length - 1; i > 0; i--) { acc += SLOTS[i][1]; if (k < acc) return SLOTS[i][0]; }
+    return 'c';
+  }
+
+  /* ---------- strength: how strong a catch was ----------
+     Each kind of weather is measured by one reading, and graded from 1 to 5 stars by where it sits in that weather's own range,
+     so a 5-star Rain is very nearly a Downpour. Some list a second reading to use when the first is missing.
+     For fog and frost a smaller number is stronger, so their range runs downwards. */
+  var MEASURES = {
+    sunnyspells: [['temp', 10, 25]], clear: [['temp', 10, 25]], sunrise: [['temp', 4, 20]], goldenhour: [['temp', 8, 24]],
+    hotday: [['temp', 25, 30]], heatwave: [['temp', 30, 35]], scorcher: [['temp', 35, 40]],
+    drizzle: [['rain', 0, 1]], rain: [['rain', 1, 8]], showers: [['rain', 0.5, 8]], downpour: [['rain', 8, 25]], sidewaysrain: [['gust', 40, 70]],
+    cloudburst: [['rain', 25, 60]], monsoon: [['rain', 8, 50]],
+    frost: [['temp', 0, -5]], hardfrost: [['temp', -5, -15]], sleet: [['rain', 0, 4]], hail: [['rain', 0, 10]],
+    snow: [['depth', 0, 15], ['snow', 0, 2]], freezingrain: [['rain', 0, 5]], heavysnow: [['depth', 2, 30], ['snow', 2, 6]], blizzard: [['gust', 40, 75]],
+    breeze: [['wind', 13, 25]], windy: [['gust', 30, 50]], gale: [['gust', 50, 65]], stormforce: [['gust', 65, 90]],
+    thunderstorm: [['rain', 0, 10]], lightningstrike: [['rain', 10, 40]], supercell: [['gust', 50, 80]], thundersnow: [['snow', 0, 5]],
+    mist: [['vis', 5000, 1000]], fog: [['vis', 1000, 50]], lowcloud: [['vis', 2000, 100]], seafret: [['vis', 1000, 50]], freezingfog: [['vis', 1000, 50]]
+  };
+  var READ_KEYS = { temp: 'temp', rain: 'rain', snow: 'snow', depth: 'depth', gust: 'gust', wind: 'wind', vis: 'visM' };
+  /* rec: a saved catch. Returns { key, v, f (0 to 1 along the range), stars } or null when there's nothing to measure */
+  function strength(id, rec) {
+    var list = MEASURES[id];
+    if (!list || !rec) return null;
+    for (var i = 0; i < list.length; i++) {
+      var m = list[i], v = rec[READ_KEYS[m[0]]];
+      // no rain or snow is saved when none was falling, so a catch with readings counts it as nothing
+      if (v === undefined && (m[0] === 'rain' || m[0] === 'snow') && typeof rec.temp === 'number') v = 0;
+      if (typeof v !== 'number' || !isFinite(v)) continue;
+      var f = Math.max(0, Math.min(1, (v - m[1]) / (m[2] - m[1])));
+      return { key: m[0], v: v, f: f, stars: Math.min(5, 1 + Math.floor(f * 5)) };
+    }
+    return null;
+  }
+  function hasStrength(id) { return !!MEASURES[id]; }
+  /* the reading in words, like "6.2 mm of rain an hour" */
+  function strengthText(s) {
+    if (!s) return '';
+    var v = s.v;
+    switch (s.key) {
+      case 'temp': return (v < 0 ? '−' + Math.abs(Math.round(v)) : Math.round(v)) + '°C';
+      case 'rain': return (Math.round(v * 10) / 10) + ' mm of rain an hour';
+      case 'snow': return (Math.round(v * 10) / 10) + ' cm of snow an hour';
+      case 'depth': return Math.round(v) + ' cm of snow';
+      case 'gust': return 'gusts of ' + Math.round(v) + ' mph';
+      case 'wind': return 'wind of ' + Math.round(v) + ' mph';
+      case 'vis': return v >= 1000 ? 'you could see ' + (Math.round(v / 100) / 10) + ' km' : 'you could see ' + Math.round(v) + ' m';
+    }
+    return '';
+  }
+  /* 4-star catches are worth half as much again, 5-star ones double */
+  function starBonus(stars) { return stars >= 5 ? 2 : stars >= 4 ? 1.5 : 1; }
 
   WC.rules = {
     RARITY: RARITY, ELEMENTS: ELEMENTS, TYPES: TYPES, ORDERED: ORDERED, CODES: CODES,
@@ -690,6 +745,7 @@
     SILVER_AT: SILVER_AT, GOLD_AT: GOLD_AT, catchable: catchable, SHELF_TOTAL: SHELF_TOTAL, rowTypes: rowTypes,
     WOODS: WOODS, LIGHTS: LIGHTS, JAR_REWARDS: JAR_REWARDS, ROW_LOOKS: ROW_LOOKS, KEEPER: KEEPER,
     reward: reward, shelfProgress: shelfProgress, rewardsEarned: rewardsEarned, nextJarReward: nextJarReward, styleReward: styleReward,
-    variants: variants, variant: variant, variantRank: variantRank, rollVariant: rollVariant
+    variants: variants, variant: variant, variantRank: variantRank, rollVariant: rollVariant, VARIANT_SLOTS: SLOTS.map(function (x) { return x[0]; }),
+    strength: strength, hasStrength: hasStrength, strengthText: strengthText, starBonus: starBonus
   };
 })(typeof window !== 'undefined' ? window : globalThis);

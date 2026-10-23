@@ -5,7 +5,7 @@
   'use strict';
   var WC = window.WC;
   var RU = WC.rules, SKY = WC.sky;
-  var VERSION = '0.3.1';
+  var VERSION = '0.4.0';
   var TEST = /[?&]test=1(&|$)/.test(location.search);
   var KEY = 'frzfrm-wc-state-1';
   var WX_KEY = 'frzfrm-wc-weather-1';
@@ -16,7 +16,7 @@
   var FAST = 6.7;          // metres per second, about 15 mph
   var CUR = 'temperature_2m,relative_humidity_2m,is_day,precipitation,rain,showers,snowfall,weather_code,cloud_cover,cloud_cover_low,cloud_cover_high,wind_speed_10m,wind_gusts_10m,visibility';
   var HRLY = 'temperature_2m,relative_humidity_2m,is_day,rain,showers,snowfall,weather_code,cloud_cover,wind_speed_10m,wind_gusts_10m,visibility';
-  var VARS = ['c', 'a', 'b', 'p']; // mystery variants, commonest first: Classic, the row's two, Prism
+  var VARS = RU.VARIANT_SLOTS; // mystery variants, commonest first: Classic, the row's six surprises, its legendary
 
   /* ---------- small helpers ---------- */
 
@@ -44,7 +44,7 @@
   function freshState() {
     return {
       v: 1, created: Date.now(), points: 0, book: {}, caught: {}, cool: {}, recent: {}, names: {}, log: [], haul: null, drive: false, passengerUntil: 0, onboarded: false,
-      rewards: {}, style: { wood: 'pine', lights: 'off' }, oldJars: null
+      rewards: {}, style: { wood: 'pine', lights: 'off' }, oldJars: null, vmap: 2
     };
   }
   function known(list, id) { return list.some(function (x) { return x.id === id; }); }
@@ -60,6 +60,7 @@
         n: Math.floor(x.n), seed: typeof x.seed === 'number' && isFinite(x.seed) ? x.seed >>> 0 : 0,
         t: typeof x.t === 'number' && isFinite(x.t) ? x.t : 0, place: typeof x.place === 'string' ? x.place : ''
       };
+      if (typeof x.power === 'number' && isFinite(x.power)) out[v].power = Math.max(0, Math.min(1, x.power));
       sum += out[v].n;
     });
     if (e.n > sum) {
@@ -68,8 +69,31 @@
     }
     e.vars = out;
   }
+  /* 0.4 moved Ball Lightning from a storm's first surprise to its legendary */
+  function moveStormVariants(id, e) {
+    if (!T(id) || T(id).el !== 'storm' || !e.vars || !e.vars.a) return;
+    var a = e.vars.a, p = e.vars.p;
+    if (!p || a.t > p.t) e.vars.p = { n: a.n + (p ? p.n : 0), seed: a.seed, t: a.t, place: a.place };
+    else p.n += a.n;
+    delete e.vars.a;
+    (e.catches || []).forEach(function (r) { if (r.v === 'a') r.v = 'p'; });
+  }
+  /* how strong a catch was, from its readings: stars, and how far along its weather's range it sat */
+  function rate(id, rec) {
+    var sg = RU.strength(id, rec);
+    if (sg) { rec.stars = sg.stars; rec.power = Math.round(sg.f * 100) / 100; }
+    return sg;
+  }
+  /* each jar remembers its strongest catch. Returns true when this one beats an earlier one */
+  function bestUpdate(e, rec, sg) {
+    var b = e.best;
+    if (b && (b.stars > sg.stars || (b.stars === sg.stars && b.f >= sg.f))) return false;
+    e.best = { stars: sg.stars, f: Math.round(sg.f * 100) / 100, key: sg.key, v: sg.v, t: rec.t || 0, place: rec.place || '' };
+    return !!b;
+  }
   function cleanState(o) {
     if (!o || o.v !== 1 || typeof o.points !== 'number' || !isFinite(o.points) || !o.book || typeof o.book !== 'object') return null;
+    var oldMap = !(o.vmap >= 2);
     var f = freshState();
     Object.keys(f).forEach(function (k) { if (!(k in o)) o[k] = f[k]; });
     ['caught', 'cool', 'recent', 'names', 'rewards'].forEach(function (k) { if (!o[k] || typeof o[k] !== 'object' || Array.isArray(o[k])) o[k] = {}; });
@@ -80,7 +104,21 @@
       if (!Array.isArray(e.places)) e.places = [];
       if (e.catches && !Array.isArray(e.catches)) delete e.catches;
       cleanVars(e);
+      if (oldMap) moveStormVariants(id, e);
+      if (e.best && (typeof e.best !== 'object' || typeof e.best.stars !== 'number')) delete e.best;
+      // catches saved with their readings but before strength existed get their stars now
+      (e.catches || []).forEach(function (rec) {
+        if (!rec || typeof rec !== 'object') return;
+        if (!('stars' in rec)) {
+          var sg = rate(id, rec);
+          if (!sg) rec.stars = 0;
+          else bestUpdate(e, rec, sg);
+        }
+        var x = e.vars && e.vars[rec.v || 'c'];
+        if (x && typeof rec.power === 'number' && x.seed === (rec.seed >>> 0)) x.power = rec.power;
+      });
     });
+    o.vmap = 2;
     Object.keys(o.rewards).forEach(function (id) { if (!RU.reward(id)) delete o.rewards[id]; });
     if (!o.style || typeof o.style !== 'object' || Array.isArray(o.style)) o.style = f.style;
     if (!known(RU.WOODS, o.style.wood)) o.style.wood = 'pine';
@@ -202,7 +240,8 @@
     reading: null, ctx: null, cls: null, wonders: [], spots: [], seen: [], near: {}, coming: [], warning: null,
     watchId: null, game: null, view: null, queue: [], cardState: null, lastFocus: null,
     installEvt: null, wake: null, wakeOk: null, photos: {}, pendingSpot: null, shelfJars: [], previewJars: null, share: null,
-    cardId: null, cardV: null, forceV: TEST ? ((location.search.match(/[?&]force=([cabp])(?:&|$)/) || [])[1] || null) : null
+    cardId: null, cardV: null, forceV: TEST ? ((location.search.match(/[?&]force=([cabdefgp])(?:&|$)/) || [])[1] || null) : null,
+    depth: undefined, depthArea: null, depthAt: 0
   };
 
   /* ---------- location ---------- */
@@ -407,6 +446,7 @@
         if (R.problem === 'weather') R.problem = null;
         cacheWeather(wx);
         evaluate();
+        fetchDepth();
         if (S.drive) driveSeal();
       }
     }).catch(function (e) {
@@ -420,6 +460,25 @@
     R.fetching = { areaId: a.id, p: p };
     render();
     return p;
+  }
+  /* how deep the snow is, for the strength of snowy catches. It's asked for on its own, only while it's snowing,
+     so the main weather never depends on it. Without it, snow is measured by how fast it's falling */
+  var SNOWY = { snow: true, heavysnow: true, blizzard: true, sleet: true, thundersnow: true, firstflakes: true };
+  function fetchDepth() {
+    var a = R.area;
+    if (!a || !R.cls || !R.cls.ids.some(function (id) { return SNOWY[id]; })) return;
+    if (R.depthArea === a.id && now() - R.depthAt < 20 * MIN) return;
+    R.depthAt = now();
+    fetchJSON('https://api.open-meteo.com/v1/forecast?latitude=' + a.lat.toFixed(4) + '&longitude=' + a.lon.toFixed(4) +
+      '&hourly=snow_depth&forecast_days=1&timezone=auto&timeformat=unixtime', 8000).then(function (j) {
+      var h = j && j.hourly;
+      if (!h || !Array.isArray(h.time) || !Array.isArray(h.snow_depth) || !R.area || R.area.id !== a.id) return;
+      var t = now(), best = -1;
+      h.time.forEach(function (tt, i) { if (num(h.snow_depth[i]) !== undefined && (best < 0 || Math.abs(tt * 1000 - t) < Math.abs(h.time[best] * 1000 - t))) best = i; });
+      if (best < 0) return;
+      R.depth = Math.round(h.snow_depth[best] * 1000) / 10;
+      R.depthArea = a.id;
+    }).catch(function () {});
   }
   function dayFor(daily, t) {
     if (!daily) return null;
@@ -849,7 +908,7 @@
     var e = S.book[t.id];
     var n = e ? e.n : 0;
     var later = !RU.catchable(t);
-    var label = t.name + ', ' + rlabel(t.id) + (n ? ', caught ' + n + ' ' + plural(n, 'time') + (tierOf(n) ? ', ' + tierOf(n) : '') + ', ' + varsFound(e) + ' of 4 variants' : later ? ', coming in a later version' : ', not caught yet');
+    var label = t.name + ', ' + rlabel(t.id) + (n ? ', caught ' + n + ' ' + plural(n, 'time') + (tierOf(n) ? ', ' + tierOf(n) : '') + ', ' + varsFound(e) + ' of ' + VARS.length + ' variants' : later ? ', coming in a later version' : ', not caught yet');
     var meta = n ? rlabel(t.id) + (tierOf(n) ? ' · ' + tierOf(n) : '') : later ? 'Later' : rlabel(t.id);
     return '<button type="button" class="jarcell' + (n ? '' : ' locked') + '" data-jar="' + t.id + '" aria-label="' + esc(label) + '">' +
       '<canvas data-id="' + t.id + '"' + (dark ? ' data-dark="1"' : '') + ' aria-hidden="true"></canvas><span class="plank"></span>' +
@@ -998,7 +1057,19 @@
   }
   function drawPreview(t) {
     var look = glassLook();
-    R.previewJars.forEach(function (cv) { drawJarOn(cv, jarState(cv.getAttribute('data-id')), t, lookFor(cv, look)); });
+    R.previewJars.forEach(function (cv) {
+      var id = cv.getAttribute('data-id'), v = cv.getAttribute('data-var');
+      drawJarOn(cv, v ? variantState(id, v) : jarState(id), t, lookFor(cv, look));
+    });
+  }
+  /* one variant of a jar: the one found, or a frosted preview of one still to find */
+  function variantState(id, v) {
+    var st = jarState(id), e = S.book[id], x = e && e.vars && e.vars[v];
+    st.mark = markOf(id, v, x ? x.seed : PREVIEW_SEED, x ? x.power : undefined);
+    st.preview = !x;
+    st.glow = null;
+    st.hat = st.drip = false;
+    return st;
   }
 
   /* ---------- shelf rewards ---------- */
@@ -1266,7 +1337,7 @@
       jc.height = jh;
       var st = jarState(id);
       st.img = res[1] || null;
-      st.mark = markOf(id, rec && rec.v, rec && rec.seed);
+      st.mark = markOf(id, rec && rec.v, rec && rec.seed, rec && rec.power);
       SKY.jar(jc.getContext('2d'), jw, jh, st, stillTime(id), DARK_LOOK);
       ctx.drawImage(jc, (SHARE_W - jw) / 2, 150);
       // the label
@@ -1292,7 +1363,8 @@
       fitText(ctx, kind, '600', 26, MONO, maxW);
       ctx.fillText(kind, lx + pad, y);
       var where = rec ? (rec.where || rec.place || '') : '';
-      var lines = [where, rec && rec.t ? dateLong(rec.t) : '', rec ? detailLine(rec) : ''].filter(Boolean);
+      var sg = rec ? RU.strength(id, rec) : null;
+      var lines = [where, rec && rec.t ? dateLong(rec.t) : '', sg ? starsText(sg.stars) + '  ' + RU.strengthText(sg) : rec ? detailLine(rec) : ''].filter(Boolean);
       y += 64;
       lines.forEach(function (line, i) {
         ctx.fillStyle = i === 0 ? '#121933' : '#4F5878';
@@ -1312,7 +1384,9 @@
   }
   function shareText(id, rec) {
     var vr = RU.variant(id, (rec && rec.v) || 'c');
-    return 'Look what I caught' + (rec && rec.place ? ' in ' + rec.place : '') + ': ' + T(id).name + ' (' + rlabel(id) + (vr.id !== 'c' ? ', ' + vr.name + ', ' + vr.odds : '') + '). Catch the weather where you are: ' + appUrl();
+    var sg = rec ? RU.strength(id, rec) : null;
+    return 'Look what I caught' + (rec && rec.place ? ' in ' + rec.place : '') + ': ' + T(id).name + ' (' + rlabel(id) + (vr.id !== 'c' ? ', ' + vr.name + ', ' + vr.odds : '') + ')' +
+      (sg ? ', ' + sg.stars + ' ' + plural(sg.stars, 'star') + ': ' + RU.strengthText(sg) : '') + '. Catch the weather where you are: ' + appUrl();
   }
   /* rec: the catch to share. Without one, the newest */
   function prepareShare(id, rec) {
@@ -1539,7 +1613,8 @@
       if (num(o.gusts) !== undefined) rec.gust = Math.round(o.gusts);
       if (wet > 0) rec.rain = Math.round(wet * per * 10) / 10;
       if ((num(o.snowfall) || 0) > 0) rec.snow = Math.round(o.snowfall * per * 10) / 10;
-      if (num(o.vis) !== undefined) rec.vis = Math.round(o.vis / 100) / 10;
+      if (num(o.vis) !== undefined) { rec.vis = Math.round(o.vis / 100) / 10; rec.visM = Math.round(o.vis); }
+      if (typeof R.depth === 'number' && R.depthArea === areaId) rec.depth = R.depth;
       var elev = R.wx && R.wx.here ? num(R.wx.here.elevation) : undefined;
       if (elev !== undefined) rec.elev = Math.round(elev);
     }
@@ -1577,6 +1652,7 @@
     x.seed = rec.seed;
     x.t = rec.t;
     x.place = rec.place || '';
+    if (typeof rec.power === 'number') x.power = rec.power; else delete x.power;
     return fresh;
   }
   /* the shelf shows the rarest variant found */
@@ -1587,15 +1663,18 @@
   }
   function varsFound(e) { return VARS.filter(function (v) { return e && e.vars && e.vars[v]; }).length; }
   /* what the jar needs to draw one particular catch */
-  function markOf(id, v, seed) {
+  function markOf(id, v, seed, power) {
     var vr = RU.variant(id, v || 'c');
     seed = seed >>> 0;
-    if (!vr || (!seed && !vr.deco && !vr.prism)) return null;
-    return { seed: seed, deco: vr.deco, prism: vr.prism };
+    var pw = typeof power === 'number' && isFinite(power) ? power : undefined;
+    if (!vr || (!seed && !vr.deco && !vr.legend && pw === undefined)) return null;
+    var mk = { seed: seed, deco: vr.deco, legend: vr.legend };
+    if (pw !== undefined) mk.power = pw;
+    return mk;
   }
   function shelfMark(id, e) {
-    var v = bestVariant(e);
-    return markOf(id, v, e.vars && e.vars[v] ? e.vars[v].seed : 0);
+    var v = bestVariant(e), x = e.vars && e.vars[v];
+    return markOf(id, v, x ? x.seed : 0, x ? x.power : undefined);
   }
   /* the catch to show for a variant: the record of the one on show, or what the jar remembers of it */
   function recFor(e, v) {
@@ -1623,7 +1702,10 @@
         rollCatch(rec);
         var y = e.vars[rec.v] || (e.vars[rec.v] = { n: 0, seed: 0, t: -1, place: '' });
         y.n += 1;
-        if ((rec.t || 0) >= y.t) { y.seed = rec.seed; y.t = rec.t || 0; y.place = rec.place || ''; }
+        if ((rec.t || 0) >= y.t) {
+          y.seed = rec.seed; y.t = rec.t || 0; y.place = rec.place || '';
+          if (typeof rec.power === 'number') y.power = rec.power; else delete y.power;
+        }
         if (rec.v !== 'c') found.push({ id: id, v: rec.v });
       });
       total += n;
@@ -1646,13 +1728,16 @@
     if (!e.first) e.first = { t: now(), place: place };
     e.last = now();
     var rec = rollCatch(snapshot(areaId, how));
+    var sg = rate(id, rec);
     record(e, rec);
     var newV = addVariant(e, rec) && !isNew;
+    var newBest = sg ? bestUpdate(e, rec, sg) : false;
     var spotted = how === 'spotted';
-    var pts = RU.points(id);
+    var pts = Math.round(RU.points(id) * (sg ? RU.starBonus(sg.stars) : 1));
     S.points += pts;
     var tier = before < 15 && e.n >= 15 ? 'Gold' : before < 5 && e.n >= 5 ? 'Silver' : null;
-    var r = { id: id, isNew: isNew, n: e.n, newPlace: newPlace && !isNew, place: place, pts: pts, tier: tier, verify: verify || '', spotted: spotted, v: rec.v, seed: rec.seed, newV: newV, rec: rec };
+    var r = { id: id, isNew: isNew, n: e.n, newPlace: newPlace && !isNew, place: place, pts: pts, tier: tier, verify: verify || '', spotted: spotted, v: rec.v, seed: rec.seed, newV: newV, rec: rec,
+      sg: sg, newBest: newBest };
     var t = T(id);
     var lead = spotted ? (isNew ? 'Spotted a new jar: ' : 'Spotted: ') : isNew ? (t.el === 'change' ? 'Change moment: ' : t.el === 'wonder' ? 'Sky Wonder: ' : 'New jar: ') : '';
     addLog(lead + t.name + variantNote(id, rec.v) + (isNew ? '' : ' again') + (place ? ' in ' + place : '') + (isNew ? ' (+' + pts + ')' : ' (×' + e.n + ', +' + pts + ')'));
@@ -1720,7 +1805,8 @@
     $('c-label').className = 'ov-label rc-' + t.r;
     $('c-title').textContent = t.name;
     setPill(r.id);
-    var pts = '+' + r.pts + ' points';
+    var bonus = r.sg && !r.trip ? RU.starBonus(r.sg.stars) : 1;
+    var pts = '+' + r.pts + ' points' + (bonus > 1 ? ' · ×' + bonus + ' for ' + r.sg.stars + ' stars' : '');
     if (r.lvUp) pts += ' · Level ' + r.lvUp + '! ' + unlockText(r.lvUp);
     $('c-points').textContent = pts;
     $('c-line').textContent = t.line;
@@ -1734,12 +1820,13 @@
     R.cardState = jarState(r.id);
     if (r.img) R.cardState.img = r.img;
     var v = r.v || bestVariant(e);
-    if (r.v) R.cardState.mark = markOf(r.id, r.v, r.seed);
+    if (r.v) R.cardState.mark = markOf(r.id, r.v, r.seed, r.rec && r.rec.power);
     setVariant(r.id, v, r.newV);
+    setStrength(r.sg, r.newBest ? 'Strongest yet' : '');
     renderVars(null);
     var next = { label: R.queue.length ? 'Next' : 'Put it on the shelf', primary: true, fn: nextReveal };
     R.share = null;
-    if (RU.rank(r.id) >= 3 || RU.variantRank(v) >= 2) {
+    if (RU.rank(r.id) >= 3 || RU.variantRank(v) >= 3 || (r.sg && r.sg.stars >= 4)) {
       prepareShare(r.id, r.rec);
       setActions('c-actions', [{ label: 'Share', fn: function () { doShare(nextReveal); } }, next]);
     } else setActions('c-actions', [next]);
@@ -1747,8 +1834,20 @@
     if (v === 'p') {
       confetti(60);
       try { if (navigator.vibrate) navigator.vibrate([40, 60, 40, 60, 80]); } catch (err) {}
-    } else if (v === 'b' && (r.newV || r.isNew)) confetti(18);
+    } else if ((RU.variantRank(v) >= 5 && (r.newV || r.isNew)) || (r.newBest && r.sg.stars === 5)) confetti(18);
     if (r.lvUp) toast('Level ' + r.lvUp + '! ' + unlockText(r.lvUp));
+  }
+  /* the strength line: stars, the reading in words, and whether it beats this jar's strongest */
+  function starsText(n) { var s = ''; for (var i = 1; i <= 5; i++) s += i <= n ? '★' : '☆'; return s; }
+  function setStrength(sg, tag, label) {
+    var el = $('c-str');
+    if (!el) return;
+    if (!sg || !sg.stars) { el.hidden = true; el.innerHTML = ''; return; }
+    el.hidden = false;
+    el.innerHTML = (label ? '<span class="str-k">' + esc(label) + '</span>' : '') +
+      '<span class="stars" role="img" aria-label="' + sg.stars + ' out of 5 stars">' + starsText(sg.stars) + '</span>' +
+      '<span class="str-v">' + esc(RU.strengthText(sg) + (label && sg.t ? ', ' + new Date(sg.t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '')) + '</span>' +
+      (tag ? '<span class="v-new">' + esc(tag) + '</span>' : '');
   }
   /* the variant line under a jar's name: which one it is, its odds, and whether it's a new find or not found yet */
   function setVariant(id, v, fresh, locked) {
@@ -1757,10 +1856,11 @@
     var vr = id && RU.variant(id, v);
     if (!vr) { el.hidden = true; el.innerHTML = ''; return; }
     el.hidden = false;
-    el.innerHTML = '<span class="v-name' + (vr.prism ? ' prism-text' : '') + '">' + esc(vr.name) + '</span><span class="v-odds">' + esc(vr.odds) + ' jars</span>' +
+    el.innerHTML = '<span class="v-name' + (vr.legend ? ' legend-text' : '') + '">' + esc(vr.name) + '</span><span class="v-odds">' + esc(vr.odds) + ' jars</span>' +
+      (vr.legend ? '<span class="v-legend">Legendary</span>' : '') +
       (fresh ? '<span class="v-new">New variant</span>' : locked ? '<span class="v-lock">' + icon('lock', 13) + 'Not found yet</span>' : '');
   }
-  /* on a jar's card: the four variants. Tap one to see it, even one not found yet */
+  /* on a jar's card: a strip of all its variants. Tap one to see it big, even one not found yet */
   var PREVIEW_SEED = 1;
   function renderVars(id) {
     var box = $('c-vars');
@@ -1768,16 +1868,29 @@
     var e = id && S.book[id];
     if (!e || !e.n) { box.hidden = true; box.innerHTML = ''; return; }
     box.hidden = false;
-    var list = RU.variants(id);
-    box.innerHTML = '<div class="var-h"><span class="h2">Variants</span><span class="var-n">' + varsFound(e) + ' of 4 found</span></div>' +
-      '<div class="chips var-chips" role="group" aria-label="Variants of this jar">' + list.map(function (vr) {
+    var list = RU.variants(id), lv = list[list.length - 1];
+    box.innerHTML = '<div class="var-h"><span class="h2">Variants</span><span class="var-n">' + varsFound(e) + ' of ' + list.length + ' found</span></div>' +
+      '<div class="var-strip" role="group" aria-label="Variants of this jar">' + list.map(function (vr) {
         var x = e.vars && e.vars[vr.id];
         var on = R.cardV === vr.id;
-        return '<button type="button" class="chip' + (on ? ' on' : '') + (x ? '' : ' locked') + '" data-var="' + vr.id + '" aria-pressed="' + on + '"' +
-          ' aria-label="' + esc(vr.name + (x ? ', found ' + x.n + ' ' + plural(x.n, 'time') : ', not found yet, ' + vr.odds + ' jars')) + '">' +
-          (x ? '' : icon('lock', 14)) + '<span' + (vr.prism ? ' class="prism-text"' : '') + '>' + esc(vr.name) + '</span><span class="chip-pts">' + (x ? '×' + x.n : esc(vr.odds)) + '</span></button>';
+        return '<button type="button" class="vjar' + (on ? ' on' : '') + (x ? '' : ' locked') + (vr.legend ? ' legend' : '') + '" data-var="' + vr.id + '" aria-pressed="' + on + '"' +
+          ' aria-label="' + esc(vr.name + (vr.legend ? ', legendary' : '') + (x ? ', found ' + x.n + ' ' + plural(x.n, 'time') : ', not found yet, ' + vr.odds + ' jars')) + '">' +
+          '<canvas data-id="' + id + '" data-var="' + vr.id + '" aria-hidden="true"></canvas><span class="vjar-n">' + (x ? '×' + x.n : esc(vr.odds)) + '</span></button>';
       }).join('') + '</div>' +
-      (e.vars && e.vars.p ? '' : '<p class="small var-note"><span class="prism-text">Prism</span> is the rarest find there is: rainbow glass that shimmers, in about 1 of every 100 catches. Any weather can come out as Prism.</p>');
+      (e.vars && e.vars.p ? '' : '<p class="small var-note"><span class="legend-text">' + esc(lv.name) + '</span> is this shelf’s legendary, the rarest find of all: about 1 in every 60 catches.</p>');
+    R.previewJars = Array.prototype.slice.call(box.querySelectorAll('canvas[data-var]'));
+  }
+  /* scroll the strip sideways so the variant on show is in the middle, without moving the card */
+  function centerStrip() {
+    var strip = $('c-vars') && $('c-vars').querySelector('.var-strip'), cur = strip && strip.querySelector('button.on');
+    if (cur) strip.scrollLeft = Math.max(0, cur.offsetLeft - (strip.clientWidth - cur.offsetWidth) / 2);
+  }
+  function markStrip(v) {
+    Array.prototype.forEach.call($('c-vars').querySelectorAll('button[data-var]'), function (b) {
+      var on = b.getAttribute('data-var') === v;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
   }
   function pickVariant(v) {
     var id = R.cardId, e = id && S.book[id];
@@ -1785,10 +1898,10 @@
     if (!vr || vr.id !== v || R.view !== 'card') return;
     var x = e.vars && e.vars[v];
     R.cardV = v;
-    R.cardState.mark = markOf(id, v, x ? x.seed : PREVIEW_SEED);
+    R.cardState.mark = markOf(id, v, x ? x.seed : PREVIEW_SEED, x ? x.power : undefined);
     R.cardState.preview = !x;
     setVariant(id, v, false, !x);
-    renderVars(id);
+    markStrip(v);
     if (x) {
       prepareShare(id, recFor(e, v));
       setActions('c-actions', [{ label: 'Share', fn: function () { doShare(closeSheet); } }, { label: 'Close', primary: true, fn: closeSheet }]);
@@ -1796,8 +1909,6 @@
       R.share = null;
       setActions('c-actions', [{ label: 'Close', primary: true, fn: closeSheet }]);
     }
-    var b = $('c-vars').querySelector('[data-var="' + v + '"]');
-    if (b) try { b.focus({ preventScroll: true }); } catch (err) { b.focus(); }
   }
   function openSkyDetail() {
     var have = !!S.rewards.full;
@@ -1814,6 +1925,7 @@
     $('c-stats').textContent = have ? 'It changes with the weather wherever you go.' : jarCount() + ' of ' + RU.SHELF_TOTAL + ' jars so far.';
     setVerify('');
     setVariant(null);
+    setStrength(null);
     renderVars(null);
     R.cardState = jarState('sky');
     setActions('c-actions', [{ label: 'Close', primary: true, fn: closeSheet }]);
@@ -1842,6 +1954,7 @@
     R.cardId = id;
     R.cardV = n ? bestVariant(e) : null;
     setVariant(n ? id : null, R.cardV, false);
+    setStrength(n && e.best ? e.best : null, '', 'Strongest');
     renderVars(id);
     R.share = null;
     if (n) {
@@ -1849,6 +1962,7 @@
       setActions('c-actions', [{ label: 'Share', fn: function () { doShare(closeSheet); } }, { label: 'Close', primary: true, fn: closeSheet }]);
     } else setActions('c-actions', [{ label: 'Close', primary: true, fn: closeSheet }]);
     openSheet();
+    centerStrip();
   }
 
   /* ---------- photo catches ---------- */
@@ -2035,7 +2149,7 @@
     if (!h) { closeSheet(); return; }
     var before = RU.levelFor(S.points);
     var groups = groupHaul(h.jars);
-    var total = 0;
+    var total = 0, byId = {}, freshV = {};
     var list = groups.map(function (g) {
       var e = bookEntry(g.id);
       var isNew = !e.n;
@@ -2044,28 +2158,31 @@
       g.places.forEach(function (p) { addPlace(e, p); });
       if (!e.first) e.first = { t: h.start, place: g.places[0] || '' };
       e.last = now();
-      var pts = RU.points(g.id) * g.count;
-      S.points += pts;
-      total += pts;
-      return {
-        id: g.id, isNew: isNew, n: e.n, count: g.count, pts: pts, place: g.places[0], trip: true,
+      return (byId[g.id] = {
+        id: g.id, isNew: isNew, n: e.n, count: g.count, pts: 0, place: g.places[0], trip: true,
         tier: b4 < 15 && e.n >= 15 ? 'Gold' : b4 < 5 && e.n >= 5 ? 'Silver' : null,
         verify: 'Sealed on your trip, matching the live weather along the way.'
-      };
+      });
     });
-    // each sealed jar opens as its own variant. The card for each kind of weather shows the rarest one
-    var byId = {}, freshV = {};
-    list.forEach(function (r) { byId[r.id] = r; });
+    // each sealed jar opens as its own variant, with its own strength and points.
+    // The card for each kind of weather shows the rarest variant and the strongest catch
     h.jars.forEach(function (j) {
-      if (!T(j.id)) return;
+      var r = byId[j.id];
+      if (!r) return;
       var e = bookEntry(j.id);
       var rec = rollCatch(Object.assign({}, j.w || { t: j.t, how: 'trip', place: j.place }));
+      var sg = rate(j.id, rec);
       record(e, rec);
       if (addVariant(e, rec)) freshV[j.id + '|' + rec.v] = true;
-      var r = byId[j.id];
-      if (r && (!r.rec || RU.variantRank(rec.v) >= RU.variantRank(r.v))) { r.v = rec.v; r.seed = rec.seed; r.rec = rec; }
+      if (sg && bestUpdate(e, rec, sg)) r.newBest = true;
+      var pts = Math.round(RU.points(j.id) * (sg ? RU.starBonus(sg.stars) : 1));
+      r.pts += pts;
+      total += pts;
+      if (!r.rec || RU.variantRank(rec.v) >= RU.variantRank(r.v)) { r.v = rec.v; r.seed = rec.seed; r.rec = rec; }
+      if (sg && (!r.sg || sg.stars > r.sg.stars || (sg.stars === r.sg.stars && sg.f > r.sg.f))) r.sg = sg;
     });
-    list.forEach(function (r) { r.newV = !r.isNew && !!freshV[r.id + '|' + r.v]; });
+    S.points += total;
+    list.forEach(function (r) { r.newV = !r.isNew && !!freshV[r.id + '|' + r.v]; if (r.isNew) r.newBest = false; });
     Object.keys(S.caught).forEach(function (k) { if (S.caught[k] === 2) S.caught[k] = 1; });
     addLog('Opened ' + h.jars.length + ' ' + plural(h.jars.length, 'jar') + ' from your trip (+' + total + ')');
     S.haul = null;
@@ -2235,7 +2352,7 @@
     });
     if ($('style-btn')) $('style-btn').addEventListener('click', openStyle);
     if ($('c-vars')) $('c-vars').addEventListener('click', function (ev) {
-      var b = ev.target.closest ? ev.target.closest('[data-var]') : null;
+      var b = ev.target.closest ? ev.target.closest('button[data-var]') : null;
       if (b && !b.disabled) pickVariant(b.getAttribute('data-var'));
     });
     $('photo-input').addEventListener('change', function () { closeSheet(); onPhoto(); });
