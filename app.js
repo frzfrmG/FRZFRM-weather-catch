@@ -5,7 +5,7 @@
   'use strict';
   var WC = window.WC;
   var RU = WC.rules, SKY = WC.sky;
-  var VERSION = '0.5.0';
+  var VERSION = '0.5.1';
   var TEST = /[?&]test=1(&|$)/.test(location.search);
   var KEY = 'frzfrm-wc-state-1';
   var WX_KEY = 'frzfrm-wc-weather-1';
@@ -1629,7 +1629,7 @@
     $('g-label').className = 'ov-label rc-' + t.r;
     $('g-title').textContent = 'Catch ' + liveName(id);
     $('g-instr').textContent = R.game.g.instruction;
-    $('g-flee').textContent = WC.game.fleeChance(id) ? rlabel(id) + ': can slip away if you miss' : 'Commons never slip away';
+    $('g-flee').textContent = id === 'namedstorm' ? 'Named storms never slip away. Keep trying while it’s here' : WC.game.fleeChance(id) ? rlabel(id) + ': can slip away if you miss' : 'Commons never slip away';
     hideGameMsg();
     setActions('g-actions', [{ label: 'Let it go', fn: closeSheet }]);
     openSheet();
