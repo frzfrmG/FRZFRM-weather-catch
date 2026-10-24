@@ -5,7 +5,7 @@
   'use strict';
   var WC = window.WC;
   var RU = WC.rules, SKY = WC.sky;
-  var VERSION = '0.5.3';
+  var VERSION = '0.6.0';
   var TEST = /[?&]test=1(&|$)/.test(location.search);
   var KEY = 'frzfrm-wc-state-1';
   var WX_KEY = 'frzfrm-wc-weather-1';
@@ -249,7 +249,7 @@
     installEvt: null, wake: null, wakeOk: null, photos: {}, pendingSpot: null, shelfJars: [], previewJars: null, share: null,
     cardId: null, cardV: null, forceV: TEST ? ((location.search.match(/[?&]force=([cabdefgp])(?:&|$)/) || [])[1] || null) : null,
     depth: undefined, depthArea: null, depthAt: 0,
-    storms: null, stormsAt: 0, storm: null, spin: null
+    storms: null, stormsAt: 0, storm: null, spin: null, rewardToken: null
   };
 
   /* ---------- named storms ----------
@@ -1005,7 +1005,9 @@
     return '<span class="shelf-lights fairy" aria-hidden="true"><svg viewBox="0 0 300 30" preserveAspectRatio="none"><path d="' + d + '" vector-effect="non-scaling-stroke"></path></svg>' + bulbs + '</span>';
   }
   function rowState(elId) { return { themed: !!S.rewards['row-' + elId], gold: !!S.rewards['gold-' + elId] }; }
-  function shelfClass(elId, themed, gold) { return 'shelf' + (themed ? ' th-' + elId : '') + (gold ? ' gold' : ''); }
+  function shelfClass(elId, themed, gold) { return 'shelf' + (themed ? ' th-' + elId : ' plain') + (gold ? ' gold' : ''); }
+  /* walnut is a dark wood, so jars still to catch are drawn in light glass on it */
+  function darkWood(wood) { return (wood || S.style.wood) === 'walnut'; }
   /* one storm's own jar on the Storm shelf */
   function stormCell(name, dark) {
     var x = S.book.namedstorm.storms[name];
@@ -1024,15 +1026,17 @@
     var later = !RU.catchable(t);
     var label = t.name + ', ' + rlabel(t.id) + (n ? ', caught ' + n + ' ' + plural(n, 'time') + (tierOf(n) ? ', ' + tierOf(n) : '') + ', ' + varsFound(e) + ' of ' + VARS.length + ' variants' : later ? ', coming in a later version' : ', not caught yet');
     var meta = n ? rlabel(t.id) + (tierOf(n) ? ' · ' + tierOf(n) : '') : later ? 'Later' : rlabel(t.id);
+    var bar = n && n < RU.GOLD_AT ? '<span class="tierbar ' + (n < RU.SILVER_AT ? 't-silver' : 't-gold') + '" aria-hidden="true"><i style="width:' + Math.round((n < RU.SILVER_AT ? n / RU.SILVER_AT : n / RU.GOLD_AT) * 100) + '%"></i></span>' : '';
+    if (n && n < RU.GOLD_AT) label += ', ' + (n < RU.SILVER_AT ? (RU.SILVER_AT - n) + ' more for silver' : (RU.GOLD_AT - n) + ' more for gold');
     return '<button type="button" class="jarcell' + (n ? '' : ' locked') + '" data-jar="' + t.id + '" aria-label="' + esc(label) + '">' +
       '<canvas data-id="' + t.id + '"' + (dark ? ' data-dark="1"' : '') + ' aria-hidden="true"></canvas><span class="plank"></span>' +
-      '<span class="jar-name">' + esc(t.name) + (n > 1 ? ' ×' + n : '') + '</span><span class="jar-meta rc-' + t.r + '">' + esc(meta) + '</span></button>';
+      '<span class="jar-name">' + esc(t.name) + (n > 1 ? ' ×' + n : '') + '</span><span class="jar-meta rc-' + t.r + '">' + esc(meta) + '</span>' + bar + '</button>';
   }
   /* a small shelf for previews. o: { el, themed, gold, wood, lights } */
   function miniShelf(ids, o) {
     o = o || {};
     var lights = o.lights || S.style.lights;
-    var dark = o.themed && DARK_ROWS[o.el];
+    var dark = o.themed ? DARK_ROWS[o.el] : darkWood(o.wood);
     var cells = ids.map(function (id) {
       return '<div class="jarcell"><canvas data-id="' + id + '"' + (dark ? ' data-dark="1"' : '') + ' aria-hidden="true"></canvas><span class="plank"></span></div>';
     }).join('');
@@ -1115,7 +1119,7 @@
       var row = prog.rows[i];
       var types = RU.ORDERED.filter(function (t) { return t.el === el.id; });
       var st = rowState(el.id);
-      var dark = st.themed && DARK_ROWS[el.id];
+      var dark = st.themed ? DARK_ROWS[el.id] : darkWood();
       var pill = st.gold ? '<span class="row-pill gold-pill">Gold</span>' : st.themed ? '<span class="row-pill">Complete</span>' : '';
       var label = el.name + ' shelf, ' + row.have + ' of ' + row.need + (st.gold ? ', gold' : st.themed ? ', complete' : '') + '. See what this shelf earns';
       return '<section class="shelf-sec" id="row-' + el.id + '"><h2 class="shelf-h"><button type="button" class="row-btn" data-row="' + el.id + '" aria-label="' + esc(label) + '">' +
@@ -1192,15 +1196,17 @@
   /* award every reward the shelf has earned but not yet been given: bonus points, and new woods and lights go straight on */
   function claimRewards() {
     var fresh = RU.rewardsEarned(S.book).filter(function (id) { return !S.rewards[id]; });
-    fresh.forEach(function (id) {
+    // each reward remembers how the shelf looked just before it, so its card can show the change
+    return fresh.map(function (id) {
       var rw = RU.reward(id);
+      var before = { wood: S.style.wood, lights: S.style.lights };
       S.rewards[id] = now();
       S.points += rw.bonus;
       if (rw.wood) S.style.wood = rw.wood;
       if (rw.lights) S.style.lights = rw.lights;
       addLog('Reward: ' + rw.name + ' (+' + rw.bonus + ')');
+      return { reward: id, before: before };
     });
-    return fresh.map(function (id) { return { reward: id }; });
   }
   /* rewards earned before this version, or brought back with a backup code */
   function checkPendingRewards() {
@@ -1243,6 +1249,29 @@
     box.innerHTML = html;
     confTimer = setTimeout(function () { box.innerHTML = ''; }, 3600);
   }
+  /* a shelf reward: a gift box to tap open, then the shelf as it was turns into the new one */
+  function boxOn() { return !reduce && !(TEST && !/[?&]box=1(&|$)/.test(location.search)); }
+  function rewardTeaser(rw) {
+    if (rw.kind === 'jars') return rw.need + ' jars on your shelf!';
+    if (rw.kind === 'row') return 'The ' + elName(rw.el) + ' row is full!';
+    if (rw.kind === 'gold') return 'Every ' + elName(rw.el) + ' jar is gold!';
+    return 'Your whole shelf is full!';
+  }
+  /* the little shelf on a reward card. swap: the shelf before the reward and after it, stacked, to turn one into the other */
+  function rewardPreview(rw, swap, before) {
+    if (rw.kind === 'full') return '<div class="r-sky' + (swap ? ' r-in' : '') + '"><div class="ov-jar"><canvas data-id="sky" aria-hidden="true"></canvas></div></div>';
+    var now, old = '';
+    if (rw.kind === 'jars') {
+      var ids = bestJars(shelfIds());
+      now = miniShelf(ids);
+      if (swap) old = miniShelf(ids, { wood: (before && before.wood) || S.style.wood, lights: (before && before.lights) || S.style.lights });
+    } else {
+      var rids = bestJars(rowIds(rw.el));
+      now = miniShelf(rids, { el: rw.el, themed: true, gold: rw.kind === 'gold' });
+      if (swap) old = miniShelf(rids, { el: rw.el, themed: rw.kind === 'gold', gold: false });
+    }
+    return swap ? '<div class="r-swap"><div class="r-old" aria-hidden="true">' + old + '</div><div class="r-new">' + now + '</div></div>' : now;
+  }
   function showReward(r) {
     var rw = RU.reward(r.reward);
     if (!$('reward-view')) { toast('Reward: ' + rw.name + '! +' + rw.bonus + ' points'); nextReveal(); return; }
@@ -1254,23 +1283,72 @@
     v.classList.add('pop');
     $('r-label').textContent = rewardLabel(rw);
     $('r-label').className = 'ov-label ' + (rw.kind === 'jars' ? 'rc-rare' : 'rc-legendary');
-    $('r-title').textContent = rw.name;
-    var pts = '+' + rw.bonus + ' bonus points';
-    if (r.lvUp) pts += ' · Level ' + r.lvUp + '! ' + unlockText(r.lvUp);
-    $('r-points').textContent = pts;
-    $('r-line').textContent = rw.done;
-    $('r-stats').textContent = rewardStats(rw);
     var prev = $('r-preview');
-    if (rw.kind === 'full') prev.innerHTML = '<div class="r-sky"><div class="ov-jar"><canvas data-id="sky" aria-hidden="true"></canvas></div></div>';
-    else if (rw.kind === 'jars') prev.innerHTML = miniShelf(bestJars(shelfIds()));
-    else prev.innerHTML = miniShelf(bestJars(rowIds(rw.el)), { el: rw.el, themed: true, gold: rw.kind === 'gold' });
-    collectPreview(prev);
-    setActions('r-actions', R.queue.length ? [{ label: 'Next', primary: true, fn: nextReveal }] :
-      [{ label: 'Keep catching', fn: closeSheet }, { label: 'See your shelf', primary: true, fn: function () { seeShelf(rw); } }]);
+    var token = R.rewardToken = {};
+    var finalActions = R.queue.length ? [{ label: 'Next', primary: true, fn: nextReveal }] :
+      [{ label: 'Keep catching', fn: closeSheet }, { label: 'See your shelf', primary: true, fn: function () { seeShelf(rw); } }];
+    var fill = function (anim) {
+      $('r-title').textContent = rw.name;
+      var pts = '+' + rw.bonus + ' bonus points';
+      if (r.lvUp) pts += ' · Level ' + r.lvUp + '! ' + unlockText(r.lvUp);
+      $('r-points').textContent = pts;
+      $('r-line').textContent = rw.done;
+      $('r-stats').textContent = rewardStats(rw);
+      ['r-title', 'r-points', 'r-line', 'r-stats'].forEach(function (k) {
+        var el = $(k);
+        el.classList.remove('r-in');
+        if (anim) { void el.offsetWidth; el.classList.add('r-in'); }
+      });
+      setActions('r-actions', finalActions);
+    };
+    var celebrate = function () {
+      confetti(rw.kind === 'jars' ? 36 : rw.kind === 'full' ? 70 : 50);
+      try { if (navigator.vibrate) navigator.vibrate([30, 60, 30]); } catch (e) {}
+      if (r.lvUp) toast('Level ' + r.lvUp + '! ' + unlockText(r.lvUp));
+    };
+    if (!boxOn()) {
+      prev.innerHTML = rewardPreview(rw, false);
+      collectPreview(prev);
+      fill(false);
+      openSheet();
+      celebrate();
+      return;
+    }
+    // the closed box first
+    prev.innerHTML = '<button type="button" class="gift' + (rw.kind === 'jars' ? '' : ' gold-gift') + '" id="r-gift" aria-label="Open your reward">' +
+      '<span class="gift-glow"></span><span class="gift-box"></span><span class="gift-lid"><span class="gift-bow"></span></span></button><p class="gift-hint">Tap to open</p>';
+    R.previewJars = null;
+    $('r-title').textContent = rewardTeaser(rw);
+    $('r-points').textContent = '';
+    $('r-line').textContent = rw.kind === 'full' ? 'The last prize of all is inside.' : rw.kind === 'jars' ? 'Something new for your shelf is inside.' : 'Something new for this row is inside.';
+    $('r-stats').textContent = '';
+    var opened = false;
+    var open = function () {
+      if (opened || R.rewardToken !== token) return;
+      opened = true;
+      $('r-gift').classList.add('open');
+      var hint = prev.querySelector('.gift-hint');
+      if (hint) hint.style.visibility = 'hidden';
+      setActions('r-actions', [{ label: 'Opening…', primary: true, fn: function () {} }]);
+      $('r-actions').querySelector('button').disabled = true;
+      try { if (navigator.vibrate) navigator.vibrate(25); } catch (e) {}
+      setTimeout(function () {
+        if (R.rewardToken !== token || R.view !== 'reward') return;
+        prev.innerHTML = rewardPreview(rw, true, r.before);
+        collectPreview(prev);
+        setTimeout(function () {
+          if (R.rewardToken !== token || R.view !== 'reward') return;
+          var sw = prev.querySelector('.r-swap');
+          if (sw) sw.classList.add('go');
+          fill(true);
+          celebrate();
+        }, 650);
+      }, 560);
+    };
+    $('r-gift').addEventListener('click', open);
+    setActions('r-actions', [{ label: 'Open it', primary: true, fn: open }]);
     openSheet();
-    confetti(rw.kind === 'jars' ? 18 : rw.kind === 'full' ? 60 : 36);
-    try { if (navigator.vibrate) navigator.vibrate([30, 60, 30]); } catch (e) {}
-    if (r.lvUp) toast('Level ' + r.lvUp + '! ' + unlockText(r.lvUp));
+    try { if (navigator.vibrate) navigator.vibrate(15); } catch (e) {}
   }
   /* after old jars are opened: what turned up, with the best of them on a little shelf */
   function showOldJars(r) {
@@ -1936,8 +2014,8 @@
     if (r.trip) stats = '×' + r.count + ' on this trip · ' + e.n + ' on your shelf · ' + e.places.length + ' ' + plural(e.places.length, 'place');
     else if (r.isNew) stats = 'First one on your shelf.';
     else stats = '×' + r.n + ' · ' + e.places.length + ' ' + plural(e.places.length, 'place') + (r.newPlace ? ' · new place: ' + r.place : '');
-    if (!r.isNew || r.trip) stats += ' · ' + (r.tier ? r.tier + ' reached!' : tierText(e.n));
     $('c-stats').textContent = stats;
+    setTier(e.n, r.tier);
     setVerify(r.verify);
     R.cardState = jarState(r.id);
     if (r.img) R.cardState.img = r.img;
@@ -1964,6 +2042,21 @@
     };
     if (r.v && spinOn()) spinReveal(r, land); else land();
     if (r.lvUp) toast('Level ' + r.lvUp + '! ' + unlockText(r.lvUp));
+  }
+  /* how a jar levels up: silver at 5 catches, gold at 15. Every catch counts, and nothing is used up.
+     reached: 'Silver' or 'Gold' when this catch got it there */
+  function setTier(n, reached) {
+    var box = $('c-tier');
+    if (!box) return;
+    if (!n) { box.hidden = true; return; }
+    box.hidden = false;
+    var sv = RU.SILVER_AT, gd = RU.GOLD_AT, txt, f, kind;
+    if (n >= gd) { txt = '<strong>Gold jar' + (reached === 'Gold' ? '!' : '.') + '</strong> ' + n + ' catches, the top level.'; f = 1; kind = 'gold'; }
+    else if (n >= sv) { txt = '<strong>Silver jar' + (reached === 'Silver' ? '!' : '.') + '</strong> <strong>' + (gd - n) + ' more</strong> ' + plural(gd - n, 'catch', 'catches') + ' for gold (' + n + ' of ' + gd + ').'; f = n / gd; kind = 'gold'; }
+    else { txt = '<strong>' + (sv - n) + ' more</strong> ' + plural(sv - n, 'catch', 'catches') + ' for a silver jar (' + n + ' of ' + sv + ').'; f = n / sv; kind = 'silver'; }
+    $('c-tier-t').innerHTML = txt;
+    box.className = 'ov-tier t-' + kind;
+    $('c-tier-fill').style.width = Math.round(f * 100) + '%';
   }
   /* the strength line: stars, the reading in words, and whether it beats this jar's strongest */
   function starsText(n) { var s = ''; for (var i = 1; i <= 5; i++) s += i <= n ? '★' : '☆'; return s; }
@@ -2109,6 +2202,7 @@
     setVerify('');
     setVariant(null);
     setStrength(null);
+    setTier(0);
     renderVars(null);
     R.cardState = jarState('sky');
     setActions('c-actions', [{ label: 'Close', primary: true, fn: closeSheet }]);
@@ -2128,6 +2222,7 @@
     var season = stormSeason(e);
     $('c-stats').textContent = '×' + x.n + (season ? ' · ' + season : '');
     setVerify(x.t ? 'First caught ' + new Date(x.t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' at ' + hm(x.t) + (x.place ? ' in ' + x.place : '') : '');
+    setTier(0);
     R.cardState = stormState(name);
     R.cardId = id;
     R.cardV = (rec && rec.v) || 'c';
@@ -2154,12 +2249,13 @@
     $('c-line').textContent = n ? t.line : t.when + '.';
     var season = id === 'namedstorm' ? stormSeason(e) : '';
     if (n) {
-      $('c-stats').textContent = '×' + n + ' · ' + tierText(n) + (e.places.length ? ' · Places: ' + e.places.slice(-12).join(', ') : '') + (season ? ' · ' + season : '');
+      $('c-stats').textContent = '×' + n + (e.places.length ? ' · Places: ' + e.places.slice(-12).join(', ') : '') + (season ? ' · ' + season : '');
       setVerify(e.first ? 'First caught ' + new Date(e.first.t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' at ' + hm(e.first.t) + (e.first.place ? ' in ' + e.first.place : '') : '');
     } else {
       $('c-stats').textContent = t.how === 'photo' ? 'Caught with a photo when the weather makes it possible.' : t.how === 'change' ? 'Earned when the weather turns while you’re there.' : t.how === 'sky' ? 'Comes from the sky calendar.' : season;
       setVerify('');
     }
+    setTier(n);
     R.cardState = jarState(id);
     R.cardId = id;
     R.cardV = n ? bestVariant(e) : null;
