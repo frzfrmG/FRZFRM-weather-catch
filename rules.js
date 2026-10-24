@@ -60,7 +60,6 @@
     ['windy', 'Windy', 'wind', 'uncommon', 'auto', 'timing', 'Gusts of 30 mph or more', 'Hair: ruined. Bins: on the move.'],
     ['gale', 'Gale', 'wind', 'rare', 'auto', 'timing', 'Gusts of 50 mph or more', 'Trampolines are leaving gardens.'],
     ['stormforce', 'Storm Force', 'wind', 'epic', 'auto', 'timing', 'Gusts of 65 mph or more', 'Fences are now optional.'],
-    ['namedstorm', 'Named Storm', 'wind', 'legendary', 'auto', 'timing', 'While a named storm is here: gusts of 35 mph or more, or rain with gusts of 25 mph', 'It has a name. That’s never good.'],
     ['tornado', 'Tornado', 'wind', 'legendary', 'later', 'timing', 'An official tornado report for your area. Comes in a later version', 'Rare in the UK, and you’d stay well indoors.'],
 
     ['rumble', 'Rumble', 'storm', 'uncommon', 'auto', 'flash', 'Thunder in an area next to yours', 'Count the seconds between flash and rumble.'],
@@ -69,6 +68,7 @@
     ['lightningstrike', 'Lightning Strike', 'storm', 'epic', 'auto', 'flash', 'A thunderstorm with heavy rain right over your area', 'Flash and bang at the same time. Stay indoors.'],
     ['supercell', 'Supercell', 'storm', 'legendary', 'auto', 'flash', 'A thunderstorm with heavy hail or gusts of 50 mph or more', 'The biggest storm cloud you’ll ever see.'],
     ['thundersnow', 'Thundersnow', 'storm', 'legendary', 'auto', 'flash', 'Thunder while it’s snowing', 'Thunder. In a blizzard. Tell everyone.'],
+    ['namedstorm', 'Named Storm', 'storm', 'legendary', 'auto', 'timing', 'While a named storm is here: gusts of 35 mph or more, or rain with gusts of 25 mph. Every storm gets its own jar', 'It has a name. That’s never good.'],
 
     ['overcast', 'Overcast', 'mist', 'common', 'auto', 'hold', 'A fully cloudy sky', 'You’ll have 40 of these by Christmas.'],
     ['mist', 'Mist', 'mist', 'common', 'auto', 'hold', 'Mist, with under 5 km of visibility', 'Everything looks like a film set.'],
@@ -665,7 +665,8 @@
   var SLOTS = [['c', 120, '1 in 2'], ['a', 40, '1 in 6'], ['b', 30, '1 in 8'], ['d', 20, '1 in 12'], ['e', 12, '1 in 20'], ['f', 8, '1 in 30'], ['g', 6, '1 in 40'], ['p', 4, '1 in 60']];
   var VRANK = {};
   SLOTS.forEach(function (s, i) { VRANK[s[0]] = i; });
-  function setFor(t) { return VARIANT_SETS[t.el === 'wonder' ? (NIGHT_WONDERS[t.id] ? 'night' : 'day') : t.el]; }
+  /* named storms sit on the Storm shelf but are windstorms, so their surprises are the Wind ones */
+  function setFor(t) { return VARIANT_SETS[t.id === 'namedstorm' ? 'wind' : t.el === 'wonder' ? (NIGHT_WONDERS[t.id] ? 'night' : 'day') : t.el]; }
   function variants(id) {
     var t = TYPES[id];
     if (!t) return [];

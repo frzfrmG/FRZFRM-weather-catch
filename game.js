@@ -15,8 +15,9 @@
     epic:      { need: 20, time: 12, half: 0.12, band: 0.15, fill: 0.42, zone: 0.15, speed: 1.45, hits: 2, win: 0.45, flashes: 2, flee: 0.20 },
     legendary: { need: 24, time: 12, half: 0.11, band: 0.12, fill: 0.46, zone: 0.12, speed: 1.65, hits: 3, win: 0.40, flashes: 2, flee: 0.25 }
   };
-  /* a named storm only comes once, so its game is a fair one (a wide glow, two taps) and it never slips away */
-  var STORM = { need: 16, time: 12, half: 0.13, band: 0.19, fill: 0.38, zone: 0.22, speed: 1.1, hits: 2, win: 0.55, flashes: 1, flee: 0 };
+  /* a named storm only comes once, so it never slips away. Its game stays a challenge: three taps in a row,
+     in a glow a little wider and slower than other Legendary jars */
+  var STORM = { need: 16, time: 12, half: 0.13, band: 0.19, fill: 0.38, zone: 0.15, speed: 1.3, hits: 3, win: 0.55, flashes: 1, flee: 0 };
   function diffFor(id) { var t = WC.rules.type(id); return id === 'namedstorm' ? STORM : t ? DIFF[t.r] : DIFF.common; }
   var RATE = { drizzle: 3.5, rain: 3.5, showers: 4, downpour: 5.5, sidewaysrain: 5, cloudburst: 7, monsoon: 7, sleet: 4.5, snow: 4.5, heavysnow: 6, blizzard: 6.5, hail: 5, freezingrain: 4.5 };
   var DRIFT = { sidewaysrain: 0.18, blizzard: 0.16 };

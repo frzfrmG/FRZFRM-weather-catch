@@ -5,7 +5,7 @@
   'use strict';
   var WC = window.WC;
   var RU = WC.rules, SKY = WC.sky;
-  var VERSION = '0.5.1';
+  var VERSION = '0.5.2';
   var TEST = /[?&]test=1(&|$)/.test(location.search);
   var KEY = 'frzfrm-wc-state-1';
   var WX_KEY = 'frzfrm-wc-weather-1';
@@ -72,7 +72,7 @@
   }
   /* 0.4 moved Ball Lightning from a storm's first surprise to its legendary */
   function moveStormVariants(id, e) {
-    if (!T(id) || T(id).el !== 'storm' || !e.vars || !e.vars.a) return;
+    if (!T(id) || T(id).el !== 'storm' || id === 'namedstorm' || !e.vars || !e.vars.a) return;
     var a = e.vars.a, p = e.vars.p;
     if (!p || a.t > p.t) e.vars.p = { n: a.n + (p ? p.n : 0), seed: a.seed, t: a.t, place: a.place };
     else p.n += a.n;
@@ -105,7 +105,11 @@
       if (!Array.isArray(e.places)) e.places = [];
       if (e.catches && !Array.isArray(e.catches)) delete e.catches;
       if (e.storms && (typeof e.storms !== 'object' || Array.isArray(e.storms))) delete e.storms;
-      else if (e.storms) Object.keys(e.storms).forEach(function (k) { var x = e.storms[k]; if (!RU.okStormName(k) || !x || typeof x.n !== 'number') delete e.storms[k]; });
+      else if (e.storms) Object.keys(e.storms).forEach(function (k) {
+        var x = e.storms[k];
+        if (!RU.okStormName(k) || !x || typeof x.n !== 'number') { delete e.storms[k]; return; }
+        if (x.best && (typeof x.best !== 'object' || Array.isArray(x.best))) delete x.best;
+      });
       cleanVars(e);
       if (oldMap) moveStormVariants(id, e);
       if (e.best && (typeof e.best !== 'object' || typeof e.best.stars !== 'number')) delete e.best;
@@ -275,14 +279,34 @@
   function liveName(id) { return id === 'namedstorm' && R.storm ? 'Storm ' + R.storm.name : T(id).name; }
   function recName(id, rec) { return id === 'namedstorm' && rec && RU.okStormName(rec.storm) ? 'Storm ' + rec.storm : T(id).name; }
   function segName(s) { return s.id === 'namedstorm' && s.storm ? 'Storm ' + s.storm : T(s.id).name; }
-  /* the Named Storm jar remembers each storm caught: when and where first */
+  /* every storm caught gets its own jar on the Storm shelf. The Named Storm jar remembers each one:
+     how many, when and where first, and the catch on show (its rarest, the newest of those) */
   function addStorm(e, rec) {
     if (!RU.okStormName(rec.storm)) return false;
     if (!e.storms || typeof e.storms !== 'object' || Array.isArray(e.storms)) e.storms = {};
     var x = e.storms[rec.storm];
     if (!x) x = e.storms[rec.storm] = { n: 0, t: rec.t || 0, place: rec.place || '' };
     x.n += 1;
+    if (!x.best || RU.variantRank(rec.v || 'c') >= RU.variantRank(x.best.v || 'c')) x.best = Object.assign({}, rec);
     return x.n === 1;
+  }
+  function stormNames(e) {
+    if (!e || !e.storms) return [];
+    return Object.keys(e.storms).filter(RU.okStormName).sort(function (a, b) { return (e.storms[a].t || 0) - (e.storms[b].t || 0); });
+  }
+  /* the catch to show for one storm's jar */
+  function stormRec(e, name) {
+    var x = e && e.storms && e.storms[name];
+    if (!x) return null;
+    if (x.best && typeof x.best === 'object') return x.best;
+    var best = null;
+    (e.catches || []).forEach(function (r) { if (r && r.storm === name && (!best || RU.variantRank(r.v || 'c') >= RU.variantRank(best.v || 'c'))) best = r; });
+    return best || { t: x.t, place: x.place, storm: name };
+  }
+  function stormState(name) {
+    var st = jarState('namedstorm'), rec = stormRec(S.book.namedstorm, name);
+    if (rec && !st.locked) st.mark = markOf('namedstorm', rec.v, rec.seed, rec.power);
+    return st;
   }
   /* the season so far on the Named Storm jar card: caught, here now, or got away */
   function stormSeason(e) {
@@ -329,6 +353,7 @@
     return 2 * 6371000 * Math.asin(Math.min(1, Math.sqrt(x)));
   }
   function noteSpeed(sp) {
+    var was = R.fast;
     R.speeds.push(sp);
     if (R.speeds.length > 3) R.speeds.shift();
     var fast = R.speeds.filter(function (s) { return s >= FAST; }).length;
@@ -337,6 +362,8 @@
     else if (slow >= 2) R.fast = false;
     R.moving = sp >= 2.5;
     R.speedAt = now();
+    // Drive mode starts sealing the weather as soon as the car gets going
+    if (!was && R.fast && S.drive) setTimeout(driveSeal, 0);
   }
   function onPos(p) {
     var c = p.coords;
@@ -979,7 +1006,19 @@
   }
   function rowState(elId) { return { themed: !!S.rewards['row-' + elId], gold: !!S.rewards['gold-' + elId] }; }
   function shelfClass(elId, themed, gold) { return 'shelf' + (themed ? ' th-' + elId : '') + (gold ? ' gold' : ''); }
+  /* one storm's own jar on the Storm shelf */
+  function stormCell(name, dark) {
+    var x = S.book.namedstorm.storms[name];
+    var label = 'Storm ' + name + ', ' + rlabel('namedstorm') + ', caught ' + x.n + ' ' + plural(x.n, 'time');
+    return '<button type="button" class="jarcell" data-jar="namedstorm" data-storm="' + esc(name) + '" aria-label="' + esc(label) + '">' +
+      '<canvas data-id="namedstorm" data-storm="' + esc(name) + '"' + (dark ? ' data-dark="1"' : '') + ' aria-hidden="true"></canvas><span class="plank"></span>' +
+      '<span class="jar-name">Storm ' + esc(name) + (x.n > 1 ? ' ×' + x.n : '') + '</span><span class="jar-meta rc-legendary">' + esc(rlabel('namedstorm')) + '</span></button>';
+  }
   function jarCell(t, dark) {
+    if (t.id === 'namedstorm') {
+      var names = stormNames(S.book.namedstorm);
+      if (names.length) return names.map(function (nm) { return stormCell(nm, dark); }).join('');
+    }
     var e = S.book[t.id];
     var n = e ? e.n : 0;
     var later = !RU.catchable(t);
@@ -1125,7 +1164,8 @@
     var look = glassLook();
     R.shelfJars.forEach(function (cv) {
       if (!all && jarObserver && !cv.wcSeen) return;
-      var st = jarState(cv.getAttribute('data-id'));
+      var storm = cv.getAttribute('data-storm');
+      var st = storm ? stormState(storm) : jarState(cv.getAttribute('data-id'));
       if (st.locked && !st.ghost && !all) return;
       drawJarOn(cv, st, t, lookFor(cv, look));
     });
@@ -1807,8 +1847,8 @@
     e.last = now();
     var rec = rollCatch(snapshot(areaId, how));
     if (id === 'namedstorm' && !rec.storm && R.storm) rec.storm = R.storm.name;
-    if (id === 'namedstorm') addStorm(e, rec);
     var sg = rate(id, rec);
+    if (id === 'namedstorm') addStorm(e, rec);
     record(e, rec);
     var newV = addVariant(e, rec) && !isNew;
     var newBest = sg ? bestUpdate(e, rec, sg) : false;
@@ -2011,8 +2051,34 @@
     setActions('c-actions', [{ label: 'Close', primary: true, fn: closeSheet }]);
     openSheet();
   }
-  function openDetail(id) {
+  /* one storm's jar: its name, how many times it was caught, when and where first, and the catch on show */
+  function openStormDetail(name) {
+    var id = 'namedstorm', t = T(id), e = S.book[id], x = e.storms[name];
+    var rec = stormRec(e, name);
+    showView('card');
+    $('c-label').textContent = 'On your shelf';
+    $('c-label').className = 'ov-label rc-' + t.r;
+    $('c-title').textContent = 'Storm ' + name;
+    setPill(id);
+    $('c-points').textContent = RU.points(id) + ' points a catch';
+    $('c-line').textContent = t.line;
+    var season = stormSeason(e);
+    $('c-stats').textContent = '×' + x.n + (season ? ' · ' + season : '');
+    setVerify(x.t ? 'First caught ' + new Date(x.t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' at ' + hm(x.t) + (x.place ? ' in ' + x.place : '') : '');
+    R.cardState = stormState(name);
+    R.cardId = id;
+    R.cardV = (rec && rec.v) || 'c';
+    setVariant(id, R.cardV, false);
+    setStrength(rec ? RU.strength(id, rec) : null);
+    renderVars(null);
+    R.share = null;
+    prepareShare(id, rec);
+    setActions('c-actions', [{ label: 'Share', fn: function () { doShare(closeSheet); } }, { label: 'Close', primary: true, fn: closeSheet }]);
+    openSheet();
+  }
+  function openDetail(id, storm) {
     if (id === 'sky') { openSkyDetail(); return; }
+    if (id === 'namedstorm' && storm && S.book.namedstorm && S.book.namedstorm.storms && S.book.namedstorm.storms[storm]) { openStormDetail(storm); return; }
     var t = T(id);
     var e = S.book[id];
     var n = e ? e.n : 0;
@@ -2128,7 +2194,7 @@
   function openDriveIntro() {
     showInfo({
       label: 'Drive mode', title: 'Set it up before you set off',
-      body: '<p>Put your phone in a holder with the app open, and don’t touch it while you drive.</p><p>Every new area and change in the weather on your journey goes into a sealed jar. Open them when you’ve stopped.</p><p class="muted">Keep the app on screen. Phones stop sharing location with web apps when the screen is off.</p>',
+      body: '<p>Put your phone in a holder with the app open, and don’t touch it while you drive.</p><p>Every new area and change in the weather on your journey goes into a sealed jar while you’re moving. Open them when you’ve stopped.</p><p class="muted">Keep the app on screen. Phones stop sharing location with web apps when the screen is off.</p>',
       actions: [{ label: 'Not now', fn: closeSheet }, { label: 'Start Drive mode', primary: true, fn: startDrive }]
     });
   }
@@ -2146,8 +2212,12 @@
     else if (R.area) refreshWeather();
     renderDrive();
   }
+  /* Drive mode seals the weather only while the car is moving at driving speed, so switching it on and off
+     while standing still can't skip the catching games */
+  function driving() { return R.fast && now() - R.speedAt < 2 * MIN; }
   function driveSeal() {
-    if (!S.drive || !R.cls || !R.area || !S.haul) return;
+    if (!S.drive || !R.cls || !R.area || !S.haul || !driving()) return;
+    if (!R.wx || R.wx.areaId !== R.area.id) return;
     var a = R.area, place = placeFor(a.id), t = now();
     var w = snapshot(a.id, 'trip');
     var prev = (S.recent[a.id] || []).slice();
@@ -2204,15 +2274,17 @@
     var order = [];
     jars.forEach(function (j) {
       if (!T(j.id)) return;
-      if (!by[j.id]) { by[j.id] = { id: j.id, count: 0, places: [] }; order.push(j.id); }
+      if (!by[j.id]) { by[j.id] = { id: j.id, count: 0, places: [], storms: [] }; order.push(j.id); }
       by[j.id].count += 1;
       if (j.place && by[j.id].places.indexOf(j.place) === -1) by[j.id].places.push(j.place);
+      var sn = j.w && j.w.storm;
+      if (j.id === 'namedstorm' && RU.okStormName(sn) && by[j.id].storms.indexOf(sn) === -1) by[j.id].storms.push(sn);
     });
     return order.map(function (id) { return by[id]; }).sort(function (a, b) { return RU.rank(b.id) - RU.rank(a.id); });
   }
   function openTrip() {
     var h = S.haul;
-    if (!h || !h.jars.length) { S.haul = null; save(); render(); toast('No new jars on that trip.'); return; }
+    if (!h || !h.jars.length) { S.haul = null; save(); render(); toast('No jars on that trip. Drive mode seals the weather while you’re driving.'); return; }
     var groups = groupHaul(h.jars);
     var fresh = groups.filter(function (g) { return !(S.book[g.id] && S.book[g.id].n); }).length;
     var total = h.jars.length;
@@ -2220,7 +2292,8 @@
       label: 'Your trip', title: total + ' sealed ' + plural(total, 'jar') + (fresh ? ', ' + fresh + ' new' : ''),
       body: '<ul class="trip-list">' + groups.map(function (g) {
         var t = T(g.id);
-        return '<li><span><span class="rc-' + t.r + '">' + esc(t.name) + '</span></span><span class="small">×' + g.count + ' · ' + esc(rlabel(g.id)) + '</span></li>';
+        var name = g.storms.length ? g.storms.map(function (n) { return 'Storm ' + n; }).join(', ') : t.name;
+        return '<li><span><span class="rc-' + t.r + '">' + esc(name) + '</span></span><span class="small">×' + g.count + ' · ' + esc(rlabel(g.id)) + '</span></li>';
       }).join('') + '</ul>',
       actions: [{ label: 'Open your jars', primary: true, fn: openHaul }]
     });
@@ -2252,8 +2325,8 @@
       if (!r) return;
       var e = bookEntry(j.id);
       var rec = rollCatch(Object.assign({}, j.w || { t: j.t, how: 'trip', place: j.place }));
-      if (j.id === 'namedstorm') addStorm(e, rec);
       var sg = rate(j.id, rec);
+      if (j.id === 'namedstorm') addStorm(e, rec);
       record(e, rec);
       if (addVariant(e, rec)) freshV[j.id + '|' + rec.v] = true;
       if (sg && bestUpdate(e, rec, sg)) r.newBest = true;
@@ -2451,7 +2524,7 @@
       var row = ev.target.closest ? ev.target.closest('[data-row]') : null;
       if (row) { openRowInfo(row.getAttribute('data-row')); return; }
       var b = ev.target.closest ? ev.target.closest('[data-jar]') : null;
-      if (b) openDetail(b.getAttribute('data-jar'));
+      if (b) openDetail(b.getAttribute('data-jar'), b.getAttribute('data-storm'));
     });
     var stage = $('g-stage');
     function gx(e) { var r = stage.getBoundingClientRect(); return r.width ? (e.clientX - r.left) / r.width : 0.5; }
