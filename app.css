@@ -114,6 +114,8 @@ main{display:flex;flex-direction:column}
 
 .spot-row{display:flex;flex-direction:column;gap:8px}
 .spot-tip{padding:12px 14px;border-radius:14px;background:var(--surface);border:1.5px dashed var(--ice);font-size:14px;line-height:1.45}
+.storm-note{margin:0;padding:12px 14px;border-radius:14px;background:var(--surface);border:1.5px solid var(--r-legendary);font-size:14px;line-height:1.45}
+.storm-note strong{color:var(--r-legendary)}
 .spot-tip strong{color:var(--ice)}
 
 .locked-card{display:flex;align-items:flex-start;gap:12px;padding:14px;border-radius:16px;background:var(--surface);border:1px dashed var(--line);color:var(--muted);font-size:14px;line-height:1.45}

@@ -60,7 +60,7 @@
     ['windy', 'Windy', 'wind', 'uncommon', 'auto', 'timing', 'Gusts of 30 mph or more', 'Hair: ruined. Bins: on the move.'],
     ['gale', 'Gale', 'wind', 'rare', 'auto', 'timing', 'Gusts of 50 mph or more', 'Trampolines are leaving gardens.'],
     ['stormforce', 'Storm Force', 'wind', 'epic', 'auto', 'timing', 'Gusts of 65 mph or more', 'Fences are now optional.'],
-    ['namedstorm', 'Named Storm', 'wind', 'legendary', 'later', 'timing', 'During a named storm. Comes with Storm events in a later version', 'It has a name. That’s never good.'],
+    ['namedstorm', 'Named Storm', 'wind', 'legendary', 'auto', 'timing', 'While a named storm is here: gusts of 35 mph or more, or rain with gusts of 25 mph', 'It has a name. That’s never good.'],
     ['tornado', 'Tornado', 'wind', 'legendary', 'later', 'timing', 'An official tornado report for your area. Comes in a later version', 'Rare in the UK, and you’d stay well indoors.'],
 
     ['rumble', 'Rumble', 'storm', 'uncommon', 'auto', 'flash', 'Thunder in an area next to yours', 'Count the seconds between flash and rumble.'],
@@ -161,9 +161,10 @@
     return has(CODES.drizzle, c) || has(CODES.rain, c) || has(CODES.heavyRain, c) || has(CODES.showers, c) || has(CODES.violent, c);
   }
 
-  var FACETS = ['storm', 'precip', 'fog', 'wind', 'heat', 'frost', 'light', 'sky'];
+  var FACETS = ['named', 'storm', 'precip', 'fog', 'wind', 'heat', 'frost', 'light', 'sky'];
   var FACET_OF = {};
   [
+    ['named', ['namedstorm']],
     ['storm', ['rumble', 'thunderstorm', 'lightningstrike', 'supercell', 'thundersnow']],
     ['precip', ['drizzle', 'rain', 'showers', 'downpour', 'sidewaysrain', 'cloudburst', 'monsoon', 'sleet', 'hail', 'snow', 'freezingrain', 'heavysnow', 'blizzard']],
     ['fog', ['mist', 'fog', 'lowcloud', 'seafret', 'freezingfog']],
@@ -177,7 +178,7 @@
   /* o: one reading of the weather for an area.
        t (ms), interval (s), temp (°C), humidity (%), isDay, rain, showers (mm), snowfall (cm),
        code (WMO weather code), cloud, cloudLow, cloudHigh (%), wind, gusts (mph), vis (m)
-     ctx: lat, elevation (m), coastal, thunderNearby, sunrise, sunset (ms)
+     ctx: lat, elevation (m), coastal, thunderNearby, sunrise, sunset (ms), storm (a named storm over this place now, from activeStorm)
      Returns every kind of weather happening now, rarest first. */
   function classify(o, ctx) {
     ctx = ctx || {};
@@ -199,8 +200,11 @@
     var elev = num(ctx.elevation, 50);
     var thunder = has(CODES.thunder, code);
     var plainSky = code >= 0 && code <= 3;
-    var out = { storm: null, precip: null, fog: null, wind: null, heat: null, frost: null, light: null, sky: null };
+    var out = { named: null, storm: null, precip: null, fog: null, wind: null, heat: null, frost: null, light: null, sky: null };
     var windUsed = false;
+
+    /* a named storm can be caught where you can feel it: strong gusts, or rain with a strong wind */
+    if (ctx.storm && (gusts >= 35 || (gusts >= 25 && rate >= 1))) out.named = 'namedstorm';
 
     if (thunder) {
       if (snowing || temp <= 1) out.storm = 'thundersnow';
@@ -695,7 +699,7 @@
     cloudburst: [['rain', 25, 60]], monsoon: [['rain', 8, 50]],
     frost: [['temp', 0, -5]], hardfrost: [['temp', -5, -15]], sleet: [['rain', 0, 4]], hail: [['rain', 0, 10]],
     snow: [['depth', 0, 15], ['snow', 0, 2]], freezingrain: [['rain', 0, 5]], heavysnow: [['depth', 2, 30], ['snow', 2, 6]], blizzard: [['gust', 40, 75]],
-    breeze: [['wind', 13, 25]], windy: [['gust', 30, 50]], gale: [['gust', 50, 65]], stormforce: [['gust', 65, 90]],
+    breeze: [['wind', 13, 25]], windy: [['gust', 30, 50]], gale: [['gust', 50, 65]], stormforce: [['gust', 65, 90]], namedstorm: [['gust', 35, 80]],
     thunderstorm: [['rain', 0, 10]], lightningstrike: [['rain', 10, 40]], supercell: [['gust', 50, 80]], thundersnow: [['snow', 0, 5]],
     mist: [['vis', 5000, 1000]], fog: [['vis', 1000, 50]], lowcloud: [['vis', 2000, 100]], seafret: [['vis', 1000, 50]], freezingfog: [['vis', 1000, 50]]
   };
@@ -733,6 +737,35 @@
   /* 4-star catches are worth half as much again, 5-star ones double */
   function starBonus(stars) { return stars >= 5 ? 2 : stars >= 4 ? 1.5 : 1; }
 
+  /* ---------- named storms ----------
+     The Met Office, Met Éireann and KNMI name storms from one list each season. storms.json lists each one with
+     when it can be caught (from, to: ISO times) and, if it says, the area it covers (s, n, w, e in degrees).
+     Without an area, a storm covers the UK and Ireland and the seas around them. */
+  var STORM_AREA = { s: 49, n: 61.5, w: -11, e: 2.5 };
+  function stormTime(x) { var v = typeof x === 'number' ? x : typeof x === 'string' ? Date.parse(x) : NaN; return isFinite(v) ? v : NaN; }
+  function okStormName(s) { return typeof s === 'string' && s.length >= 2 && s.length <= 30 && !/[<>&"\\]/.test(s); }
+  /* the named storm over a place at time t, or null. The newest wins if two overlap */
+  function activeStorm(list, t, lat, lon) {
+    if (!Array.isArray(list)) return null;
+    var best = null;
+    list.forEach(function (s) {
+      if (!s || !okStormName(s.name)) return;
+      var a = stormTime(s.from), b = stormTime(s.to);
+      if (!(t >= a && t <= b)) return;
+      var box = s.area && typeof s.area === 'object' ? s.area : STORM_AREA;
+      if (typeof lat === 'number' && typeof lon === 'number' && !(lat >= num(box.s, -90) && lat <= num(box.n, 90) && lon >= num(box.w, -180) && lon <= num(box.e, 180))) return;
+      if (!best || a > best.from) best = { name: s.name, from: a, to: b };
+    });
+    return best;
+  }
+  /* every storm on the list in the order they came, for a jar card: named so far this season */
+  function stormList(list) {
+    if (!Array.isArray(list)) return [];
+    return list.filter(function (s) { return s && okStormName(s.name) && isFinite(stormTime(s.from)) && isFinite(stormTime(s.to)); })
+      .map(function (s) { return { name: s.name, from: stormTime(s.from), to: stormTime(s.to) }; })
+      .sort(function (a, b) { return a.from - b.from; });
+  }
+
   WC.rules = {
     RARITY: RARITY, ELEMENTS: ELEMENTS, TYPES: TYPES, ORDERED: ORDERED, CODES: CODES,
     type: type, rank: rank, points: points, facetOf: function (id) { return FACET_OF[id] || null; },
@@ -746,6 +779,7 @@
     WOODS: WOODS, LIGHTS: LIGHTS, JAR_REWARDS: JAR_REWARDS, ROW_LOOKS: ROW_LOOKS, KEEPER: KEEPER,
     reward: reward, shelfProgress: shelfProgress, rewardsEarned: rewardsEarned, nextJarReward: nextJarReward, styleReward: styleReward,
     variants: variants, variant: variant, variantRank: variantRank, rollVariant: rollVariant, VARIANT_SLOTS: SLOTS.map(function (x) { return x[0]; }),
-    strength: strength, hasStrength: hasStrength, strengthText: strengthText, starBonus: starBonus
+    strength: strength, hasStrength: hasStrength, strengthText: strengthText, starBonus: starBonus,
+    activeStorm: activeStorm, stormList: stormList, okStormName: okStormName, STORM_AREA: STORM_AREA
   };
 })(typeof window !== 'undefined' ? window : globalThis);

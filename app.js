@@ -5,10 +5,11 @@
   'use strict';
   var WC = window.WC;
   var RU = WC.rules, SKY = WC.sky;
-  var VERSION = '0.4.1';
+  var VERSION = '0.5.0';
   var TEST = /[?&]test=1(&|$)/.test(location.search);
   var KEY = 'frzfrm-wc-state-1';
   var WX_KEY = 'frzfrm-wc-weather-1';
+  var STORMS_KEY = 'frzfrm-wc-storms-1';
   var MIN = 60000, HOUR = 3600000;
   var FRESH = 20 * MIN;    // weather older than this is checked again before a catch
   var REFRESH = 10 * MIN;  // how often to check the weather while the app is open
@@ -103,6 +104,8 @@
       if (!T(id) || !e || typeof e.n !== 'number') { delete o.book[id]; return; }
       if (!Array.isArray(e.places)) e.places = [];
       if (e.catches && !Array.isArray(e.catches)) delete e.catches;
+      if (e.storms && (typeof e.storms !== 'object' || Array.isArray(e.storms))) delete e.storms;
+      else if (e.storms) Object.keys(e.storms).forEach(function (k) { var x = e.storms[k]; if (!RU.okStormName(k) || !x || typeof x.n !== 'number') delete e.storms[k]; });
       cleanVars(e);
       if (oldMap) moveStormVariants(id, e);
       if (e.best && (typeof e.best !== 'object' || typeof e.best.stars !== 'number')) delete e.best;
@@ -241,8 +244,55 @@
     watchId: null, game: null, view: null, queue: [], cardState: null, lastFocus: null,
     installEvt: null, wake: null, wakeOk: null, photos: {}, pendingSpot: null, shelfJars: [], previewJars: null, share: null,
     cardId: null, cardV: null, forceV: TEST ? ((location.search.match(/[?&]force=([cabdefgp])(?:&|$)/) || [])[1] || null) : null,
-    depth: undefined, depthArea: null, depthAt: 0
+    depth: undefined, depthArea: null, depthAt: 0,
+    storms: null, stormsAt: 0, storm: null
   };
+
+  /* ---------- named storms ----------
+     storms.json, kept next to the app, lists the season's named storms and when each can be caught.
+     The last copy is saved on the phone, so storms still work without a signal. */
+  function goodStorms(j) { return j && typeof j === 'object' && Array.isArray(j.storms) ? j : null; }
+  var STORMS_ON = !TEST || /[?&]storms=1(&|$)/.test(location.search); // tests ask for storms when they want them
+  function loadStorms() {
+    if (!STORMS_ON) return;
+    try { R.storms = goodStorms(JSON.parse(localStorage.getItem(STORMS_KEY) || 'null')); } catch (e) { R.storms = null; }
+  }
+  function fetchStorms(force) {
+    if (!STORMS_ON || !window.fetch || (!force && now() - R.stormsAt < 30 * MIN)) return Promise.resolve();
+    R.stormsAt = now();
+    return fetch('storms.json?t=' + Math.floor(Date.now() / (5 * MIN)), { cache: 'no-store' }).then(function (res) { return res.ok ? res.json() : null; }).then(function (j) {
+      j = goodStorms(j);
+      if (!j) return;
+      var changed = JSON.stringify(j) !== JSON.stringify(R.storms);
+      R.storms = j;
+      try { localStorage.setItem(STORMS_KEY, JSON.stringify(j)); } catch (e) {}
+      if (changed && R.wx) { evaluate(); render(); }
+    }).catch(function () {});
+  }
+  function stormsList() { return R.storms ? R.storms.storms : null; }
+  function stormAt(t, lat, lon) { return RU.activeStorm(stormsList(), t, lat, lon); }
+  /* a named storm jar takes the storm's own name: Storm Boelo. Right now, or for one catch */
+  function liveName(id) { return id === 'namedstorm' && R.storm ? 'Storm ' + R.storm.name : T(id).name; }
+  function recName(id, rec) { return id === 'namedstorm' && rec && RU.okStormName(rec.storm) ? 'Storm ' + rec.storm : T(id).name; }
+  function segName(s) { return s.id === 'namedstorm' && s.storm ? 'Storm ' + s.storm : T(s.id).name; }
+  /* the Named Storm jar remembers each storm caught: when and where first */
+  function addStorm(e, rec) {
+    if (!RU.okStormName(rec.storm)) return false;
+    if (!e.storms || typeof e.storms !== 'object' || Array.isArray(e.storms)) e.storms = {};
+    var x = e.storms[rec.storm];
+    if (!x) x = e.storms[rec.storm] = { n: 0, t: rec.t || 0, place: rec.place || '' };
+    x.n += 1;
+    return x.n === 1;
+  }
+  /* the season so far on the Named Storm jar card: caught, here now, or got away */
+  function stormSeason(e) {
+    var caught = e && e.storms ? e.storms : {};
+    var parts = RU.stormList(stormsList()).filter(function (s) { return s.from <= now() || caught[s.name]; }).map(function (s) {
+      if (caught[s.name]) return s.name + ' caught';
+      return now() <= s.to ? s.name + ' happening now' : s.name + ' got away';
+    });
+    return parts.length ? 'Storms this season: ' + parts.join(', ') + '.' : '';
+  }
 
   /* ---------- location ---------- */
 
@@ -420,6 +470,7 @@
   function refreshWeather(loud) {
     if (!R.area) return Promise.resolve();
     if (R.fetching && R.fetching.areaId === R.area.id) return R.fetching.p;
+    fetchStorms();
     var a = R.area;
     var driving = !!S.drive;
     var nb = RU.neighbours(a).filter(function (c) { return !c.here; });
@@ -513,7 +564,9 @@
       if (fogLike && typeof l.elevation === 'number' && l.elevation <= elev - 100) near.lowerFog = true;
       if (typeof l.elevation === 'number' && l.elevation <= 0.5) sea = true;
     });
-    var ctx = { lat: a.lat, lon: a.lon, elevation: elev, coastal: sea && elev < 60, thunderNearby: near.thunder, sunrise: d && d.sunrise, sunset: d && d.sunset };
+    var ctx = { lat: a.lat, lon: a.lon, elevation: elev, coastal: sea && elev < 60, thunderNearby: near.thunder, sunrise: d && d.sunrise, sunset: d && d.sunset,
+      storm: stormAt(t, a.lat, a.lon) };
+    R.storm = ctx.storm;
     R.reading = o;
     R.ctx = ctx;
     R.near = near;
@@ -534,7 +587,7 @@
     var o = {};
     Object.keys(c.loc.cur).forEach(function (k) { o[k] = c.loc.cur[k]; });
     o.t = now();
-    return RU.classify(o, { lat: c.lat, elevation: num(c.loc.elevation), sunrise: hereCtx.sunrise, sunset: hereCtx.sunset });
+    return RU.classify(o, { lat: c.lat, elevation: num(c.loc.elevation), sunrise: hereCtx.sunrise, sunset: hereCtx.sunset, storm: hereCtx.storm });
   }
   function timeline(here, ctx) {
     if (!here.hourly) return [];
@@ -543,11 +596,12 @@
     here.hourly.forEach(function (h) {
       if (h.t + HOUR <= t0 || h.t > t0 + 48 * HOUR) return;
       var d = dayFor(here.daily, h.t);
-      var c = RU.classify(h, { lat: ctx.lat, elevation: ctx.elevation, coastal: ctx.coastal, sunrise: d && d.sunrise, sunset: d && d.sunset });
+      var st = stormAt(h.t, ctx.lat, ctx.lon);
+      var c = RU.classify(h, { lat: ctx.lat, elevation: ctx.elevation, coastal: ctx.coastal, sunrise: d && d.sunrise, sunset: d && d.sunset, storm: st });
       var id = c.headline || 'quiet';
       var last = segs[segs.length - 1];
       if (last && last.id === id) last.to = h.t + HOUR;
-      else segs.push({ id: id, from: Math.max(h.t, t0), to: h.t + HOUR });
+      else segs.push({ id: id, from: Math.max(h.t, t0), to: h.t + HOUR, storm: id === 'namedstorm' && st ? st.name : null });
     });
     return segs;
   }
@@ -677,6 +731,7 @@
     }
     if (onboard || problem) return;
     renderSky();
+    renderStormNote();
     renderCatchBox();
     renderAlso();
     renderWonders();
@@ -688,7 +743,7 @@
     var warn = $('warn');
     if (R.warning && RU.unlocked('warnings', L)) {
       warn.hidden = false;
-      warn.textContent = 'Heads up: ' + T(R.warning.id).name + ' is forecast here from ' + hm(R.warning.from) + '. Be ready to catch it.';
+      warn.textContent = 'Heads up: ' + segName(R.warning) + ' is forecast here from ' + hm(R.warning.from) + '. Be ready to catch it.';
     } else warn.hidden = true;
   }
   function renderSky() {
@@ -704,7 +759,7 @@
       $('cond-name').textContent = R.reading && R.reading.isDay ? 'Calm and quiet' : 'A quiet night';
       pill.hidden = true;
     } else {
-      $('cond-name').textContent = T(head).name;
+      $('cond-name').textContent = liveName(head);
       pill.hidden = false;
       pill.setAttribute('data-r', T(head).r);
       $('cond-rarity').textContent = rlabel(head) + ' · ' + RU.points(head) + ' pts';
@@ -714,6 +769,26 @@
     else if (R.wx) up.textContent = (R.fetching ? 'Updating… ' : '') + 'Weather from ' + hm(R.wx.at) + (stale() ? ' · out of date' : '');
     else up.textContent = 'Waiting for your location…';
     $('refresh-btn').disabled = !!R.fetching || !R.area;
+  }
+  /* while a named storm is on: say so, and what it takes to catch it here */
+  function renderStormNote() {
+    var el = $('storm-note');
+    if (!el) return; // an older page without the note, just after an update
+    var st = R.storm;
+    if (!st || !R.cls || !R.area) { el.hidden = true; el.innerHTML = ''; return; }
+    var nm = esc(st.name);
+    var e = S.book.namedstorm;
+    var have = !!(e && e.storms && e.storms[st.name]);
+    var g = R.reading && typeof R.reading.gusts === 'number' ? Math.round(R.reading.gusts) : null;
+    var html;
+    if (R.cls.ids.indexOf('namedstorm') !== -1) {
+      html = S.caught[wKey(R.area.id, 'namedstorm')] ? '<strong>Storm ' + nm + ' is here.</strong> You’ve caught it in this area today. Catch it again in a new area, or tomorrow if it’s still here.' :
+        '<strong>Storm ' + nm + ' is here.</strong> ' + (have ? 'Catch it again for more points and another mystery jar.' : 'Catch it while it lasts. Each storm only comes once.');
+    } else {
+      html = '<strong>Storm ' + nm + ' is crossing the UK.</strong> Catch it when it reaches you: gusts of 35 mph or more, or rain with gusts of 25 mph.' + (g !== null ? ' Gusts here now: ' + g + ' mph.' : '');
+    }
+    el.innerHTML = html;
+    el.hidden = false;
   }
   function renderCatchBox() {
     var locked = blockedByMoving();
@@ -740,7 +815,7 @@
       var cooling = list.filter(function (c) { return c.cool; })[0];
       btn.disabled = true;
       if (cooling) {
-        btn.textContent = T(cooling.id).name + ' slipped away';
+        btn.textContent = liveName(cooling.id) + ' slipped away';
         hint.innerHTML = 'Try again in ' + minutes(cooling.cool) + ' if it’s still here.';
       } else {
         btn.textContent = 'All caught here today';
@@ -750,11 +825,11 @@
     }
     var t = T(target.id);
     btn.disabled = false;
-    btn.textContent = 'Catch ' + t.name;
+    btn.textContent = 'Catch ' + liveName(target.id);
     var e = S.book[target.id];
     var html;
     if (stale()) html = 'The weather here is from ' + hm(R.wx.at) + '. Tap Catch and the app will check it first.';
-    else if (!e || !e.n) html = '<strong>New jar!</strong> You haven’t caught ' + esc(t.name) + ' before.';
+    else if (!e || !e.n) html = '<strong>New jar!</strong> You haven’t caught ' + esc(liveName(target.id)) + ' before.';
     else if (e.places.indexOf(placeFor(R.area.id)) === -1) html = 'On your shelf ×' + e.n + '. Catching it here adds <strong>a new place</strong>.';
     else html = 'On your shelf ×' + e.n + '. Catching it again earns <strong>' + RU.points(target.id) + ' points</strong>.';
     var ch = pendingChanges();
@@ -768,11 +843,11 @@
     block.hidden = false;
     $('also-title').textContent = R.target ? 'Also here right now' : 'Here right now';
     $('also').innerHTML = list.map(function (c) {
-      var t = T(c.id);
-      var state = c.caught ? 'Caught' : c.cool ? 'Back in ' + minutes(c.cool) : RU.points(c.id) + ' pts';
+      var t = T(c.id), name = liveName(c.id);
+      var state = c.caught ? 'Caught today' : c.cool ? 'Back in ' + minutes(c.cool) : RU.points(c.id) + ' pts';
       var done = c.caught || c.cool;
-      return '<button type="button" class="chip' + (done ? ' done' : '') + '" data-catch="' + c.id + '"' + (done ? ' disabled' : '') + ' aria-label="' + esc((done ? '' : 'Catch ') + t.name + ', ' + rlabel(c.id) + ', ' + state) + '">' +
-        '<span class="rc-' + t.r + '">' + icon(c.id, 18) + '</span><span>' + esc(t.name) + '</span><span class="chip-pts">' + (c.caught ? icon('check', 14) : esc(state)) + '</span></button>';
+      return '<button type="button" class="chip' + (done ? ' done' : '') + '" data-catch="' + c.id + '"' + (done ? ' disabled' : '') + ' aria-label="' + esc((done ? '' : 'Catch ') + name + ', ' + rlabel(c.id) + ', ' + state) + '">' +
+        '<span class="rc-' + t.r + '">' + icon(c.id, 18) + '</span><span>' + esc(name) + '</span><span class="chip-pts">' + (c.caught ? icon('check', 14) + ' today' : esc(state)) + '</span></button>';
     }).join('');
   }
   function renderWonders() {
@@ -784,7 +859,7 @@
       var caught = !!S.caught[w.key];
       var cool = coolLeft(w.key);
       var note = w.note || t.when + '.';
-      var btn = caught ? '<span class="pill rc-' + t.r + '">Caught</span>' :
+      var btn = caught ? '<span class="pill rc-' + t.r + '">' + (R.reading && !R.reading.isDay ? 'Caught tonight' : 'Caught today') + '</span>' :
         cool ? '<span class="small">Back in ' + minutes(cool) + '</span>' :
         '<button class="btn" type="button" data-wonder="' + w.id + '"' + (blockedByMoving() ? ' disabled' : '') + '>Catch</button>';
       return '<div class="wcard"><span class="rc-' + t.r + '">' + icon(w.id, 26) + '</span><div class="wcard-body"><div class="wcard-name">' + esc(t.name) + '</div>' +
@@ -821,13 +896,13 @@
       else {
         var cc = classifyCell(cellById[c.id], R.ctx || {});
         id = cc ? cc.headline : null;
-        if (id && RU.rank(id) >= 3) rareNote.push(T(id).name + ' to the ' + c.dir.toLowerCase());
+        if (id && RU.rank(id) >= 3) rareNote.push(liveName(id) + ' to the ' + c.dir.toLowerCase());
       }
       var t = id ? T(id) : null;
       var rare = id && RU.rank(id) >= 3;
       return '<div class="g9' + (c.here ? ' here' : '') + (rare ? ' rare' : '') + '"' + (rare ? ' style="border-color:var(--r-' + t.r + ')"' : '') + '>' +
         '<span class="g9-dir">' + (c.here ? 'You' : esc(c.dir)) + '</span>' +
-        (t ? '<span class="rc-' + t.r + '">' + icon(id, 20) + '</span><span class="g9-name">' + esc(t.name) + '</span>' : '<span class="g9-name">' + (cellById[c.id] || c.here ? 'Quiet' : 'No data') + '</span>') +
+        (t ? '<span class="rc-' + t.r + '">' + icon(id, 20) + '</span><span class="g9-name">' + esc(liveName(id)) + '</span>' : '<span class="g9-name">' + (cellById[c.id] || c.here ? 'Quiet' : 'No data') + '</span>') +
         '</div>';
     }).join('');
     box.innerHTML = '<div class="grid9">' + html + '</div><p class="near-note">' + (rareNote.length ? 'Rare nearby: ' + esc(rareNote.join(', ')) + '. Each area is about 5 km across.' : 'Nothing rare in the areas around you right now.') + '</p>';
@@ -842,7 +917,7 @@
     var head = rare.length ? '' : '<p class="small">Nothing rare forecast in the next two days. Here’s what’s coming:</p>';
     box.innerHTML = head + '<ul class="timeline">' + rows.map(function (s) {
       var t = s.id === 'quiet' ? null : T(s.id);
-      return '<li><span class="tl-when">' + esc(s.from <= now() ? 'Now' : whenLabel(s.from)) + '</span><span class="tl-what">' + (t ? '<span class="rc-' + t.r + '">' + icon(s.id, 18) + '</span>' + esc(t.name) : icon('quiet', 18) + 'Quiet night') + '</span>' +
+      return '<li><span class="tl-when">' + esc(s.from <= now() ? 'Now' : whenLabel(s.from)) + '</span><span class="tl-what">' + (t ? '<span class="rc-' + t.r + '">' + icon(s.id, 18) + '</span>' + esc(segName(s)) : icon('quiet', 18) + 'Quiet night') + '</span>' +
         (t ? '<span class="tl-r rc-' + t.r + '">' + rlabel(s.id) + '</span>' : '<span></span>') + '</li>';
     }).join('') + '</ul>';
   }
@@ -983,7 +1058,7 @@
     $('jar-total').textContent = prog.total;
     if (!$('reward-card')) return;
     var later = RU.ORDERED.filter(function (t) { return !RU.catchable(t); }).map(function (t) { return t.name; });
-    $('shelf-note').textContent = later.length ? listText(later) + ' arrive in a later version.' : '';
+    $('shelf-note').textContent = later.length ? listText(later) + (later.length === 1 ? ' arrives' : ' arrive') + ' in a later version.' : '';
     $('shelf-note').hidden = !later.length;
     renderRewardCard(prog);
     var sm = $('sky-meta');
@@ -1206,7 +1281,7 @@
       (st.themed ? '' : '<p class="muted">' + row.have + ' of ' + row.need + ' caught. Still to find: ' + esc(listText(missing)) + '.</p>') +
       '<p class="rw-p"><strong>' + (st.gold ? 'Gold.' : '+' + goldRw.bonus + ' points.') + '</strong> ' + esc(st.gold ? goldRw.done : goldRw.hint) + '</p>' +
       (st.gold ? '' : '<p class="muted">' + row.gold + ' of ' + row.need + ' gold so far.</p>') +
-      (later.length ? '<p class="muted">' + esc(listText(later)) + ' arrive in a later version and don’t count yet.</p>' : '');
+      (later.length ? '<p class="muted">' + esc(listText(later)) + (later.length === 1 ? ' arrives in a later version and doesn’t' : ' arrive in a later version and don’t') + ' count yet.</p>' : '');
     showInfo({ label: name + ' shelf', title: rowRw.name, body: body });
     collectPreview($('i-body'));
   }
@@ -1353,8 +1428,9 @@
       ctx.textAlign = 'left';
       var y = ly + pad + 66;
       ctx.fillStyle = '#121933';
-      fitText(ctx, t.name, '800', 76, DISPLAY, maxW);
-      ctx.fillText(t.name, lx + pad, y);
+      var title = recName(id, rec);
+      fitText(ctx, title, '800', 76, DISPLAY, maxW);
+      ctx.fillText(title, lx + pad, y);
       y += 52;
       var vr = RU.variant(id, (rec && rec.v) || 'c');
       var kind = rlabel(id).toUpperCase() + (t.el === 'wonder' ? ' · SKY WONDER' : t.el === 'change' ? ' · CHANGE MOMENT' : '') +
@@ -1385,7 +1461,7 @@
   function shareText(id, rec) {
     var vr = RU.variant(id, (rec && rec.v) || 'c');
     var sg = rec ? RU.strength(id, rec) : null;
-    return 'Look what I caught' + (rec && rec.place ? ' in ' + rec.place : '') + ': ' + T(id).name + ' (' + rlabel(id) + (vr.id !== 'c' ? ', ' + vr.name + ', ' + vr.odds : '') + ')' +
+    return 'Look what I caught' + (rec && rec.place ? ' in ' + rec.place : '') + ': ' + recName(id, rec) + ' (' + rlabel(id) + (vr.id !== 'c' ? ', ' + vr.name + ', ' + vr.odds : '') + ')' +
       (sg ? ', ' + sg.stars + ' ' + plural(sg.stars, 'star') + ': ' + RU.strengthText(sg) : '') + '. Catch the weather where you are: ' + appUrl();
   }
   /* rec: the catch to share. Without one, the newest */
@@ -1531,7 +1607,7 @@
     if (!R.area) return;
     if (S.caught[key]) { toast('You’ve already caught that today.'); return; }
     var cool = coolLeft(key);
-    if (cool) { toast(T(id).name + ' slipped away. Try again in ' + minutes(cool) + '.'); return; }
+    if (cool) { toast(liveName(id) + ' slipped away. Try again in ' + minutes(cool) + '.'); return; }
     if (stale()) {
       toast('Checking the weather first…');
       var areaId = R.area.id;
@@ -1551,7 +1627,7 @@
     showView('game');
     $('g-label').textContent = kind === 'wonder' ? 'Sky Wonder' : kind === 'spotted' ? 'You spotted it' : 'Catch it';
     $('g-label').className = 'ov-label rc-' + t.r;
-    $('g-title').textContent = 'Catch ' + t.name;
+    $('g-title').textContent = 'Catch ' + liveName(id);
     $('g-instr').textContent = R.game.g.instruction;
     $('g-flee').textContent = WC.game.fleeChance(id) ? rlabel(id) + ': can slip away if you miss' : 'Commons never slip away';
     hideGameMsg();
@@ -1566,7 +1642,7 @@
     var G = R.game;
     G.missHandled = true;
     var chance = WC.game.fleeChance(G.id);
-    var name = T(G.id).name;
+    var name = liveName(G.id);
     if (chance && Math.random() < chance) {
       S.cool[G.key] = now() + COOLDOWN;
       addLog(name + ' slipped away' + (G.kind !== 'wonder' ? ' in ' + placeFor(G.areaId) : ''));
@@ -1619,6 +1695,8 @@
       if (elev !== undefined) rec.elev = Math.round(elev);
     }
     if (R.pos && typeof R.pos.alt === 'number' && now() - R.lastFix < 10 * MIN) rec.alt = Math.round(R.pos.alt);
+    // caught in a named storm: the catch remembers which one
+    if (R.storm && R.area && R.area.id === areaId && R.cls && R.cls.ids.indexOf('namedstorm') !== -1) rec.storm = R.storm.name;
     return rec;
   }
   /* each jar keeps its first catch and the most recent ones */
@@ -1728,6 +1806,8 @@
     if (!e.first) e.first = { t: now(), place: place };
     e.last = now();
     var rec = rollCatch(snapshot(areaId, how));
+    if (id === 'namedstorm' && !rec.storm && R.storm) rec.storm = R.storm.name;
+    if (id === 'namedstorm') addStorm(e, rec);
     var sg = rate(id, rec);
     record(e, rec);
     var newV = addVariant(e, rec) && !isNew;
@@ -1740,7 +1820,7 @@
       sg: sg, newBest: newBest };
     var t = T(id);
     var lead = spotted ? (isNew ? 'Spotted a new jar: ' : 'Spotted: ') : isNew ? (t.el === 'change' ? 'Change moment: ' : t.el === 'wonder' ? 'Sky Wonder: ' : 'New jar: ') : '';
-    addLog(lead + t.name + variantNote(id, rec.v) + (isNew ? '' : ' again') + (place ? ' in ' + place : '') + (isNew ? ' (+' + pts + ')' : ' (×' + e.n + ', +' + pts + ')'));
+    addLog(lead + recName(id, rec) + variantNote(id, rec.v) + (isNew ? '' : ' again') + (place ? ' in ' + place : '') + (isNew ? ' (+' + pts + ')' : ' (×' + e.n + ', +' + pts + ')'));
     return r;
   }
   function finishCatch() {
@@ -1803,7 +1883,7 @@
     var label = r.trip ? 'From your trip' : r.spotted ? (r.isNew ? 'Spotted · New jar' : 'Spotted') : r.isNew ? (t.el === 'change' ? 'New Change moment' : t.el === 'wonder' ? 'New Sky Wonder' : 'New jar') : 'Caught again';
     $('c-label').textContent = label;
     $('c-label').className = 'ov-label rc-' + t.r;
-    $('c-title').textContent = t.name;
+    $('c-title').textContent = recName(r.id, r.rec);
     setPill(r.id);
     var bonus = r.sg && !r.trip ? RU.starBonus(r.sg.stars) : 1;
     var pts = '+' + r.pts + ' points' + (bonus > 1 ? ' · ×' + bonus + ' for ' + r.sg.stars + ' stars' : '');
@@ -1943,11 +2023,12 @@
     setPill(id);
     $('c-points').textContent = RU.points(id) + ' points a catch';
     $('c-line').textContent = n ? t.line : t.when + '.';
+    var season = id === 'namedstorm' ? stormSeason(e) : '';
     if (n) {
-      $('c-stats').textContent = '×' + n + ' · ' + tierText(n) + (e.places.length ? ' · Places: ' + e.places.slice(-12).join(', ') : '');
+      $('c-stats').textContent = '×' + n + ' · ' + tierText(n) + (e.places.length ? ' · Places: ' + e.places.slice(-12).join(', ') : '') + (season ? ' · ' + season : '');
       setVerify(e.first ? 'First caught ' + new Date(e.first.t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' at ' + hm(e.first.t) + (e.first.place ? ' in ' + e.first.place : '') : '');
     } else {
-      $('c-stats').textContent = t.how === 'photo' ? 'Caught with a photo when the weather makes it possible.' : t.how === 'change' ? 'Earned when the weather turns while you’re there.' : t.how === 'sky' ? 'Comes from the sky calendar.' : '';
+      $('c-stats').textContent = t.how === 'photo' ? 'Caught with a photo when the weather makes it possible.' : t.how === 'change' ? 'Earned when the weather turns while you’re there.' : t.how === 'sky' ? 'Comes from the sky calendar.' : season;
       setVerify('');
     }
     R.cardState = jarState(id);
@@ -2171,6 +2252,7 @@
       if (!r) return;
       var e = bookEntry(j.id);
       var rec = rollCatch(Object.assign({}, j.w || { t: j.t, how: 'trip', place: j.place }));
+      if (j.id === 'namedstorm') addStorm(e, rec);
       var sg = rate(j.id, rec);
       record(e, rec);
       if (addVariant(e, rec)) freshV[j.id + '|' + rec.v] = true;
@@ -2466,6 +2548,8 @@
   }
 
   function boot() {
+    loadStorms();
+    fetchStorms(true);
     openOldJars();
     prune();
     save();
@@ -2505,7 +2589,8 @@
       shelf: function () { renderShelf(); },
       variant: function (v) { R.forceV = v || null; },
       jarState: function (id) { return jarState(id); },
-      checkUpdate: function () { checkForUpdate(true); }
+      checkUpdate: function () { checkForUpdate(true); },
+      fetchStorms: function () { return fetchStorms(true); }
     };
   }
 

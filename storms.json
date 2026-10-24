@@ -1,0 +1,9 @@
+{
+  "about": "Named storms the app can catch. The Met Office, Met Eireann and KNMI name storms from one list each season. from and to (UTC) are when each storm can be caught: while it's over the UK and Ireland, in gusts of 35 mph or more, or rain with gusts of 25 mph.",
+  "season": "2026/27",
+  "names": ["Austen", "Boelo", "Chloe", "Dano", "Evelyn", "Finn", "Gwendolyn", "Heather", "Ivy", "Jade", "Killian", "Laoise", "Miriam", "Nicola", "Olaf", "Phelim", "Ruban", "Shaun", "Theo", "Vesna", "Wende"],
+  "storms": [
+    { "name": "Austen", "from": "2026-10-22T20:00:00Z", "to": "2026-10-23T23:00:00Z" },
+    { "name": "Boelo", "from": "2026-10-24T08:00:00Z", "to": "2026-10-26T00:00:00Z" }
+  ]
+}
