@@ -5,7 +5,7 @@
   'use strict';
   var WC = window.WC;
   var RU = WC.rules, SKY = WC.sky;
-  var VERSION = '0.5.2';
+  var VERSION = '0.5.3';
   var TEST = /[?&]test=1(&|$)/.test(location.search);
   var KEY = 'frzfrm-wc-state-1';
   var WX_KEY = 'frzfrm-wc-weather-1';
@@ -249,7 +249,7 @@
     installEvt: null, wake: null, wakeOk: null, photos: {}, pendingSpot: null, shelfJars: [], previewJars: null, share: null,
     cardId: null, cardV: null, forceV: TEST ? ((location.search.match(/[?&]force=([cabdefgp])(?:&|$)/) || [])[1] || null) : null,
     depth: undefined, depthArea: null, depthAt: 0,
-    storms: null, stormsAt: 0, storm: null
+    storms: null, stormsAt: 0, storm: null, spin: null
   };
 
   /* ---------- named storms ----------
@@ -1570,6 +1570,7 @@
   /* ---------- the sheet ---------- */
 
   function showView(name) {
+    stopSpin();
     R.view = name;
     R.previewJars = null;
     $('sheet').scrollTop = 0;
@@ -1604,6 +1605,7 @@
     }
   }
   function closeSheet() {
+    stopSpin();
     $('overlay').hidden = true;
     R.game = null;
     R.cardState = null;
@@ -1951,10 +1953,16 @@
       setActions('c-actions', [{ label: 'Share', fn: function () { doShare(nextReveal); } }, next]);
     } else setActions('c-actions', [next]);
     openSheet();
-    if (v === 'p') {
-      confetti(60);
-      try { if (navigator.vibrate) navigator.vibrate([40, 60, 40, 60, 80]); } catch (err) {}
-    } else if ((RU.variantRank(v) >= 5 && (r.newV || r.isNew)) || (r.newBest && r.sg.stars === 5)) confetti(18);
+    var land = function () {
+      if (r.v && R.cardState) R.cardState.mark = markOf(r.id, r.v, r.seed, r.rec && r.rec.power);
+      setVariant(r.id, v, r.newV);
+      if (v === 'p') {
+        confetti(60);
+        try { if (navigator.vibrate) navigator.vibrate([40, 60, 40, 60, 80]); } catch (err) {}
+      } else if ((RU.variantRank(v) >= 5 && (r.newV || r.isNew)) || (r.newBest && r.sg.stars === 5)) confetti(18);
+      else if (RU.variantRank(v) >= 1) { try { if (navigator.vibrate) navigator.vibrate(30); } catch (err) {} }
+    };
+    if (r.v && spinOn()) spinReveal(r, land); else land();
     if (r.lvUp) toast('Level ' + r.lvUp + '! ' + unlockText(r.lvUp));
   }
   /* the strength line: stars, the reading in words, and whether it beats this jar's strongest */
@@ -1986,6 +1994,7 @@
     var box = $('c-vars');
     if (!box) return;
     var e = id && S.book[id];
+    setJarNav(!!(e && e.n));
     if (!e || !e.n) { box.hidden = true; box.innerHTML = ''; return; }
     box.hidden = false;
     var list = RU.variants(id), lv = list[list.length - 1];
@@ -2001,9 +2010,63 @@
     R.previewJars = Array.prototype.slice.call(box.querySelectorAll('canvas[data-var]'));
   }
   /* scroll the strip sideways so the variant on show is in the middle, without moving the card */
-  function centerStrip() {
+  function centerStrip(smooth) {
     var strip = $('c-vars') && $('c-vars').querySelector('.var-strip'), cur = strip && strip.querySelector('button.on');
-    if (cur) strip.scrollLeft = Math.max(0, cur.offsetLeft - (strip.clientWidth - cur.offsetWidth) / 2);
+    if (!cur) return;
+    var left = Math.max(0, cur.offsetLeft - (strip.clientWidth - cur.offsetWidth) / 2);
+    if (smooth && strip.scrollTo) strip.scrollTo({ left: left, behavior: 'smooth' }); else strip.scrollLeft = left;
+  }
+  /* swipe the big jar, or tap its arrows, to go through a jar's variants */
+  function setJarNav(on) { if ($('c-prev')) { $('c-prev').hidden = !on; $('c-next').hidden = !on; } }
+  function canSwipe() { return R.view === 'card' && !R.spin && !!R.cardId && !$('c-vars').hidden && !!$('c-vars').querySelector('.var-strip'); }
+  function stepVariant(dir) {
+    if (!canSwipe()) return;
+    var list = RU.variants(R.cardId), i = 0;
+    list.forEach(function (vr, k) { if (vr.id === R.cardV) i = k; });
+    var next = list[(i + dir + list.length) % list.length];
+    var cv = $('c-canvas');
+    var swap = function () { pickVariant(next.id); centerStrip(true); };
+    if (reduce) { swap(); return; }
+    cv.classList.remove('drag');
+    cv.style.transform = 'translateX(' + (-dir * 34) + '%)';
+    cv.style.opacity = '0';
+    setTimeout(function () {
+      swap();
+      cv.classList.add('drag');
+      cv.style.transform = 'translateX(' + (dir * 34) + '%)';
+      void cv.offsetWidth;
+      cv.classList.remove('drag');
+      cv.style.transform = '';
+      cv.style.opacity = '';
+    }, 150);
+  }
+  /* the reveal: the jar spins through its variants, slowing down, and lands on the one caught. Tap the jar to skip */
+  function spinOn() { return !reduce && !(TEST && !/[?&]spin=1(&|$)/.test(location.search)); }
+  function stopSpin() { if (R.spin) { clearTimeout(R.spin.timer); R.spin = null; $('c-var').classList.remove('spinning'); } }
+  function spinReveal(r, land) {
+    var list = RU.variants(r.id), target = 0;
+    list.forEach(function (vr, i) { if (vr.id === r.v) target = i; });
+    var start = Math.floor(Math.random() * list.length), n = 10;
+    while ((start + n) % list.length !== target) n++;
+    var k = 0, sp = { timer: 0 };
+    R.spin = sp;
+    $('c-var').classList.add('spinning');
+    sp.finish = function () {
+      if (R.spin !== sp) return;
+      clearTimeout(sp.timer);
+      R.spin = null;
+      $('c-var').classList.remove('spinning');
+      land();
+    };
+    (function step() {
+      if (R.spin !== sp || !R.cardState) return;
+      var vr = list[(start + k) % list.length];
+      R.cardState.mark = markOf(r.id, vr.id, r.seed, r.rec && r.rec.power);
+      setVariant(r.id, vr.id, false);
+      if (k >= n) { sp.finish(); return; }
+      k += 1;
+      sp.timer = setTimeout(step, 45 + 250 * Math.pow(k / n, 2.2));
+    })();
   }
   function markStrip(v) {
     Array.prototype.forEach.call($('c-vars').querySelectorAll('button[data-var]'), function (b) {
@@ -2194,14 +2257,14 @@
   function openDriveIntro() {
     showInfo({
       label: 'Drive mode', title: 'Set it up before you set off',
-      body: '<p>Put your phone in a holder with the app open, and don’t touch it while you drive.</p><p>Every new area and change in the weather on your journey goes into a sealed jar while you’re moving. Open them when you’ve stopped.</p><p class="muted">Keep the app on screen. Phones stop sharing location with web apps when the screen is off.</p>',
+      body: '<p>Put your phone in a holder with the app open, and don’t touch it while you drive.</p><p>Every new area and change in the weather on your journey goes into a sealed jar, once you’ve driven out of the area you set off from. Open them when you’ve stopped.</p><p class="muted">Keep the app on screen. Phones stop sharing location with web apps when the screen is off.</p>',
       actions: [{ label: 'Not now', fn: closeSheet }, { label: 'Start Drive mode', primary: true, fn: startDrive }]
     });
   }
   function startDrive() {
     closeSheet();
     S.drive = true;
-    if (!S.haul) S.haul = { start: now(), jars: [] };
+    if (!S.haul) S.haul = { start: now(), jars: [], from: R.area ? R.area.id : null };
     S.passengerUntil = 0;
     addLog('Drive mode on');
     save();
@@ -2212,11 +2275,13 @@
     else if (R.area) refreshWeather();
     renderDrive();
   }
-  /* Drive mode seals the weather only while the car is moving at driving speed, so switching it on and off
-     while standing still can't skip the catching games */
+  /* Drive mode seals the weather only on the road: while the car is moving at driving speed, and only once it's
+     left the area the trip set off from. So nobody can skip the catching games where they are */
   function driving() { return R.fast && now() - R.speedAt < 2 * MIN; }
   function driveSeal() {
-    if (!S.drive || !R.cls || !R.area || !S.haul || !driving()) return;
+    if (!S.drive || !R.cls || !R.area || !S.haul) return;
+    if (!S.haul.from) { S.haul.from = R.area.id; save(); }
+    if (R.area.id === S.haul.from || !driving()) return;
     if (!R.wx || R.wx.areaId !== R.area.id) return;
     var a = R.area, place = placeFor(a.id), t = now();
     var w = snapshot(a.id, 'trip');
@@ -2284,7 +2349,7 @@
   }
   function openTrip() {
     var h = S.haul;
-    if (!h || !h.jars.length) { S.haul = null; save(); render(); toast('No jars on that trip. Drive mode seals the weather while you’re driving.'); return; }
+    if (!h || !h.jars.length) { S.haul = null; save(); render(); toast('No jars on that trip. Drive mode seals the weather once you’ve driven out of the area you set off from.'); return; }
     var groups = groupHaul(h.jars);
     var fresh = groups.filter(function (g) { return !(S.book[g.id] && S.book[g.id].n); }).length;
     var total = h.jars.length;
@@ -2543,7 +2608,37 @@
     $('overlay').addEventListener('click', function (ev) { if (ev.target === $('overlay') && !(R.game && R.game.g.state === 'won')) closeSheet(); });
     document.addEventListener('keydown', function (ev) {
       if (ev.key === 'Escape' && !$('overlay').hidden && !(R.game && R.game.g.state === 'won')) closeSheet();
+      else if ((ev.key === 'ArrowLeft' || ev.key === 'ArrowRight') && !$('overlay').hidden && canSwipe()) { ev.preventDefault(); stepVariant(ev.key === 'ArrowRight' ? 1 : -1); }
     });
+    // the big jar on a card: swipe it sideways to go through the variants, or tap it to skip the reveal
+    var cjar = $('c-jar'), ccv = $('c-canvas'), swipe = null;
+    if (cjar && $('c-prev')) bindSwipe();
+    function bindSwipe() {
+    $('c-prev').addEventListener('click', function () { stepVariant(-1); });
+    $('c-next').addEventListener('click', function () { stepVariant(1); });
+    cjar.addEventListener('pointerdown', function (ev) {
+      if (ev.target.closest && ev.target.closest('.jar-nav')) return;
+      if (R.spin) { R.spin.finish(); return; }
+      if (!canSwipe()) return;
+      swipe = { x: ev.clientX, y: ev.clientY, id: ev.pointerId };
+      try { cjar.setPointerCapture(ev.pointerId); } catch (e) {}
+    });
+    cjar.addEventListener('pointermove', function (ev) {
+      if (!swipe || ev.pointerId !== swipe.id) return;
+      var dx = ev.clientX - swipe.x;
+      if (Math.abs(dx) > 6 && Math.abs(dx) > Math.abs(ev.clientY - swipe.y)) { ccv.classList.add('drag'); ccv.style.transform = 'translateX(' + Math.round(dx * 0.55) + 'px)'; }
+    });
+    var endSwipe = function (ev, cancelled) {
+      if (!swipe || ev.pointerId !== swipe.id) return;
+      var dx = ev.clientX - swipe.x, dy = ev.clientY - swipe.y;
+      swipe = null;
+      ccv.classList.remove('drag');
+      if (!cancelled && Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.2) stepVariant(dx < 0 ? 1 : -1);
+      else ccv.style.transform = '';
+    };
+    cjar.addEventListener('pointerup', function (ev) { endSwipe(ev, false); });
+    cjar.addEventListener('pointercancel', function (ev) { endSwipe(ev, true); });
+    } // an older page without the jar arrows, just after an update, simply has no swiping
     $('backup-btn').addEventListener('click', openBackup);
     $('restore-btn').addEventListener('click', openRestore);
     var armed = false, armTimer = 0;

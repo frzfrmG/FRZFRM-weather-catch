@@ -205,6 +205,15 @@ main{display:flex;flex-direction:column}
 .g-row{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-family:var(--font-mono);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
 .ov-jar{position:relative;width:100%;max-width:200px;margin:0 auto;aspect-ratio:3 / 4}
 .ov-jar canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+#c-jar{touch-action:pan-y;user-select:none;-webkit-user-select:none}
+#c-canvas{transition:transform .16s ease,opacity .16s ease;will-change:transform}
+#c-canvas.drag{transition:none}
+.jar-nav{position:absolute;top:50%;width:36px;height:36px;margin-top:-18px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--muted);display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer;opacity:.92}
+.jar-nav[hidden]{display:none}
+.jar-nav.prev{left:-52px}.jar-nav.next{right:-52px}
+.jar-nav:active{transform:scale(.94)}
+.ov-var.spinning .v-name{opacity:.85}
+.ov-var.spinning .v-odds{opacity:.6}
 .ov-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .ov-name{font-family:var(--font-display);font-stretch:125%;font-weight:800;font-size:24px;line-height:1.05;min-width:0}
 .pill{display:inline-flex;align-items:center;padding:3px 9px;border-radius:999px;border:1px solid currentColor;font-family:var(--font-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;flex:none}
