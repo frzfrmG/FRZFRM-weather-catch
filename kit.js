@@ -18,6 +18,8 @@
     if (opts) Object.keys(opts).forEach(function (k) { fn[k] = opts[k]; });
     D[name] = fn;
   };
+  /* what the scene handed over for the picture being drawn */
+  K.env = function () { return E; };
   /* this catch's jitter: dx and dy nudge a picture about, rot turns it a little. All 0 for a preview */
   K.J = function () { return E && E.J ? E.J : { dx: 0, dy: 0, rot: 0, f: 0 }; };
   /* a point on the ground, f of the way across, nudged by this catch's jitter */
