@@ -5,7 +5,7 @@
   'use strict';
   var WC = window.WC;
   var RU = WC.rules, SKY = WC.sky;
-  var VERSION = '0.7.0';
+  var VERSION = '0.7.1';
   var TEST = /[?&]test=1(&|$)/.test(location.search);
   var KEY = 'frzfrm-wc-state-1';
   var WX_KEY = 'frzfrm-wc-weather-1';
@@ -144,6 +144,7 @@
     if (o.haul && !Array.isArray(o.haul.jars)) o.haul = null;
     if (o.oldJars && (typeof o.oldJars !== 'object' || !Array.isArray(o.oldJars.found) || typeof o.oldJars.n !== 'number')) o.oldJars = null;
     o.games = cleanGames(o.games);
+    if (o.photoNote && !Array.isArray(o.photoNote)) o.photoNote = null;
     return o;
   }
   function loadState() {
@@ -209,6 +210,16 @@
         q.onerror = function () { rej(q.error); };
       });
     });
+  }
+  function deletePhoto(key) {
+    return db().then(function (d) {
+      return new Promise(function (res) {
+        var tx = d.transaction('photos', 'readwrite');
+        tx.objectStore('photos').delete(key);
+        tx.oncomplete = res;
+        tx.onerror = res;
+      });
+    }).catch(function () {});
   }
   function clearPhotos() {
     return db().then(function (d) {
@@ -2748,6 +2759,111 @@
     putPhoto(pk, blob).catch(function () {});
     afterAward([r], before);
   }
+  /* photos put in jars before photo checks existed (before 0.7.0) are checked once on each phone. One that fails,
+     with a face in it or the wrong kind of sky, is taken back: that catch stops counting, its points come off and the
+     photo is deleted, and a jar left with no catches is empty again. A catch whose photo can't be found stays as it is. */
+  function recheckPhotos() {
+    if (S.photoCheck || R.recheck || !WC.photoCheck || !S.onboarded) return Promise.resolve([]);
+    var jobs = [];
+    RU.ORDERED.forEach(function (t) {
+      var e = S.book[t.id];
+      if (t.how !== 'photo' || !e || !e.n) return;
+      var keys = [];
+      (e.catches || []).forEach(function (rec) { if (rec && rec.photo && keys.indexOf(rec.photo) === -1) keys.push(rec.photo); });
+      if (e.photo && keys.indexOf(e.photo) === -1) keys.push(e.photo);
+      keys.forEach(function (pk) { jobs.push({ id: t.id, pk: pk }); });
+    });
+    if (!jobs.length) { S.photoCheck = 1; save(); return Promise.resolve([]); }
+    R.recheck = true;
+    var failed = [], broken = false;
+    var chain = Promise.resolve();
+    jobs.forEach(function (j) {
+      chain = chain.then(function () {
+        return getPhoto(j.pk).then(function (blob) {
+          if (!blob) return null;
+          return WC.photoCheck.check(blob, j.id).then(function (v) { if (v && !v.ok) failed.push({ id: j.id, pk: j.pk, text: v.text }); }, function () {});
+        }, function () { broken = true; });
+      });
+    });
+    return chain.then(function () {
+      R.recheck = false;
+      // if the phone's photo store couldn't be opened, try again next time
+      if (broken) return [];
+      var out = failed.map(function (f) { return takeBack(f); }).filter(Boolean);
+      S.photoCheck = 1;
+      // what to tell the player is saved, so it's still said if the app closes before the card shows
+      if (out.length) S.photoNote = out;
+      save();
+      if (out.length) {
+        render();
+        if (R.tab === 'shelf') renderShelf();
+        whenFree(showPhotoNote);
+      }
+      return out;
+    });
+  }
+  /* takes one photo catch off the shelf. Returns what to tell the player */
+  function takeBack(f) {
+    var e = S.book[f.id];
+    if (!e || !e.n) return null;
+    var recs = (e.catches || []).filter(function (rec) { return rec && rec.photo === f.pk; });
+    if (!recs.length) recs = [{ photo: f.pk, t: e.last || now() }];
+    var pts = 0;
+    recs.forEach(function (rec) {
+      e.n -= 1;
+      pts += Math.round(RU.points(f.id) * (rec.stars ? RU.starBonus(rec.stars) : 1));
+      var x = rec.v && e.vars && e.vars[rec.v];
+      if (x) {
+        x.n -= 1;
+        if (x.n <= 0) delete e.vars[rec.v];
+      }
+      if (rec.t) delete S.caught[f.id + '|' + RU.dayKey(rec.t)];
+    });
+    if (e.catches) e.catches = e.catches.filter(function (rec) { return recs.indexOf(rec) === -1; });
+    S.points = Math.max(0, S.points - pts);
+    deletePhoto(f.pk);
+    delete R.photos[f.pk];
+    var name = T(f.id).name;
+    if (e.n <= 0) delete S.book[f.id];
+    else {
+      var left = e.catches || [];
+      var withPhoto = left.filter(function (rec) { return rec.photo; });
+      if (e.photo === f.pk) { if (withPhoto.length) e.photo = withPhoto[withPhoto.length - 1].photo; else delete e.photo; }
+      if (left.length) { e.first = { t: left[0].t, place: left[0].place || '' }; e.last = left[left.length - 1].t; }
+      // each variant still found shows one of its own catches
+      Object.keys(e.vars || {}).forEach(function (v) {
+        var mine = left.filter(function (rec) { return rec.v === v; });
+        if (mine.length) { var m = mine[mine.length - 1]; e.vars[v].seed = m.seed; e.vars[v].t = m.t; e.vars[v].place = m.place || ''; }
+      });
+    }
+    addLog('Photo check: ' + name + ' taken back (−' + pts + ')');
+    return { id: f.id, name: name, text: f.text, pts: pts, gone: !S.book[f.id] };
+  }
+  function showPhotoNote() {
+    var list = S.photoNote;
+    if (!Array.isArray(list) || !list.length) return;
+    S.photoNote = null;
+    save();
+    tookBack(list);
+  }
+  function tookBack(list) {
+    var many = list.length > 1;
+    showInfo({
+      label: 'Photo check', labelClass: 'rc-danger', title: many ? 'Some photos didn’t pass' : 'Your ' + list[0].name + ' photo didn’t pass',
+      body: '<p class="muted">Photos are checked now, and the ones in your jars from before have just been checked too.</p>' +
+        list.map(function (x) {
+          return '<p><strong>' + esc(x.name) + ':</strong> ' + esc(x.text) + ' That catch is taken back' + (x.pts ? ', with its ' + x.pts + ' points' : '') + '.' +
+            (x.gone ? ' Catch it again with a photo of the real thing.' : '') + '</p>';
+        }).join(''),
+      actions: [{ label: 'OK', primary: true, fn: function () { closeSheet(); setTimeout(checkPendingRewards, 300); } }]
+    });
+  }
+  /* runs fn once nothing else is on screen: no card, no catch and no Drive mode trip */
+  function whenFree(fn, tries) {
+    tries = tries || 0;
+    if ($('overlay').hidden && !R.game && !S.drive) { fn(); return; }
+    if (tries < 400) setTimeout(function () { whenFree(fn, tries + 1); }, 1500);
+  }
 
   /* ---------- Drive mode ---------- */
 
@@ -3259,9 +3375,15 @@
     save();
     bind();
     if (S.onboarded) locate();
+    var trip = !!(S.haul && S.haul.jars && S.haul.jars.length);
     if (S.drive) { $('drive').hidden = false; requestWake(); }
-    else if (S.haul && S.haul.jars && S.haul.jars.length) setTimeout(openTrip, 600);
-    else if (S.onboarded) setTimeout(checkPendingRewards, 900);
+    else if (trip) setTimeout(openTrip, 600);
+    // old photos are checked before any rewards are given out, in case a catch that doesn't count is taken back
+    if (S.onboarded) setTimeout(function () {
+      if (S.photoNote) whenFree(showPhotoNote);
+      var next = function () { if (!S.drive && !trip) checkPendingRewards(); };
+      recheckPhotos().then(next, next);
+    }, 900);
     render();
     kick();
     setInterval(tick, 15000);
@@ -3298,7 +3420,8 @@
       fetchStorms: function () { return fetchStorms(true); },
       photo: function (id) { R.pendingSpot = id; },
       levels: function () { openLevels(); },
-      flying: function () { return flying(); }
+      flying: function () { return flying(); },
+      recheck: function () { S.photoCheck = 0; return recheckPhotos(); }
     };
   }
 
