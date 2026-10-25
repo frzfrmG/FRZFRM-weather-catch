@@ -29,7 +29,7 @@
   ];
 
   /* how: auto = from live weather data, sky = from the sky calendar, photo = spotted with the camera,
-     change = earned when the weather turns, later = not catchable in this version yet */
+     change = earned when the weather turns, flight = seen from a plane, later = not catchable in this version yet */
   var LIST = [
     ['sunnyspells', 'Sunny Spells', 'sun', 'common', 'auto', 'timing', 'Sun and cloud taking turns', 'Sun, then not sun, then sun again.'],
     ['clear', 'Clear Sky', 'sun', 'uncommon', 'auto', 'timing', 'No cloud, in daylight', 'Not one cloud. Enjoy it while it lasts.'],
@@ -38,6 +38,7 @@
     ['hotday', 'Hot Day', 'sun', 'rare', 'auto', 'timing', '25°C or hotter', 'Shorts weather. Officially.'],
     ['heatwave', 'Heatwave', 'sun', 'epic', 'auto', 'timing', '30°C or hotter', 'The tarmac is soft.'],
     ['scorcher', 'Scorcher', 'sun', 'legendary', 'auto', 'timing', '35°C or hotter', 'Someone has fried an egg on a car bonnet.'],
+    ['cloudsunset', 'Sunset Over the Clouds', 'sun', 'legendary', 'flight', 'timing', 'From a plane, high above the clouds, while the sun sets', 'The best seat on the plane.'],
 
     ['drizzle', 'Drizzle', 'rain', 'common', 'auto', 'scoop', 'Light drizzle', 'Technically rain. Umbrella effectiveness: 12%.'],
     ['rain', 'Rain', 'rain', 'common', 'auto', 'scoop', 'Steady rain', 'Puddles are now in play.'],
@@ -545,17 +546,50 @@
     return out;
   }
 
+  /* ---------- flying ----------
+     A plane shows up on GPS as high and fast: over 2 km up at 110 mph or more, or 230 mph or more when the phone
+     can't tell how high it is (no train or car goes that fast). Sunset Over the Clouds can be caught while the sun
+     is low and going down where the plane is. From high up you see further, so the sun sets later: up to 4 degrees
+     below the usual horizon at cruising height. */
+  function isFlying(alt, speed) {
+    if (typeof speed !== 'number' || !isFinite(speed)) return false;
+    return (typeof alt === 'number' && alt >= 2000 && speed >= 50) || speed >= 103;
+  }
+  function horizonDip(alt) { return typeof alt === 'number' && alt > 0 ? 0.0293 * Math.sqrt(alt) : 0; }
+  /* t, lat, lon, alt: returns { now, el, why, mins } where mins is how long until the window opens (or closes) */
+  function cloudSunset(t, lat, lon, alt) {
+    var el = sunElevation(t, lat, lon), later = sunElevation(t + 10 * MIN, lat, lon);
+    var low = -0.8 - horizonDip(alt);
+    var setting = later < el;
+    if (setting && el <= 7 && el >= low) return { now: true, el: el };
+    if (setting && el > 7) {
+      // find roughly when the sun drops to 7 degrees
+      for (var m = 5; m <= 360; m += 5) if (sunElevation(t + m * MIN, lat, lon) <= 7) return { now: false, el: el, mins: m, why: 'soon' };
+      return { now: false, el: el, why: 'day' };
+    }
+    return { now: false, el: el, why: setting ? 'set' : el > 0 ? 'rising' : 'night' };
+  }
+
   /* ---------- levels ---------- */
 
   function levelFor(p) { var L = 1; while (p >= 25 * (L + 1) * L) L += 1; return L; }
   function pointsFor(L) { return 25 * L * (L - 1); }
-  var TITLES = [[1, 'Puddle Spotter'], [5, 'Cloud Watcher'], [10, 'Sky Reader'], [15, 'Weather Hunter'], [20, 'Storm Chaser'], [30, 'Sky Legend']];
+  var TITLES = [[1, 'Puddle Spotter'], [3, 'Drizzle Dodger'], [5, 'Cloud Watcher'], [7, 'Breeze Rider'], [10, 'Sky Reader'], [12, 'Frost Finder'],
+    [15, 'Weather Hunter'], [18, 'Thunder Tracker'], [20, 'Storm Chaser'], [25, 'Rainbow Seeker'], [30, 'Sky Legend'], [35, 'Weather Wizard'], [40, 'Master of the Weather']];
   function titleFor(L) { var t = TITLES[0][1]; for (var i = 0; i < TITLES.length; i++) if (L >= TITLES[i][0]) t = TITLES[i][1]; return t; }
   var UNLOCKS = [
-    { level: 5, id: 'nearby', name: 'Nearby weather', text: 'See what the weather is doing in the areas around you.' },
-    { level: 10, id: 'comingup', name: 'Coming up', text: 'See the rare weather forecast for your area over the next two days.' },
-    { level: 20, id: 'warnings', name: 'Early warnings', text: 'Get a heads-up a couple of hours before rare weather reaches your area.' }
+    { level: 5, id: 'nearby', name: 'Nearby weather', text: 'See what the weather is doing in the areas around you.', hint: 'A peek over the hedge at the weather next door' },
+    { level: 10, id: 'comingup', name: 'Coming up', text: 'See the rare weather forecast for your area over the next two days.', hint: 'A way to see what the sky is planning' },
+    { level: 20, id: 'warnings', name: 'Early warnings', text: 'Get a heads-up a couple of hours before rare weather reaches your area.', hint: 'Something that tells you rare weather is on its way' }
   ];
+  /* new shelf looks earned by levelling up, alongside the ones earned by jars */
+  var LEVEL_REWARDS = [
+    { id: 'lv8', kind: 'level', level: 8, name: 'Lantern lights', lights: 'lanterns', bonus: 0, about: 'Paper lanterns to hang over your jars.', done: 'Level 8, so paper lanterns glow over your jars now.', hint: 'Something warm to hang over your jars' },
+    { id: 'lv12', kind: 'level', level: 12, name: 'Driftwood shelves', wood: 'drift', bonus: 0, about: 'Sea-worn driftwood for your shelves.', done: 'Level 12, so your shelves are sea-worn driftwood now.', hint: 'A new wood for your shelves, washed up by the sea' },
+    { id: 'lv15', kind: 'level', level: 15, name: 'Starlight', lights: 'stars', bonus: 0, about: 'A string of stars to twinkle over your jars.', done: 'Level 15, so a string of stars twinkles over your jars now.', hint: 'Something to make your shelf twinkle at night' },
+    { id: 'lv25', kind: 'level', level: 25, name: 'Cloud shelves', wood: 'cloud', bonus: 0, about: 'Soft cloud shelves for your jars to sit on.', done: 'Level 25, so your jars sit on soft cloud shelves now.', hint: 'Shelves made of something soft and fluffy' }
+  ];
+  function levelRewardsAt(L) { return LEVEL_REWARDS.filter(function (r) { return r.level <= L; }); }
   function unlocked(id, L) { for (var i = 0; i < UNLOCKS.length; i++) if (UNLOCKS[i].id === id) return L >= UNLOCKS[i].level; return false; }
 
   /* ---------- shelf rewards ----------
@@ -578,8 +612,8 @@
   function catchable(t) { return !!t && t.how !== 'later'; }
   var SHELF = ORDERED.filter(catchable);
   var SHELF_TOTAL = SHELF.length;
-  var WOODS = [{ id: 'pine', name: 'Pine' }, { id: 'oak', name: 'Oak' }, { id: 'walnut', name: 'Walnut' }, { id: 'glass', name: 'Glass' }];
-  var LIGHTS = [{ id: 'off', name: 'No lights' }, { id: 'glow', name: 'Shelf lights' }, { id: 'fairy', name: 'Fairy lights' }];
+  var WOODS = [{ id: 'pine', name: 'Pine' }, { id: 'oak', name: 'Oak' }, { id: 'walnut', name: 'Walnut' }, { id: 'glass', name: 'Glass' }, { id: 'drift', name: 'Driftwood' }, { id: 'cloud', name: 'Cloud' }];
+  var LIGHTS = [{ id: 'off', name: 'No lights' }, { id: 'glow', name: 'Shelf lights' }, { id: 'fairy', name: 'Fairy lights' }, { id: 'lanterns', name: 'Lanterns' }, { id: 'stars', name: 'Starlight' }];
   var JAR_REWARDS = [
     { id: 'jars10', kind: 'jars', need: 10, name: 'Oak shelves', wood: 'oak', bonus: 100, done: 'Ten jars on your shelf, so your shelves are oak now.' },
     { id: 'jars20', kind: 'jars', need: 20, name: 'Shelf lights', lights: 'glow', bonus: 200, done: 'Twenty jars on your shelf, so every jar has its own light now.' },
@@ -602,6 +636,7 @@
   };
   var REWARD = {};
   JAR_REWARDS.forEach(function (r) { REWARD[r.id] = r; });
+  LEVEL_REWARDS.forEach(function (r) { REWARD[r.id] = r; });
   ELEMENTS.forEach(function (el) {
     var look = ROW_LOOKS[el.id];
     REWARD['row-' + el.id] = { id: 'row-' + el.id, kind: 'row', el: el.id, name: look.name, bonus: ROW_BONUS, done: look.done, hint: look.hint };
@@ -652,36 +687,120 @@
   }
   /* which reward unlocks a shelf wood or lights; null for the ones you start with */
   function styleReward(kind, id) {
-    for (var i = 0; i < JAR_REWARDS.length; i++) if (JAR_REWARDS[i][kind] === id) return JAR_REWARDS[i];
+    var all = JAR_REWARDS.concat(LEVEL_REWARDS);
+    for (var i = 0; i < all.length; i++) if (all[i][kind] === id) return all[i];
     return null;
   }
 
   /* ---------- mystery variants ----------
      Everyone nearby catches the same weather, but each jar opens as one of eight variants, with published odds:
-     Classic, six surprises that depend on the row (a kite in a sunny jar, a snowman in a frosty one) and a legendary
-     that fits the weather. Sky Wonders use night or day variants depending on their sky. The odds add up to exactly 1. */
-  var VARIANT_SETS = {
-    sun: [['kite', 'Kite'], ['balloon', 'Hot-air Balloon'], ['sunflowers', 'Sunflowers'], ['plane', 'Aeroplane'], ['butterflies', 'Butterflies'], ['seeds', 'Dandelion Seeds'], ['greenflash', 'Green Flash']],
-    rain: [['ripples', 'Puddle Ripples'], ['umbrella', 'Red Umbrella'], ['ducklings', 'Ducklings'], ['boat', 'Paper Boat'], ['frog', 'Frog'], ['snail', 'Snail'], ['catsdogs', 'Raining Cats and Dogs']],
-    frost: [['crystals', 'Ice Crystals'], ['snowman', 'Snowman'], ['robin', 'Robin'], ['sledge', 'Sledge'], ['fox', 'Fox'], ['igloo', 'Igloo'], ['diamond', 'Diamond Dust']],
-    wind: [['windsock', 'Windsock'], ['flyaway', 'Runaway Umbrella'], ['turbines', 'Wind Turbines'], ['washing', 'Washing Line'], ['windmill', 'Windmill'], ['hat', 'Flying Hat'], ['sheep', 'Flying Sheep']],
-    storm: [['cottage', 'Cosy Cottage'], ['sprite', 'Red Sprite'], ['lighthouse', 'Lighthouse'], ['scarecrow', 'Scarecrow'], ['castle', 'Castle'], ['elmo', 'St Elmo’s Fire'], ['ball', 'Ball Lightning']],
-    mist: [['lamp', 'Lamplight'], ['wisps', 'Will-o’-the-wisp'], ['owl', 'Owl'], ['web', 'Dewy Web'], ['stag', 'Stag'], ['ship', 'Ghost Ship'], ['spectre', 'Brocken Spectre']],
-    night: [['shooting', 'Shooting Star'], ['plough', 'The Plough'], ['bats', 'Bats'], ['orion', 'Orion'], ['lanterns', 'Sky Lanterns'], ['milkyway', 'Milky Way'], ['comet', 'Comet']],
-    day: [['birds', 'Birds'], ['balloon', 'Hot-air Balloon'], ['butterflies', 'Butterflies'], ['bubbles', 'Bubbles'], ['parachute', 'Parachute'], ['gold', 'Pot of Gold'], ['firerainbow', 'Fire Rainbow']],
-    change: [['birds', 'Birds'], ['rainbow', 'Rainbow'], ['jumper', 'Puddle Jumper'], ['hedgehog', 'Hedgehog'], ['wallcat', 'Cat on a Wall'], ['ladybird', 'Ladybird'], ['redsky', 'Red Sky at Night']]
+     Classic, six surprises and a legendary. Every jar has its own eight, picked to fit its weather: no Green Flash on
+     a sunny afternoon, no snowman when there's no snow, no Milky Way under a full moon. The odds add up to exactly 1. */
+  var DECO_NAMES = {
+    kite: 'Kite', balloon: 'Hot-air Balloon', sunflowers: 'Sunflowers', plane: 'Aeroplane', butterflies: 'Butterflies', seeds: 'Dandelion Seeds',
+    greenflash: 'Green Flash', sunbeams: 'Sunbeams', airshow: 'Air Show', icecream: 'Ice Cream Van', mirage: 'Mirage', dustdevil: 'Dust Devil',
+    ripples: 'Puddle Ripples', umbrella: 'Red Umbrella', ducklings: 'Ducklings', boat: 'Paper Boat', frog: 'Frog', snail: 'Snail',
+    catsdogs: 'Raining Cats and Dogs', kingfisher: 'Kingfisher', frograin: 'Raining Frogs',
+    crystals: 'Ice Crystals', snowman: 'Snowman', robin: 'Robin', sledge: 'Sledge', fox: 'Fox', igloo: 'Igloo', diamond: 'Diamond Dust',
+    frostflowers: 'Frost Flowers', skates: 'Frozen Pond', icicles: 'Icicles', gritter: 'Gritter', hailstone: 'Giant Hailstone',
+    snowangel: 'Snow Angel', silverthaw: 'Silver Thaw', snowyowl: 'Snowy Owl', yeti: 'Yeti',
+    windsock: 'Windsock', flyaway: 'Runaway Umbrella', turbines: 'Wind Turbines', washing: 'Washing Line', windmill: 'Windmill',
+    hat: 'Flying Hat', sheep: 'Flying Sheep', kitefest: 'Kite Festival', trampoline: 'Flying Trampoline', eye: 'Eye of the Storm',
+    cottage: 'Cosy Cottage', sprite: 'Red Sprite', lighthouse: 'Lighthouse', scarecrow: 'Scarecrow', castle: 'Castle',
+    elmo: 'St Elmo’s Fire', ball: 'Ball Lightning',
+    lamp: 'Lamplight', wisps: 'Will-o’-the-wisp', owl: 'Owl', web: 'Dewy Web', stag: 'Stag', ship: 'Ghost Ship',
+    spectre: 'Brocken Spectre', murmuration: 'Murmuration', seal: 'Seal',
+    shooting: 'Shooting Star', plough: 'The Plough', bats: 'Bats', orion: 'Orion', lanterns: 'Sky Lanterns', milkyway: 'Milky Way', comet: 'Comet',
+    birds: 'Birds', bubbles: 'Bubbles', parachute: 'Parachute', gold: 'Pot of Gold', silverpot: 'Pot of Silver', firerainbow: 'Fire Rainbow',
+    rainbow: 'Rainbow', jumper: 'Puddle Jumper', hedgehog: 'Hedgehog', wallcat: 'Cat on a Wall', ladybird: 'Ladybird', redsky: 'Red Sky at Night',
+    balloonfest: 'Balloon Fiesta', snowdrops: 'Snowdrops', redkite: 'Red Kite', snowflake: 'Perfect Snowflake', shelfcloud: 'Shelf Cloud',
+    wing: 'Plane Wing', evestar: 'Evening Star', glory: 'Glory'
   };
-  var NIGHT_WONDERS = { starry: true, fullmoon: true, meteor: true, supermoon: true, moonbow: true, aurora: true, eclipse: true };
+  /* each jar's six surprises, commonest first, then its legendary. 'deco=Name' gives a picture its own name in that jar */
+  var NIGHT_SET = 'shooting plough bats orion lanterns milkyway comet';
+  var MOON_SET = 'shooting plough bats orion lanterns owl comet';
+  var HALO_SET = 'birds balloon butterflies bubbles parachute plane firerainbow';
+  var BOW_SET = 'birds umbrella jumper bubbles ladybird snail gold';
+  var JAR_SETS = {
+    sunnyspells: 'kite balloon sunflowers plane butterflies seeds sunbeams',
+    clear: 'kite balloon sunflowers plane butterflies seeds airshow',
+    sunrise: 'birds=Dawn_Chorus balloon sunflowers plane seeds fox greenflash',
+    goldenhour: 'kite balloon sunflowers plane butterflies redsky greenflash',
+    hotday: 'kite sunflowers butterflies bubbles plane parachute icecream',
+    heatwave: 'sunflowers butterflies bubbles plane seeds parachute mirage',
+    scorcher: 'sunflowers butterflies bubbles plane seeds parachute dustdevil',
+    cloudsunset: 'wing plane=Passing_Jet evestar birds=Geese shooting greenflash glory',
+
+    drizzle: 'ripples umbrella ducklings boat frog snail kingfisher',
+    rain: 'ripples umbrella ducklings boat frog snail catsdogs',
+    showers: 'ripples umbrella ducklings boat frog snail frograin',
+    downpour: 'ripples umbrella ducklings boat frog snail catsdogs',
+    sidewaysrain: 'ripples flyaway ducklings boat frog snail catsdogs',
+    cloudburst: 'ripples umbrella ducklings boat frog snail catsdogs',
+    monsoon: 'ripples umbrella ducklings boat frog snail catsdogs',
+
+    frost: 'crystals robin web=Frosty_Web fox skates stag frostflowers',
+    sleet: 'robin umbrella ripples fox cottage lamp gritter',
+    hardfrost: 'crystals robin web=Frosty_Web fox skates icicles diamond',
+    hail: 'umbrella cottage ripples scarecrow robin fox hailstone',
+    snow: 'crystals=Snowflakes snowman robin sledge fox igloo snowangel',
+    freezingrain: 'icicles robin umbrella lamp skates fox silverthaw',
+    heavysnow: 'crystals=Snowflakes snowman robin sledge fox igloo snowyowl',
+    blizzard: 'crystals=Snowflakes snowman igloo fox cottage lamp yeti',
+
+    breeze: 'windsock kite turbines washing windmill seeds kitefest',
+    windy: 'windsock flyaway turbines washing windmill hat sheep',
+    gale: 'windsock flyaway turbines washing windmill hat trampoline',
+    stormforce: 'windsock flyaway turbines lighthouse windmill hat sheep',
+    tornado: 'windsock flyaway turbines lighthouse windmill hat sheep',
+
+    rumble: 'cottage birds lighthouse scarecrow castle washing rainbow=Storm_Rainbow',
+    sheetlightning: 'cottage sprite lighthouse scarecrow castle elmo ball',
+    thunderstorm: 'cottage lamp lighthouse scarecrow castle elmo ball',
+    lightningstrike: 'cottage lamp lighthouse scarecrow castle elmo ball',
+    supercell: 'cottage sprite lighthouse scarecrow castle elmo ball',
+    thundersnow: 'cottage snowman lighthouse scarecrow castle elmo ball',
+    namedstorm: 'windsock flyaway turbines lighthouse windmill hat eye',
+
+    overcast: 'lamp birds owl web stag wallcat murmuration',
+    mist: 'lamp wisps owl web stag scarecrow spectre',
+    fog: 'lamp wisps owl web stag cottage spectre',
+    lowcloud: 'lamp wisps owl web stag castle spectre',
+    seafret: 'lighthouse birds=Seagulls boat lamp seal wisps ship',
+    freezingfog: 'lamp wisps owl web=Frosty_Web stag robin spectre',
+    cloudinversion: 'birds balloon stag plane parachute=Paraglider kite spectre',
+
+    starry: NIGHT_SET, meteor: NIGHT_SET, aurora: NIGHT_SET, eclipse: NIGHT_SET,
+    fullmoon: MOON_SET, supermoon: MOON_SET,
+    moonbow: 'shooting plough bats orion fox owl comet',
+    sunhalo: HALO_SET, sundog: HALO_SET,
+    rainbow: BOW_SET, doublerainbow: BOW_SET,
+    fogbow: 'birds stag web owl lighthouse silverpot spectre',
+
+    sunbreak: 'birds rainbow jumper hedgehog wallcat ladybird gold',
+    foglifts: 'birds web stag hedgehog wallcat ladybird balloonfest',
+    thaw: 'birds robin jumper fox wallcat ladybird snowdrops',
+    winddrops: 'birds washing jumper hedgehog wallcat ladybird redkite',
+    firstflakes: 'birds robin lamp fox wallcat crystals=Snowflakes snowflake',
+    stormfront: 'birds rainbow washing scarecrow wallcat windsock shelfcloud',
+    calm: 'birds rainbow jumper hedgehog wallcat ladybird sunbeams'
+  };
   /* the slots, commonest first, with their share of every 240 catches */
   var SLOTS = [['c', 120, '1 in 2'], ['a', 40, '1 in 6'], ['b', 30, '1 in 8'], ['d', 20, '1 in 12'], ['e', 12, '1 in 20'], ['f', 8, '1 in 30'], ['g', 6, '1 in 40'], ['p', 4, '1 in 60']];
   var VRANK = {};
   SLOTS.forEach(function (s, i) { VRANK[s[0]] = i; });
-  /* named storms sit on the Storm shelf but are windstorms, so their surprises are the Wind ones */
-  function setFor(t) { return VARIANT_SETS[t.id === 'namedstorm' ? 'wind' : t.el === 'wonder' ? (NIGHT_WONDERS[t.id] ? 'night' : 'day') : t.el]; }
+  var SETS = {};
+  Object.keys(JAR_SETS).forEach(function (id) {
+    SETS[id] = JAR_SETS[id].split(' ').map(function (w) {
+      var p = w.split('=');
+      return [p[0], p[1] ? p[1].replace(/_/g, ' ') : DECO_NAMES[p[0]]];
+    });
+  });
+  function setFor(t) { return SETS[t.id] || null; }
   function variants(id) {
     var t = TYPES[id];
-    if (!t) return [];
-    var set = setFor(t);
+    var set = t && setFor(t);
+    if (!set) return [];
     return SLOTS.map(function (s, i) {
       var d = i ? set[i - 1] : [null, 'Classic'];
       return { id: s[0], name: d[1], odds: s[2], chance: s[1] / 240, deco: d[0], legend: s[0] === 'p' };
@@ -713,9 +832,10 @@
     snow: [['depth', 0, 15], ['snow', 0, 2]], freezingrain: [['rain', 0, 5]], heavysnow: [['depth', 2, 30], ['snow', 2, 6]], blizzard: [['gust', 40, 75]],
     breeze: [['wind', 13, 25]], windy: [['gust', 30, 50]], gale: [['gust', 50, 65]], stormforce: [['gust', 65, 90]], namedstorm: [['gust', 35, 80]],
     thunderstorm: [['rain', 0, 10]], lightningstrike: [['rain', 10, 40]], supercell: [['gust', 50, 80]], thundersnow: [['snow', 0, 5]],
-    mist: [['vis', 5000, 1000]], fog: [['vis', 1000, 50]], lowcloud: [['vis', 2000, 100]], seafret: [['vis', 1000, 50]], freezingfog: [['vis', 1000, 50]]
+    mist: [['vis', 5000, 1000]], fog: [['vis', 1000, 50]], lowcloud: [['vis', 2000, 100]], seafret: [['vis', 1000, 50]], freezingfog: [['vis', 1000, 50]],
+    cloudsunset: [['alt', 3000, 11000]]
   };
-  var READ_KEYS = { temp: 'temp', rain: 'rain', snow: 'snow', depth: 'depth', gust: 'gust', wind: 'wind', vis: 'visM' };
+  var READ_KEYS = { temp: 'temp', rain: 'rain', snow: 'snow', depth: 'depth', gust: 'gust', wind: 'wind', vis: 'visM', alt: 'alt' };
   /* rec: a saved catch. Returns { key, v, f (0 to 1 along the range), stars } or null when there's nothing to measure */
   function strength(id, rec) {
     var list = MEASURES[id];
@@ -743,6 +863,7 @@
       case 'gust': return 'gusts of ' + Math.round(v) + ' mph';
       case 'wind': return 'wind of ' + Math.round(v) + ' mph';
       case 'vis': return v >= 1000 ? 'you could see ' + (Math.round(v / 100) / 10) + ' km' : 'you could see ' + Math.round(v) + ' m';
+      case 'alt': return Math.round(v).toLocaleString('en-GB') + ' m up';
     }
     return '';
   }
@@ -786,11 +907,12 @@
     sunElevation: sunElevation, nearestFullMoon: nearestFullMoon, moonDistance: moonDistance,
     isSupermoon: isSupermoon, moonIllumination: moonIllumination, meteorShower: meteorShower, eclipseNow: eclipseNow,
     dayKey: dayKey, nightKey: nightKey,
-    levelFor: levelFor, pointsFor: pointsFor, titleFor: titleFor, UNLOCKS: UNLOCKS, unlocked: unlocked,
+    levelFor: levelFor, pointsFor: pointsFor, titleFor: titleFor, TITLES: TITLES, UNLOCKS: UNLOCKS, unlocked: unlocked,
+    LEVEL_REWARDS: LEVEL_REWARDS, levelRewardsAt: levelRewardsAt, isFlying: isFlying, cloudSunset: cloudSunset, horizonDip: horizonDip,
     SILVER_AT: SILVER_AT, GOLD_AT: GOLD_AT, TIERS: TIERS, tierFor: tierFor, nextTier: nextTier, tierReached: tierReached, catchable: catchable, SHELF_TOTAL: SHELF_TOTAL, rowTypes: rowTypes,
     WOODS: WOODS, LIGHTS: LIGHTS, JAR_REWARDS: JAR_REWARDS, ROW_LOOKS: ROW_LOOKS, KEEPER: KEEPER,
     reward: reward, shelfProgress: shelfProgress, rewardsEarned: rewardsEarned, nextJarReward: nextJarReward, styleReward: styleReward,
-    variants: variants, variant: variant, variantRank: variantRank, rollVariant: rollVariant, VARIANT_SLOTS: SLOTS.map(function (x) { return x[0]; }),
+    variants: variants, variant: variant, variantRank: variantRank, rollVariant: rollVariant, VARIANT_SLOTS: SLOTS.map(function (x) { return x[0]; }), DECO_NAMES: DECO_NAMES,
     strength: strength, hasStrength: hasStrength, strengthText: strengthText, starBonus: starBonus,
     activeStorm: activeStorm, stormList: stormList, okStormName: okStormName, STORM_AREA: STORM_AREA
   };

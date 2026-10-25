@@ -5,7 +5,7 @@
   'use strict';
   var WC = window.WC;
   var RU = WC.rules, SKY = WC.sky;
-  var VERSION = '0.6.1';
+  var VERSION = '0.7.0';
   var TEST = /[?&]test=1(&|$)/.test(location.search);
   var KEY = 'frzfrm-wc-state-1';
   var WX_KEY = 'frzfrm-wc-weather-1';
@@ -45,8 +45,19 @@
   function freshState() {
     return {
       v: 1, created: Date.now(), points: 0, book: {}, caught: {}, cool: {}, recent: {}, names: {}, log: [], haul: null, drive: false, passengerUntil: 0, onboarded: false,
-      rewards: {}, style: { wood: 'pine', lights: 'off' }, oldJars: null, vmap: 2
+      rewards: {}, style: { wood: 'pine', lights: 'off' }, oldJars: null, vmap: 2, games: freshGames()
     };
+  }
+  /* the Games tab keeps its own XP and best scores, separate from catching */
+  function freshGames() { return { xp: 0, best: {}, plays: {} }; }
+  function cleanGames(g) {
+    if (!g || typeof g !== 'object' || Array.isArray(g)) return freshGames();
+    var out = freshGames();
+    out.xp = typeof g.xp === 'number' && isFinite(g.xp) && g.xp >= 0 ? Math.floor(g.xp) : 0;
+    ['best', 'plays'].forEach(function (k) {
+      if (g[k] && typeof g[k] === 'object' && !Array.isArray(g[k])) Object.keys(g[k]).forEach(function (id) { if (typeof g[k][id] === 'number' && isFinite(g[k][id])) out[k][id] = g[k][id]; });
+    });
+    return out;
   }
   function known(list, id) { return list.some(function (x) { return x.id === id; }); }
   /* what's been found of each variant: { c: { n, seed, t, place }, ... }. Jars caught before variants count as Classic,
@@ -132,6 +143,7 @@
     if (!known(RU.LIGHTS, o.style.lights)) o.style.lights = 'off';
     if (o.haul && !Array.isArray(o.haul.jars)) o.haul = null;
     if (o.oldJars && (typeof o.oldJars !== 'object' || !Array.isArray(o.oldJars.found) || typeof o.oldJars.n !== 'number')) o.oldJars = null;
+    o.games = cleanGames(o.games);
     return o;
   }
   function loadState() {
@@ -249,7 +261,8 @@
     installEvt: null, wake: null, wakeOk: null, photos: {}, pendingSpot: null, shelfJars: [], previewJars: null, share: null,
     cardId: null, cardV: null, forceV: TEST ? ((location.search.match(/[?&]force=([cabdefgp])(?:&|$)/) || [])[1] || null) : null,
     depth: undefined, depthArea: null, depthAt: 0,
-    storms: null, stormsAt: 0, storm: null, spin: null, rewardToken: null
+    storms: null, stormsAt: 0, storm: null, spin: null, rewardToken: null,
+    flyReads: [], flyingNow: false, flyAt: 0, flightPos: null
   };
 
   /* ---------- named storms ----------
@@ -370,20 +383,44 @@
     var t = p.timestamp || now();
     var pos = { lat: c.latitude, lon: c.longitude, acc: c.accuracy || 9999, t: t };
     if (typeof c.altitude === 'number' && isFinite(c.altitude) && typeof c.altitudeAccuracy === 'number' && c.altitudeAccuracy <= 50) pos.alt = c.altitude;
+    if (typeof c.altitude === 'number' && isFinite(c.altitude) && !(c.altitudeAccuracy > 400)) pos.altF = c.altitude;
     var sp = typeof c.speed === 'number' && isFinite(c.speed) && c.speed >= 0 ? c.speed : null;
     var prev = R.pos;
+    var spF = sp;
     if (sp === null && prev && pos.acc <= 150 && prev.acc <= 150 && t - prev.t >= 8000) sp = distM(prev, pos) / ((t - prev.t) / 1000);
+    // a plane can be worked out from rougher fixes, as long as it has gone a long way fast
+    if (spF === null && prev && pos.acc <= 1000 && prev.acc <= 1000 && t - prev.t >= 8000 && t - prev.t <= 120000 && distM(prev, pos) >= 3000) spF = distM(prev, pos) / ((t - prev.t) / 1000);
+    if (spF === null) spF = sp;
     if (sp !== null) noteSpeed(sp);
+    pos.spd = spF;
     R.pos = pos;
     R.lastFix = now();
     R.locating = false;
     R.problem = null;
+    noteFlight(pos, spF);
+    // up in a plane the ground weather can't be caught, so the app doesn't keep asking for it
+    if (flying() || RU.isFlying(pos.altF, spF)) { R.flightPos = pos; render(); return; }
     var a = RU.areaOf(pos.lat, pos.lon);
     if (!R.area || a.id !== R.area.id) enterArea(a);
     else if (!R.wx || now() - R.wx.at > REFRESH) refreshWeather();
     render();
   }
 
+  /* a plane: two of the last three readings high and fast. It stops counting as a flight once that stops */
+  function noteFlight(pos, sp) {
+    var f = RU.isFlying(pos.altF, sp);
+    R.flyReads.push(f);
+    if (R.flyReads.length > 3) R.flyReads.shift();
+    var yes = R.flyReads.filter(Boolean).length;
+    if (yes >= 2) { if (!R.flyingNow) addLog('Flying'); R.flyingNow = true; R.flyAt = now(); }
+    else if (yes === 0) R.flyingNow = false;
+  }
+  function flying() { return R.flyingNow && now() - R.flyAt < 3 * MIN; }
+  function flightSun() {
+    var p = R.flightPos || R.pos;
+    return p ? RU.cloudSunset(now(), p.lat, p.lon, p.altF) : null;
+  }
+  function flightKey() { return 'cloudsunset|' + today(); }
   function enterArea(a) {
     var first = !R.area;
     R.area = a;
@@ -720,6 +757,7 @@
     renderTop();
     if (R.tab === 'catch') renderCatch();
     else if (R.tab === 'shelf') renderShelfHead();
+    else if (R.tab === 'games') renderGames();
     else renderMore();
     if (S.drive) renderDrive();
   }
@@ -744,7 +782,7 @@
   };
   function renderCatch() {
     var onboard = !S.onboarded;
-    var problem = !onboard && R.problem && !(R.problem !== 'weather' && R.area) ? R.problem : null;
+    var problem = !onboard && R.problem && !(R.problem !== 'weather' && R.area) && !flying() ? R.problem : null;
     $('onboard').hidden = !onboard;
     $('problem').hidden = !problem;
     $('live').hidden = onboard || !!problem;
@@ -758,6 +796,7 @@
     }
     if (onboard || problem) return;
     renderSky();
+    renderFlight();
     renderStormNote();
     renderCatchBox();
     renderAlso();
@@ -774,6 +813,19 @@
     } else warn.hidden = true;
   }
   function renderSky() {
+    if (flying()) {
+      var fp = R.flightPos || R.pos, fs = flightSun();
+      $('area-name').textContent = 'Above the clouds';
+      $('area-note').textContent = 'Flying' + (fp && typeof fp.spd === 'number' ? ' at ' + Math.round(fp.spd * 3.6) + ' km/h' : '');
+      $('temp').textContent = fp && typeof fp.altF === 'number' ? Math.round(fp.altF).toLocaleString('en-GB') + ' m' : '';
+      $('cond-name').textContent = fs && fs.now ? 'Sunset over the clouds' : 'Above the clouds';
+      var fpill = $('cond-pill');
+      fpill.hidden = !(fs && fs.now);
+      if (fs && fs.now) { fpill.setAttribute('data-r', 'legendary'); $('cond-rarity').textContent = 'Legendary · ' + RU.points('cloudsunset') + ' pts'; }
+      $('updated').textContent = 'The weather on the ground can’t be caught from a plane';
+      $('refresh-btn').disabled = true;
+      return;
+    }
     var head = R.cls ? R.cls.headline : null;
     $('area-name').textContent = R.area ? placeLong() : (R.locating ? 'Finding you…' : 'Your area');
     $('area-note').textContent = isPassenger() ? 'Passenger mode · area about 5 km across' : 'Area about 5 km across';
@@ -817,7 +869,36 @@
     el.innerHTML = html;
     el.hidden = false;
   }
+  /* up in a plane: how high, and whether the sun is setting yet */
+  function renderFlight() {
+    var card = $('flight-card');
+    if (!card) return;
+    var on = flying();
+    card.hidden = !on;
+    // the ground weather's tools aren't any use from a plane
+    ['refresh-btn', 'spot-btn', 'drive-btn'].forEach(function (k) { if ($(k)) $(k).hidden = on; });
+    ['nearby', 'comingup'].forEach(function (k) { if ($(k) && $(k).parentNode) $(k).parentNode.hidden = on; });
+    if (!on) return;
+    var fp = R.flightPos || R.pos, fs = flightSun();
+    $('fc-alt').textContent = fp && typeof fp.altF === 'number' ? Math.round(fp.altF).toLocaleString('en-GB') + ' m up' : 'High up';
+    var btn = $('fc-btn'), txt;
+    if (S.caught[flightKey()]) {
+      btn.disabled = true; btn.textContent = 'Caught today';
+      txt = '<strong>Sunset Over the Clouds is on your shelf.</strong> You can catch it again on another day’s flight.';
+    } else if (fs && fs.now) {
+      btn.disabled = false; btn.textContent = 'Catch Sunset Over the Clouds';
+      txt = '<strong>The sun is setting over the clouds.</strong> Catch it before it goes. It’s a legendary jar, and it never slips away.';
+    } else if (fs && fs.why === 'soon') {
+      btn.disabled = true; btn.textContent = 'Wait for the sunset';
+      txt = 'The sun sets in about ' + (fs.mins > 90 ? Math.round(fs.mins / 60) + ' hours' : minutes(fs.mins * MIN)) + ' where the plane is. Keep the app open and look out of the window.';
+    } else {
+      btn.disabled = true; btn.textContent = fs && fs.why === 'set' ? 'The sun has set' : 'Not sunset yet';
+      txt = 'Sunset Over the Clouds can be caught when the sun sets while you’re flying.';
+    }
+    $('fc-text').innerHTML = txt + ' The weather on the ground can’t be caught from up here.';
+  }
   function renderCatchBox() {
+    if (flying()) { $('lock-card').hidden = true; $('pass-pill').hidden = true; $('catch-box').hidden = true; R.target = null; return; }
     var locked = blockedByMoving();
     $('lock-card').hidden = !locked;
     $('pass-pill').hidden = !isPassenger();
@@ -866,7 +947,7 @@
   function renderAlso() {
     var list = catchables().filter(function (c) { return !R.target || c.id !== R.target.id; });
     var block = $('also-block');
-    if (!list.length || blockedByMoving()) { block.hidden = true; return; }
+    if (!list.length || blockedByMoving() || flying()) { block.hidden = true; return; }
     block.hidden = false;
     $('also-title').textContent = R.target ? 'Also here right now' : 'Here right now';
     $('also').innerHTML = list.map(function (c) {
@@ -879,7 +960,7 @@
   }
   function renderWonders() {
     var block = $('wonder-block');
-    if (!R.wonders.length) { block.hidden = true; return; }
+    if (!R.wonders.length || flying()) { block.hidden = true; return; }
     block.hidden = false;
     $('wonders').innerHTML = R.wonders.map(function (w) {
       var t = T(w.id);
@@ -990,8 +1071,23 @@
   var CHEVRON = '<svg class="chev" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>';
   var BULBS = ['#FFE3A6', '#FFB547', '#FF94A8', '#8FD3FF', '#9BF0C4'];
   /* shelf lights: a glowing strip, or fairy lights hanging in swags across the top */
+  var LANTERNS = ['#FF9A62', '#FFD36B', '#FF7B9C', '#9FD8FF', '#B8F0A0'];
   function lightsFor(kind, swags) {
     if (kind === 'glow') return '<span class="shelf-lights glow" aria-hidden="true"></span>';
+    if (kind === 'lanterns' || kind === 'stars') {
+      // paper lanterns, or a string of stars, hanging along a cord across the top
+      swags = swags || 2;
+      var w2 = 300 / swags, d2 = 'M0 3', out = '', n = 0;
+      for (var s2 = 0; s2 < swags; s2++) {
+        d2 += 'Q' + (s2 * w2 + w2 / 2) + ' 30 ' + ((s2 + 1) * w2) + ' 3';
+        [0.22, 0.5, 0.78].forEach(function (q) {
+          var x = (s2 + q) / swags * 100, y = 2 + 10.5 * 4 * q * (1 - q);
+          out += '<i style="left:' + x.toFixed(1) + '%;top:' + y.toFixed(1) + 'px;--b:' + (kind === 'stars' ? '#FFF1B8' : LANTERNS[n % LANTERNS.length]) + ';animation-delay:-' + ((n * 0.71) % 3).toFixed(2) + 's"></i>';
+          n += 1;
+        });
+      }
+      return '<span class="shelf-lights ' + kind + '" aria-hidden="true"><svg viewBox="0 0 300 30" preserveAspectRatio="none"><path d="' + d2 + '" vector-effect="non-scaling-stroke"></path></svg>' + out + '</span>';
+    }
     if (kind !== 'fairy') return '';
     swags = swags || 3;
     var w = 300 / swags, d = 'M0 2.5', bulbs = '', i = 0;
@@ -1026,7 +1122,7 @@
     var n = e ? e.n : 0;
     var later = !RU.catchable(t);
     var label = t.name + ', ' + rlabel(t.id) + (n ? ', caught ' + n + ' ' + plural(n, 'time') + (tierOf(n) ? ', ' + tierOf(n) : '') + ', ' + varsFound(e) + ' of ' + VARS.length + ' variants' : later ? ', coming in a later version' : ', not caught yet');
-    var meta = n ? rlabel(t.id) + (tierOf(n) ? ' · ' + tierOf(n) : '') : later ? 'Later' : rlabel(t.id);
+    var meta = later && !n ? 'Later' : rlabel(t.id);
     var nx = n ? RU.nextTier(n) : null;
     var bar = nx ? '<span class="tierbar t-' + nx.id + '" aria-hidden="true"><i style="width:' + Math.round(n / nx.at * 100) + '%"></i></span>' : '';
     if (nx) label += ', ' + (nx.at - n) + ' more for ' + nx.name.toLowerCase();
@@ -1048,9 +1144,10 @@
   function skySection() {
     var have = !!S.rewards.full;
     var label = 'The Sky Jar, ' + (have ? 'showing the live sky: ' + skyName() : 'not earned yet. Fill your shelf to earn it');
-    return '<section class="shelf-sec sky-sec" id="row-sky"><h2 class="shelf-h"><span class="row-static"><span class="row-name">The Sky Jar</span>' +
-      (have ? '<span class="row-pill gold-pill">' + esc(RU.KEEPER) + '</span>' : '<span class="shelf-sec-n">' + jarCount() + ' of ' + RU.SHELF_TOTAL + '</span>') + '</span></h2>' +
+    return '<section class="shelf-sec sky-sec" id="row-sky">' +
       '<div class="shelf sky-shelf' + (have ? ' sky-have' : '') + '">' + lightsFor(S.style.lights) +
+      '<h2 class="plate-h"><span class="plate plate-static"><span class="plate-name">The Sky Jar</span>' +
+      (have ? '<span class="row-pill gold-pill">' + esc(RU.KEEPER) + '</span>' : '<span class="plate-n">' + jarCount() + ' of ' + RU.SHELF_TOTAL + '</span>') + '</span></h2>' +
       '<button type="button" class="jarcell sky-cell' + (have ? '' : ' locked') + '" data-jar="sky" aria-label="' + esc(label) + '">' +
       '<canvas data-id="sky" aria-hidden="true"></canvas><span class="plank"></span><span class="jar-name">The Sky Jar</span>' +
       '<span class="jar-meta rc-legendary" id="sky-meta">' + esc(skyMeta()) + '</span></button>' +
@@ -1063,25 +1160,26 @@
   }
   function renderRewardCard(prog) {
     var next = RU.nextJarReward(prog.jars);
-    var kind;
+    var kind, sub = $('rw-sub');
     if (next) {
       $('rw-label').textContent = 'Next reward';
       $('rw-name').textContent = next.prize || next.name;
-      $('rw-sub').textContent = (next.id === 'full' ? 'Fill your whole shelf · ' + RU.KEEPER + ' title · ' : 'At ' + next.need + ' jars · ') + '+' + next.bonus + ' bonus points';
+      if (sub) sub.textContent = (next.id === 'full' ? 'Fill your whole shelf · ' + RU.KEEPER + ' title · ' : 'At ' + next.need + ' jars · ') + '+' + next.bonus + ' bonus points';
       $('rw-bar').hidden = false;
       $('rw-fill').style.width = Math.round(Math.min(1, prog.jars / next.need) * 100) + '%';
-      $('rw-count').textContent = prog.jars + ' of ' + next.need + ' jars';
+      $('rw-count').textContent = prog.jars + ' of ' + next.need + ' jars · +' + next.bonus;
       kind = next.wood ? 'wood-' + next.wood : next.lights ? 'lights-' + next.lights : 'sky';
     } else {
       var gold = prog.rows.filter(function (r) { return S.rewards['gold-' + r.el]; }).length;
       $('rw-label').textContent = RU.KEEPER;
       $('rw-name').textContent = gold < prog.rows.length ? 'Gold shelves' : 'Every shelf is gold';
-      $('rw-sub').textContent = gold < prog.rows.length ? 'Get every jar in a row to gold for +1000 bonus points. ' + gold + ' of ' + prog.rows.length + ' gold so far.' : 'You’ve won everything there is to win.';
+      if (sub) sub.textContent = gold < prog.rows.length ? 'Get every jar in a row to gold for +1000 bonus points. ' + gold + ' of ' + prog.rows.length + ' gold so far.' : 'You’ve won everything there is to win.';
       $('rw-bar').hidden = true;
-      $('rw-count').textContent = '';
+      $('rw-count').textContent = gold < prog.rows.length ? gold + ' of ' + prog.rows.length + ' rows gold' : 'All done';
       kind = 'gold';
     }
     var sw = $('rw-swatch');
+    if (!sw) return;
     if (sw.getAttribute('data-k') !== kind) {
       sw.setAttribute('data-k', kind);
       sw.innerHTML = swatchHtml(kind);
@@ -1094,29 +1192,91 @@
     var lo = RU.pointsFor(L), hi = RU.pointsFor(L + 1);
     $('lv-n').textContent = L;
     $('lv-title').textContent = S.rewards.full ? RU.KEEPER : RU.titleFor(L);
-    $('lv-pts').textContent = S.points + ' / ' + hi + ' points';
+    $('lv-pts').textContent = S.points.toLocaleString('en-GB') + ' / ' + hi.toLocaleString('en-GB') + ' points';
     $('lv-fill').style.width = Math.round((S.points - lo) / (hi - lo) * 100) + '%';
-    var next = RU.UNLOCKS.filter(function (u) { return u.level > L; })[0];
-    $('lv-next').textContent = next ? 'Level ' + next.level + ' unlocks ' + next.name.toLowerCase() + ': ' + next.text.charAt(0).toLowerCase() + next.text.slice(1) : 'Every forecast power is unlocked.';
     var prog = RU.shelfProgress(S.book);
-    $('jar-n').textContent = prog.jars;
-    $('jar-total').textContent = prog.total;
-    if (!$('reward-card')) return;
     var later = RU.ORDERED.filter(function (t) { return !RU.catchable(t); }).map(function (t) { return t.name; });
-    $('shelf-note').textContent = later.length ? listText(later) + (later.length === 1 ? ' arrives' : ' arrive') + ' in a later version.' : '';
-    $('shelf-note').hidden = !later.length;
+    if ($('shelf-note')) {
+      $('shelf-note').textContent = later.length ? listText(later) + (later.length === 1 ? ' arrives' : ' arrive') + ' in a later version.' : '';
+      $('shelf-note').hidden = !later.length;
+    }
     renderRewardCard(prog);
     var sm = $('sky-meta');
     if (sm && sm.textContent !== skyMeta()) sm.textContent = skyMeta();
+  }
+  /* ---------- the display case: the best jar on the shelf, in the spotlight ---------- */
+  function bestOnShelf() {
+    var best = null;
+    RU.ORDERED.forEach(function (t) {
+      var e = S.book[t.id];
+      if (!e || !e.n || !RU.catchable(t)) return;
+      var cands = [];
+      if (t.id === 'namedstorm' && stormNames(e).length) stormNames(e).forEach(function (nm) { var rec = stormRec(e, nm); cands.push({ storm: nm, v: (rec && rec.v) || 'c', n: e.storms[nm].n }); });
+      else cands.push({ v: bestVariant(e), n: e.n });
+      cands.forEach(function (c) {
+        var score = RU.variantRank(c.v) * 1000 + RU.rank(t.id) * 100 + Math.min(99, c.n);
+        if (!best || score > best.score) best = { id: t.id, v: c.v, storm: c.storm || null, score: score };
+      });
+    });
+    return best;
+  }
+  function caseState() {
+    var b = R.caseBest;
+    if (!b) return { locked: true, id: 'case' };
+    return b.storm ? stormState(b.storm) : jarState(b.id);
+  }
+  function shelfStats() {
+    var prog = RU.shelfProgress(S.book), found = 0, legends = 0, golds = 0, total = 0;
+    RU.ORDERED.filter(RU.catchable).forEach(function (t) {
+      var e = S.book[t.id];
+      total += VARS.length;
+      if (!e || !e.n) return;
+      found += varsFound(e);
+      if (e.vars && e.vars.p) legends += 1;
+      if (e.n >= RU.GOLD_AT) golds += 1;
+    });
+    return { jars: prog.jars, total: prog.total, found: found, vtotal: total, legends: legends, golds: golds };
+  }
+  function statChip(n, of, label) {
+    return '<span class="stat"><span class="stat-v"><b>' + n + '</b>' + (of ? '<span class="stat-of">/' + of + '</span>' : '') + '</span><span class="stat-k">' + esc(label) + '</span></span>';
+  }
+  function renderCase() {
+    var box = $('case');
+    if (!box) return;
+    var b = R.caseBest = bestOnShelf();
+    var st = shelfStats();
+    var t = b ? T(b.id) : null, vr = b ? RU.variant(b.id, b.v) : null, e = b ? S.book[b.id] : null;
+    var name = b ? (b.storm ? 'Storm ' + b.storm : t.name) : 'Your best jar goes here';
+    $('case-name').textContent = name;
+    $('case-var').innerHTML = b ? '<span class="' + (vr.legend ? 'legend-text' : '') + '">' + esc(vr.name) + '</span><span class="case-odds">' + esc(vr.odds) + '</span>' : 'Catch your first weather to start your shelf.';
+    $('case-meta').innerHTML = b ? '<span class="pill rc-' + t.r + '">' + esc(rlabel(b.id)) + '</span>' + (e && RU.tierFor(e.n) ? '<span class="case-tier">' + medal(e.n) + esc(RU.tierFor(e.n).name) + '</span>' : '') : '';
+    var jb = $('case-jar');
+    jb.setAttribute('aria-label', b ? 'Your best jar: ' + name + ', ' + vr.name + '. Open it' : 'No jars yet');
+    jb.disabled = !b;
+    $('case-stats').innerHTML = statChip(st.jars, st.total, 'jars') + statChip(st.found, st.vtotal, 'variants') +
+      statChip(st.legends, null, st.legends === 1 ? 'legendary' : 'legendaries') + statChip(st.golds, null, 'gold jars');
+    box.classList.toggle('case-empty', !b);
+    box.classList.toggle('case-legend', !!(vr && vr.legend));
+  }
+  var ROW_ICON = { sun: 'clear', rain: 'rain', frost: 'snow', wind: 'windy', storm: 'thunderstorm', mist: 'fog', wonder: 'starry', change: 'sunbreak' };
+  function rowChips(prog) {
+    return RU.ELEMENTS.map(function (el, i) {
+      var row = prog.rows[i], st = rowState(el.id);
+      return '<button type="button" class="rchip' + (row.complete ? ' done' : '') + (st.gold ? ' gold' : '') + '" data-jump="row-' + el.id + '" aria-label="' + esc(el.name + ' shelf, ' + row.have + ' of ' + row.need) + '">' +
+        icon(ROW_ICON[el.id], 16) + '<span>' + esc(el.name) + '</span><span class="rchip-n">' + row.have + '/' + row.need + '</span></button>';
+    }).join('') + '<button type="button" class="rchip' + (S.rewards.full ? ' gold' : '') + '" data-jump="row-sky">' + icon('star', 16) + '<span>Sky Jar</span></button>';
   }
   function renderShelf() {
     R.shelfJars = [];
     var sw = $('rw-swatch');
     if (sw) sw.removeAttribute('data-k');
     renderShelfHead();
+    renderCase();
     var prog = RU.shelfProgress(S.book);
+    if ($('row-chips')) $('row-chips').innerHTML = rowChips(prog);
     var box = $('shelves');
-    box.className = 'shelves wood-' + S.style.wood + ' lights-' + S.style.lights;
+    // one cabinet: every row is a compartment with a nameplate, in the shelf's own wood
+    box.className = 'shelves cabinet wood-' + S.style.wood + ' lights-' + S.style.lights;
     var html = RU.ELEMENTS.map(function (el, i) {
       var row = prog.rows[i];
       var types = RU.ORDERED.filter(function (t) { return t.el === el.id; });
@@ -1124,13 +1284,16 @@
       var dark = st.themed ? DARK_ROWS[el.id] : darkWood();
       var pill = st.gold ? '<span class="row-pill gold-pill">Gold</span>' : st.themed ? '<span class="row-pill">Complete</span>' : '';
       var label = el.name + ' shelf, ' + row.have + ' of ' + row.need + (st.gold ? ', gold' : st.themed ? ', complete' : '') + '. See what this shelf earns';
-      return '<section class="shelf-sec" id="row-' + el.id + '"><h2 class="shelf-h"><button type="button" class="row-btn" data-row="' + el.id + '" aria-label="' + esc(label) + '">' +
-        '<span class="row-name">' + esc(el.name) + '</span>' + pill + '<span class="shelf-sec-n">' + row.have + ' of ' + row.need + '</span>' + CHEVRON + '</button></h2>' +
-        '<div class="' + shelfClass(el.id, st.themed, st.gold) + '">' + lightsFor(S.style.lights) + types.map(function (t) { return jarCell(t, dark); }).join('') + '</div></section>';
+      return '<section class="shelf-sec" id="row-' + el.id + '"><div class="' + shelfClass(el.id, st.themed, st.gold) + '">' + lightsFor(S.style.lights) +
+        '<h2 class="plate-h"><button type="button" class="plate" data-row="' + el.id + '" aria-label="' + esc(label) + '">' +
+        '<span class="plate-name">' + esc(el.name) + '</span><span class="plate-n">' + row.have + ' of ' + row.need + '</span>' + pill + '</button></h2>' +
+        types.map(function (t) { return jarCell(t, dark); }).join('') + '</div></section>';
     }).join('');
     box.innerHTML = S.rewards.full ? skySection() + html : html + skySection();
     var cvs = box.querySelectorAll('canvas');
     for (var i = 0; i < cvs.length; i++) R.shelfJars.push(cvs[i]);
+    var cc = $('case-canvas');
+    if (cc) R.shelfJars.push(cc);
     if (jarObserver) R.shelfJars.forEach(function (cv) { jarObserver.observe(cv); });
     requestAnimationFrame(function () { drawShelf(2, true); });
   }
@@ -1149,7 +1312,7 @@
     }
     var t = T(id);
     var e = S.book[id];
-    if (!e || !e.n) return { locked: true, later: !RU.catchable(t) };
+    if (!e || !e.n) return { locked: true, later: !RU.catchable(t), id: id };
     var cur = R.cls ? R.cls.ids : [];
     var sunny = cur.indexOf('clear') !== -1 || cur.indexOf('sunnyspells') !== -1 || cur.indexOf('hotday') !== -1 || cur.indexOf('heatwave') !== -1;
     var snowy = cur.indexOf('snow') !== -1 || cur.indexOf('heavysnow') !== -1 || cur.indexOf('blizzard') !== -1 || cur.indexOf('sleet') !== -1;
@@ -1171,7 +1334,7 @@
     R.shelfJars.forEach(function (cv) {
       if (!all && jarObserver && !cv.wcSeen) return;
       var storm = cv.getAttribute('data-storm');
-      var st = storm ? stormState(storm) : jarState(cv.getAttribute('data-id'));
+      var st = cv.id === 'case-canvas' ? caseState() : storm ? stormState(storm) : jarState(cv.getAttribute('data-id'));
       if (st.locked && !st.ghost && !all) return;
       drawJarOn(cv, st, t, lookFor(cv, look));
     });
@@ -1183,9 +1346,10 @@
       drawJarOn(cv, v ? variantState(id, v) : jarState(id), t, lookFor(cv, look));
     });
   }
-  /* one variant of a jar: the one found, or a frosted preview of one still to find */
+  /* one variant of a jar: the one found, or a frosted preview of one still to find, even in a jar not caught yet */
   function variantState(id, v) {
-    var st = jarState(id), e = S.book[id], x = e && e.vars && e.vars[v];
+    var e = S.book[id], x = e && e.vars && e.vars[v];
+    var st = e && e.n ? jarState(id) : { id: id };
     st.mark = markOf(id, v, x ? x.seed : PREVIEW_SEED, x ? x.power : undefined);
     st.preview = !x;
     st.glow = null;
@@ -1199,16 +1363,20 @@
   function claimRewards() {
     var fresh = RU.rewardsEarned(S.book).filter(function (id) { return !S.rewards[id]; });
     // each reward remembers how the shelf looked just before it, so its card can show the change
-    return fresh.map(function (id) {
-      var rw = RU.reward(id);
-      var before = { wood: S.style.wood, lights: S.style.lights };
-      S.rewards[id] = now();
-      S.points += rw.bonus;
-      if (rw.wood) S.style.wood = rw.wood;
-      if (rw.lights) S.style.lights = rw.lights;
-      addLog('Reward: ' + rw.name + ' (+' + rw.bonus + ')');
-      return { reward: id, before: before };
-    });
+    var out = fresh.map(claimOne);
+    // shelf looks earned by levelling up, once the bonus points above are counted
+    RU.levelRewardsAt(RU.levelFor(S.points)).forEach(function (rw) { if (!S.rewards[rw.id]) out.push(claimOne(rw.id)); });
+    return out;
+  }
+  function claimOne(id) {
+    var rw = RU.reward(id);
+    var before = { wood: S.style.wood, lights: S.style.lights };
+    S.rewards[id] = now();
+    S.points += rw.bonus;
+    if (rw.wood) S.style.wood = rw.wood;
+    if (rw.lights) S.style.lights = rw.lights;
+    addLog('Reward: ' + rw.name + (rw.bonus ? ' (+' + rw.bonus + ')' : ''));
+    return { reward: id, before: before };
   }
   /* rewards earned before this version, or brought back with a backup code */
   function checkPendingRewards() {
@@ -1224,13 +1392,17 @@
     if (R.tab === 'shelf') renderShelf();
     openReveal(cards);
   }
-  function rewardLabel(rw) { return rw.kind === 'jars' ? 'Shelf reward' : rw.kind === 'row' ? 'Row complete' : rw.kind === 'gold' ? 'Gold shelf' : 'Shelf complete'; }
+  function rewardLabel(rw) { return rw.kind === 'jars' ? 'Shelf reward' : rw.kind === 'level' ? 'Level ' + rw.level + ' reward' : rw.kind === 'row' ? 'Row complete' : rw.kind === 'gold' ? 'Gold shelf' : 'Shelf complete'; }
   function rewardStats(rw) {
     var prog = RU.shelfProgress(S.book);
     if (rw.kind === 'jars') {
       var next = RU.nextJarReward(prog.jars);
       return (rw.wood ? 'You can switch woods any time in Shelf style.' : 'You can switch the lights any time in Shelf style.') +
         (next ? ' Next: ' + (next.prize || next.name).replace(/^The /, 'the ') + (next.id === 'full' ? ' when your shelf is full.' : ' at ' + next.need + ' jars.') : '');
+    }
+    if (rw.kind === 'level') {
+      var nl = RU.LEVEL_REWARDS.filter(function (x) { return x.level > rw.level; })[0];
+      return (rw.wood ? 'You can switch woods any time in Shelf style.' : 'You can switch the lights any time in Shelf style.') + (nl ? ' Something else is waiting at Level ' + nl.level + '.' : '');
     }
     if (rw.kind === 'row') return 'Rows finished: ' + prog.rows.filter(function (r) { return S.rewards['row-' + r.el]; }).length + ' of ' + prog.rows.length + '. ' + RU.reward('gold-' + rw.el).hint;
     if (rw.kind === 'gold') return 'Gold shelves: ' + prog.rows.filter(function (r) { return S.rewards['gold-' + r.el]; }).length + ' of ' + prog.rows.length + '.';
@@ -1255,6 +1427,7 @@
   function boxOn() { return !reduce && !(TEST && !/[?&]box=1(&|$)/.test(location.search)); }
   function rewardTeaser(rw) {
     if (rw.kind === 'jars') return rw.need + ' jars on your shelf!';
+    if (rw.kind === 'level') return 'Level ' + rw.level + '!';
     if (rw.kind === 'row') return 'The ' + elName(rw.el) + ' row is full!';
     if (rw.kind === 'gold') return 'Every ' + elName(rw.el) + ' jar is gold!';
     return 'Your whole shelf is full!';
@@ -1263,7 +1436,7 @@
   function rewardPreview(rw, swap, before) {
     if (rw.kind === 'full') return '<div class="r-sky' + (swap ? ' r-in' : '') + '"><div class="ov-jar"><canvas data-id="sky" aria-hidden="true"></canvas></div></div>';
     var now, old = '';
-    if (rw.kind === 'jars') {
+    if (rw.kind === 'jars' || rw.kind === 'level') {
       var ids = bestJars(shelfIds());
       now = miniShelf(ids);
       if (swap) old = miniShelf(ids, { wood: (before && before.wood) || S.style.wood, lights: (before && before.lights) || S.style.lights });
@@ -1284,14 +1457,14 @@
     void v.offsetWidth;
     v.classList.add('pop');
     $('r-label').textContent = rewardLabel(rw);
-    $('r-label').className = 'ov-label ' + (rw.kind === 'jars' ? 'rc-rare' : 'rc-legendary');
+    $('r-label').className = 'ov-label ' + (rw.kind === 'jars' || rw.kind === 'level' ? 'rc-rare' : 'rc-legendary');
     var prev = $('r-preview');
     var token = R.rewardToken = {};
     var finalActions = R.queue.length ? [{ label: 'Next', primary: true, fn: nextReveal }] :
       [{ label: 'Keep catching', fn: closeSheet }, { label: 'See your shelf', primary: true, fn: function () { seeShelf(rw); } }];
     var fill = function (anim) {
       $('r-title').textContent = rw.name;
-      var pts = '+' + rw.bonus + ' bonus points';
+      var pts = rw.bonus ? '+' + rw.bonus + ' bonus points' : 'A new look for your shelf';
       if (r.lvUp) pts += ' · Level ' + r.lvUp + '! ' + unlockText(r.lvUp);
       $('r-points').textContent = pts;
       $('r-line').textContent = rw.done;
@@ -1304,7 +1477,7 @@
       setActions('r-actions', finalActions);
     };
     var celebrate = function () {
-      confetti(rw.kind === 'jars' ? 36 : rw.kind === 'full' ? 70 : 50);
+      confetti(rw.kind === 'jars' || rw.kind === 'level' ? 36 : rw.kind === 'full' ? 70 : 50);
       try { if (navigator.vibrate) navigator.vibrate([30, 60, 30]); } catch (e) {}
       if (r.lvUp) toast('Level ' + r.lvUp + '! ' + unlockText(r.lvUp));
     };
@@ -1317,12 +1490,12 @@
       return;
     }
     // the closed box first
-    prev.innerHTML = '<button type="button" class="gift' + (rw.kind === 'jars' ? '' : ' gold-gift') + '" id="r-gift" aria-label="Open your reward">' +
+    prev.innerHTML = '<button type="button" class="gift' + (rw.kind === 'jars' || rw.kind === 'level' ? '' : ' gold-gift') + '" id="r-gift" aria-label="Open your reward">' +
       '<span class="gift-glow"></span><span class="gift-box"></span><span class="gift-lid"><span class="gift-bow"></span></span></button><p class="gift-hint">Tap to open</p>';
     R.previewJars = null;
     $('r-title').textContent = rewardTeaser(rw);
     $('r-points').textContent = '';
-    $('r-line').textContent = rw.kind === 'full' ? 'The last prize of all is inside.' : rw.kind === 'jars' ? 'Something new for your shelf is inside.' : 'Something new for this row is inside.';
+    $('r-line').textContent = rw.kind === 'full' ? 'The last prize of all is inside.' : rw.kind === 'jars' || rw.kind === 'level' ? 'Something new for your shelf is inside.' : 'Something new for this row is inside.';
     $('r-stats').textContent = '';
     var opened = false;
     var open = function () {
@@ -1411,7 +1584,7 @@
       var open = !rw || !!S.rewards[rw.id];
       var on = S.style[kind] === o.id;
       return '<button type="button" class="chip' + (on ? ' on' : '') + '" data-style="' + kind + ':' + o.id + '" aria-pressed="' + on + '"' + (open ? '' : ' disabled') + '>' +
-        (on ? icon('check', 14) : open ? '' : icon('lock', 14)) + '<span>' + esc(o.name) + '</span>' + (open ? '' : '<span class="chip-pts">' + rw.need + ' jars</span>') + '</button>';
+        (on ? icon('check', 14) : open ? '' : icon('lock', 14)) + '<span>' + esc(o.name) + '</span>' + (open ? '' : '<span class="chip-pts">' + (rw.kind === 'level' ? 'Level ' + rw.level : rw.need + ' jars') + '</span>') + '</button>';
     }).join('') + '</div>';
   }
   function rewardItem(name, sub, done, status) {
@@ -1422,9 +1595,11 @@
     var prog = RU.shelfProgress(S.book);
     var rows = prog.rows.filter(function (r) { return S.rewards['row-' + r.el]; }).length;
     var golds = prog.rows.filter(function (r) { return S.rewards['gold-' + r.el]; }).length;
+    var L = RU.levelFor(S.points);
     var items = RU.JAR_REWARDS.map(function (rw) {
       return rewardItem(rw.name, rw.need + ' jars · +' + rw.bonus + ' points', !!S.rewards[rw.id], prog.jars + ' of ' + rw.need);
     }).join('') +
+      RU.LEVEL_REWARDS.map(function (rw) { return rewardItem(rw.name, 'Reach Level ' + rw.level, !!S.rewards[rw.id], 'Level ' + L + ' of ' + rw.level); }).join('') +
       rewardItem('Finish a row', 'Each row gets its own look · +500 points', rows === prog.rows.length, rows + ' of ' + prog.rows.length) +
       rewardItem('Gold rows', 'Every jar in a row at gold · +1000 points', golds === prog.rows.length, golds + ' of ' + prog.rows.length) +
       rewardItem('The Sky Jar', 'Fill your whole shelf · ' + RU.KEEPER + ' · +2000 points', !!S.rewards.full, prog.jars + ' of ' + prog.total);
@@ -1452,6 +1627,177 @@
     collectPreview(body);
     var b = body.querySelector('[data-style="' + val + '"]');
     if (b) try { b.focus({ preventScroll: true }); } catch (e) { b.focus(); }
+  }
+
+  /* ---------- levels ahead ----------
+     Every level with something on it, up to 40: new titles, new powers and new shelf looks.
+     The next two are shown in full. Further on, only hints: a title's first letters, and a clue to the rest. */
+  function levelRoad() {
+    var road = {};
+    function at(L) { return road[L] || (road[L] = { level: L, items: [] }); }
+    RU.TITLES.forEach(function (tt) { if (tt[0] > 1) at(tt[0]).items.push({ kind: 'title', name: tt[1] }); });
+    RU.UNLOCKS.forEach(function (u) { at(u.level).items.push({ kind: 'unlock', name: u.name, text: u.text, hint: u.hint }); });
+    RU.LEVEL_REWARDS.forEach(function (r) { at(r.level).items.push({ kind: 'style', name: r.name, text: r.about, hint: r.hint }); });
+    return Object.keys(road).map(Number).sort(function (a, b) { return a - b; }).map(function (L) { return road[L]; });
+  }
+  function maskName(n) { return n.split(' ').map(function (w) { return w.charAt(0) + w.slice(1).replace(/[^\s]/g, '•'); }).join(' '); }
+  var ROAD_KIND = { title: 'New title', unlock: 'Unlocks', style: 'Shelf look' };
+  function openLevels() {
+    var L = RU.levelFor(S.points), lo = RU.pointsFor(L), hi = RU.pointsFor(L + 1);
+    var road = levelRoad(), ahead = 0, nextLv = null;
+    var rows = road.map(function (stop) {
+      var done = stop.level <= L;
+      var full = done || ahead < 2;
+      if (!done) { if (nextLv === null) nextLv = stop.level; ahead += 1; }
+      var items = stop.items.map(function (it) {
+        var k = '<span class="lr-k">' + ROAD_KIND[it.kind] + '</span>';
+        if (full) return '<li class="lr-item">' + k + '<strong>' + esc(it.name) + '</strong>' + (it.text ? '<span class="lr-t">' + esc(it.text) + '</span>' : '') + '</li>';
+        return '<li class="lr-item hint">' + k + '<strong>' + esc(it.kind === 'title' ? maskName(it.name) : 'Something new') + '</strong><span class="lr-t">' + esc(it.kind === 'title' ? 'A new title to call yourself.' : it.hint + '…') + '</span></li>';
+      }).join('');
+      var togo = RU.pointsFor(stop.level) - S.points;
+      return '<li class="lr-stop' + (done ? ' done' : '') + (stop.level === nextLv ? ' next' : '') + (full ? '' : ' far') + '" data-lv="' + stop.level + '">' +
+        '<span class="lr-node" aria-hidden="true">' + (done ? icon('check', 14) : full ? stop.level : icon('lock', 13)) + '</span>' +
+        '<div class="lr-body"><div class="lr-head"><span class="lr-lv">Level ' + stop.level + '</span><span class="lr-pts">' + (done ? 'Reached' : togo.toLocaleString('en-GB') + ' points to go') + '</span></div>' +
+        '<ul class="lr-items">' + items + '</ul></div></li>';
+    }).join('');
+    var head = '<div class="lv-now"><div class="bar" aria-hidden="true"><span style="width:' + Math.round((S.points - lo) / (hi - lo) * 100) + '%"></span></div>' +
+      '<p class="muted"><strong>' + (hi - S.points).toLocaleString('en-GB') + ' points</strong> to Level ' + (L + 1) + '. Catch weather to earn points: Common 10, Uncommon 25, Rare 75, Epic 200, Legendary 500. 4 and 5 star catches are worth more, and shelf rewards give bonus points.</p></div>';
+    showInfo({
+      label: 'Levels ahead', title: 'Level ' + L + ' · ' + (S.rewards.full ? RU.KEEPER : RU.titleFor(L)),
+      body: head + '<ol class="road">' + rows + '</ol><p class="muted">Your Games rank is separate. Play in the Games tab to rank up there.</p>'
+    });
+    var nx = $('i-body').querySelector('.lr-stop.next');
+    if (nx) setTimeout(function () { var sh = $('sheet'); if (sh && nx.offsetTop > sh.clientHeight * 0.6) sh.scrollTop = nx.offsetTop - sh.clientHeight * 0.35; }, 30);
+  }
+
+  /* ---------- the Games tab ----------
+     Weather minigames with a Games rank of their own. Nothing here changes catching: no points, no jars. */
+  function gameBest(g) {
+    var b = S.games.best[g.id];
+    if (b === undefined || b === null) return 'Not played yet';
+    if (g.id === 'reflex') return 'Best: ' + b + ' ms average' + (S.games.best.reflexTap ? ' · fastest ' + S.games.best.reflexTap + ' ms' : '');
+    if (g.id === 'thunder') return 'Best: ' + b + ' of 15 points';
+    if (g.id === 'rush') return 'Best: ' + b + ' ' + plural(b, 'drop');
+    return 'Best: ' + b + ' in a row';
+  }
+  var GAME_ART = {
+    reflex: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"></path>',
+    thunder: '<path d="M7 15.5h9.5a4 4 0 0 0 .4-7.98 5.5 5.5 0 0 0-10.6 1.2A3.4 3.4 0 0 0 7 15.5z"></path><path d="M12.5 15l-2 3.2h3l-1.8 3.3"></path>',
+    rush: '<path d="M8 4h8v3l1.5 2v10a1.5 1.5 0 0 1-1.5 1.5H8A1.5 1.5 0 0 1 6.5 19V9L8 7z"></path><path d="M9.5 13.5c1 1.4 4 1.4 5 0"></path><path d="M12 1.5v1.5"></path>',
+    hot: '<path d="M10 14.8V5a2 2 0 0 1 4 0v9.8a3.6 3.6 0 1 1-4 0z"></path><path d="M12 9v7"></path>'
+  };
+  function gameIcon(id, size) { return '<svg viewBox="0 0 24 24" width="' + size + '" height="' + size + '" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + GAME_ART[id] + '</svg>'; }
+  function renderGames() {
+    if (!$('panel-games') || !WC.mini) return;
+    var G = S.games, rk = WC.mini.rankFor(G.xp);
+    $('rank-name').textContent = rk.name;
+    $('rank-xp').textContent = G.xp.toLocaleString('en-GB') + ' Games XP' + (rk.next ? ' · ' + (rk.next.at - G.xp) + ' to ' + rk.next.name : ' · the top rank');
+    $('rank-fill').style.width = (rk.next ? Math.round((G.xp - rk.at) / (rk.next.at - rk.at) * 100) : 100) + '%';
+    $('rank-badge').setAttribute('data-r', rk.i);
+    $('rank-badge').textContent = rk.i + 1;
+    $('game-list').innerHTML = WC.mini.GAMES.map(function (g) {
+      return '<button type="button" class="game-card g-' + g.id + '" data-game="' + g.id + '"><span class="gc-art">' + gameIcon(g.id, 30) + '</span>' +
+        '<span class="gc-body"><span class="gc-name">' + esc(g.name) + '</span><span class="gc-line">' + esc(g.line) + '</span><span class="gc-best">' + esc(gameBest(g)) + '</span></span>' +
+        '<span class="gc-play">Play</span></button>';
+    }).join('');
+    $('rank-road').innerHTML = WC.mini.RANKS.map(function (r, i) {
+      var have = G.xp >= r[0];
+      return '<li class="' + (have ? 'have' : '') + (i === rk.i ? ' cur' : '') + '"><span class="rr-n">' + (i + 1) + '</span><span class="rr-name">' + esc(r[1]) + '</span><span class="rr-xp">' + (i ? r[0].toLocaleString('en-GB') + ' XP' : 'Start') + '</span></li>';
+    }).join('');
+  }
+  var MINI_INSTR = {
+    reflex: 'Wait for the lightning, then tap as fast as you can. Five strikes. Tap too soon and you have to wait again.',
+    thunder: 'Watch for the flash, then count the seconds until you hear or feel the rumble. Every 3 seconds is about 1 km. Turn your sound on.',
+    rush: 'Drag the jar to catch the rain. Gold drops are worth 5. Hail costs a life, and so does lightning: move away from the glowing stripe.',
+    hot: 'Two cities and their weather right now. Tap the one you think is hotter. How many can you get in a row?'
+  };
+  function openMini(id) {
+    var g = WC.mini && WC.mini.GAMES.filter(function (x) { return x.id === id; })[0];
+    if (!g || !$('mini-view')) return;
+    showView('mini');
+    $('mg-label').textContent = 'Games';
+    $('mg-title').textContent = g.name;
+    $('mg-instr').textContent = MINI_INSTR[id];
+    $('mg-msg').hidden = true;
+    $('mg-msg').innerHTML = '';
+    $('mg-stage').hidden = id === 'hot';
+    $('mg-choices').hidden = true;
+    $('mg-choices').innerHTML = '';
+    $('mg-choices').className = 'mg-choices';
+    $('mg-status').textContent = '';
+    $('mg-best').textContent = gameBest(g);
+    setActions('mg-actions', [{ label: 'Stop', fn: closeSheet }]);
+    openSheet();
+    try { $('mg-stage').focus({ preventScroll: true }); } catch (e) {}
+    WC.mini.start(id, miniUI(id));
+  }
+  function miniUI(id) {
+    return {
+      canvas: $('mg-canvas'),
+      status: function (t) { $('mg-status').textContent = t; },
+      choices: function (list, kind) { miniChoices(list, kind); },
+      reveal: function (temps, picked, right) {
+        Array.prototype.forEach.call($('mg-choices').querySelectorAll('.city'), function (b, i) {
+          b.disabled = true;
+          var tEl = b.querySelector('.city-t');
+          if (tEl) tEl.textContent = temps[i] + '°C';
+          b.classList.add(i === picked ? (right ? 'right' : 'wrong') : 'other');
+        });
+      },
+      done: function (res) { finishMini(id, res); },
+      buzz: function (p) { try { if (navigator.vibrate) navigator.vibrate(p); } catch (e) {} },
+      here: function () {
+        var o = R.reading;
+        return o && typeof o.temp === 'number' && !flying() && R.wx && now() - R.wx.at < HOUR ? { temp: o.temp, name: R.place ? R.place.short : 'Where you are', code: o.code, day: o.isDay } : null;
+      }
+    };
+  }
+  function miniChoices(list, kind) {
+    var box = $('mg-choices');
+    if (!list) { box.hidden = true; box.innerHTML = ''; return; }
+    box.hidden = false;
+    box.className = 'mg-choices' + (kind === 'cities' ? ' cities' : '');
+    box.innerHTML = '';
+    list.forEach(function (c) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      if (kind === 'cities') {
+        var city = c.city;
+        b.className = 'city';
+        b.innerHTML = '<span class="city-ic">' + icon(WC.mini.weatherKind(city.code, city.day), 30) + '</span><span class="city-name">' + esc(city.name) + '</span>' +
+          '<span class="city-c">' + esc(city.you ? 'Where you are' : city.country) + (city.offset !== null && city.offset !== undefined ? ' · ' + WC.mini.localTime(city.offset) + ' there' : '') + '</span><span class="city-t">?</span>';
+      } else {
+        b.className = 'btn';
+        b.textContent = c.label;
+      }
+      b.addEventListener('click', c.fn);
+      box.appendChild(b);
+    });
+  }
+  function finishMini(id, res) {
+    var G = S.games;
+    if (!res) {
+      $('mg-msg').innerHTML = '<strong>No internet right now.</strong> Hotter or Colder needs the live weather. The other games work anywhere.';
+      $('mg-msg').hidden = false;
+      setActions('mg-actions', [{ label: 'Close', fn: closeSheet }, { label: 'Try again', primary: true, fn: function () { openMini(id); } }]);
+      return;
+    }
+    var xp = WC.mini.xpFor(id, res), before = WC.mini.rankFor(G.xp);
+    var sc = WC.mini.scoreOf(id, res), old = G.best[id], isBest = WC.mini.better(id, sc, old);
+    G.xp += xp;
+    G.plays[id] = (G.plays[id] || 0) + 1;
+    if (isBest) G.best[id] = sc;
+    if (id === 'reflex' && (!G.best.reflexTap || res.bestTap < G.best.reflexTap)) G.best.reflexTap = res.bestTap;
+    var after = WC.mini.rankFor(G.xp);
+    save();
+    renderGames();
+    $('mg-msg').innerHTML = '<div class="mg-res"><strong>' + esc(res.summary) + '</strong>' + (isBest && old !== undefined ? '<span class="v-new">New best</span>' : '') + '</div>' +
+      '<div>+' + xp + ' Games XP' + (after.i > before.i ? ' · <strong>New rank: ' + esc(after.name) + '!</strong>' : after.next ? ' · ' + (after.next.at - G.xp) + ' to ' + esc(after.next.name) : '') + '</div>';
+    $('mg-msg').hidden = false;
+    $('mg-best').textContent = gameBest(WC.mini.GAMES.filter(function (x) { return x.id === id; })[0]);
+    setActions('mg-actions', [{ label: 'Close', fn: closeSheet }, { label: 'Play again', primary: true, fn: function () { openMini(id); } }]);
+    if (after.i > before.i) { confetti(50); toast('New Games rank: ' + after.name + '!'); }
+    else if (isBest && old !== undefined) confetti(18);
   }
 
   /* ---------- sharing a jar ----------
@@ -1636,7 +1982,8 @@
 
   function selectTab(tab) {
     R.tab = tab;
-    ['catch', 'shelf', 'more'].forEach(function (k) {
+    ['catch', 'shelf', 'games', 'more'].forEach(function (k) {
+      if (!$('panel-' + k)) return;
       $('panel-' + k).hidden = k !== tab;
       if (k === tab) $('nav-' + k).setAttribute('aria-current', 'page');
       else $('nav-' + k).removeAttribute('aria-current');
@@ -1655,10 +2002,12 @@
     R.previewJars = null;
     $('sheet').scrollTop = 0;
     $('game-view').hidden = name !== 'game';
+    if ($('mini-view')) $('mini-view').hidden = name !== 'mini';
+    if (name !== 'mini' && WC.mini) WC.mini.stop();
     $('card-view').hidden = name !== 'card';
     if ($('reward-view')) $('reward-view').hidden = name !== 'reward';
     $('info-view').hidden = name !== 'info';
-    $('sheet').setAttribute('aria-labelledby', name === 'game' ? 'g-title' : name === 'card' ? 'c-title' : name === 'reward' ? 'r-title' : 'i-title');
+    $('sheet').setAttribute('aria-labelledby', name === 'game' ? 'g-title' : name === 'mini' ? 'mg-title' : name === 'card' ? 'c-title' : name === 'reward' ? 'r-title' : 'i-title');
   }
   function setActions(boxId, list) {
     var box = $(boxId);
@@ -1678,7 +2027,7 @@
     if (ov.hidden) R.lastFocus = document.activeElement;
     ov.hidden = false;
     kick();
-    if (R.view !== 'game') {
+    if (R.view !== 'game' && R.view !== 'mini') {
       var btns = $(R.view === 'card' ? 'c-actions' : R.view === 'reward' ? 'r-actions' : 'i-actions').querySelectorAll('button');
       var target = btns[btns.length - 1];
       if (target) try { target.focus({ preventScroll: true }); } catch (e) { target.focus(); }
@@ -1686,6 +2035,7 @@
   }
   function closeSheet() {
     stopSpin();
+    if (WC.mini) WC.mini.stop();
     $('overlay').hidden = true;
     R.game = null;
     R.cardState = null;
@@ -1725,6 +2075,8 @@
   /* ---------- catching ---------- */
 
   function beginCatch(id, kind, key) {
+    if (kind === 'flight') { openFlightCatch(); return; }
+    if (flying()) { toast('You’re flying! The weather on the ground can’t be caught from up here.'); return; }
     if (blockedByMoving()) { toast('You’re moving fast. Passengers can tap I’m a passenger.'); return; }
     if (!R.area) return;
     if (S.caught[key]) { toast('You’ve already caught that today.'); return; }
@@ -1743,15 +2095,23 @@
     }
     openGame(id, kind, key);
   }
+  /* Sunset Over the Clouds: no weather needed, just the plane and the sun */
+  function openFlightCatch() {
+    if (!flying()) { toast('Sunset Over the Clouds can only be caught from a plane.'); render(); return; }
+    var fs = flightSun();
+    if (!fs || !fs.now) { toast('Wait for the sun to set where the plane is.'); render(); return; }
+    if (S.caught[flightKey()]) { toast('You’ve caught it today already.'); return; }
+    openGame('cloudsunset', 'flight', flightKey());
+  }
   function openGame(id, kind, key) {
     var t = T(id);
-    R.game = { id: id, kind: kind, key: key, areaId: R.area.id, g: WC.game.create({ id: id, night: R.reading ? !R.reading.isDay : false }), missHandled: false, why: kind === 'spotted' ? spotWhy(id) : '' };
+    R.game = { id: id, kind: kind, key: key, areaId: R.area ? R.area.id : 'sky', g: WC.game.create({ id: id, night: R.reading ? !R.reading.isDay : false }), missHandled: false, why: kind === 'spotted' ? spotWhy(id) : '' };
     showView('game');
     $('g-label').textContent = kind === 'wonder' ? 'Sky Wonder' : kind === 'spotted' ? 'You spotted it' : 'Catch it';
     $('g-label').className = 'ov-label rc-' + t.r;
     $('g-title').textContent = 'Catch ' + liveName(id);
     $('g-instr').textContent = R.game.g.instruction;
-    $('g-flee').textContent = id === 'namedstorm' ? 'Named storms never slip away. Keep trying while it’s here' : WC.game.fleeChance(id) ? rlabel(id) + ': can slip away if you miss' : 'Commons never slip away';
+    $('g-flee').textContent = id === 'namedstorm' ? 'Named storms never slip away. Keep trying while it’s here' : id === 'cloudsunset' ? 'It never slips away. Keep trying while the sun sets' : WC.game.fleeChance(id) ? rlabel(id) + ': can slip away if you miss' : 'Commons never slip away';
     hideGameMsg();
     setActions('g-actions', [{ label: 'Let it go', fn: closeSheet }]);
     openSheet();
@@ -1817,6 +2177,14 @@
       if (elev !== undefined) rec.elev = Math.round(elev);
     }
     if (R.pos && typeof R.pos.alt === 'number' && now() - R.lastFix < 10 * MIN) rec.alt = Math.round(R.pos.alt);
+    if (how === 'flight') {
+      rec.place = 'above the clouds';
+      delete rec.where;
+      var fp = R.flightPos || R.pos;
+      if (fp && typeof fp.altF === 'number') rec.alt = Math.round(fp.altF);
+      if (fp && typeof fp.spd === 'number') rec.kmh = Math.round(fp.spd * 3.6);
+      delete rec.temp; delete rec.wind; delete rec.gust; delete rec.rain; delete rec.snow; delete rec.vis; delete rec.visM; delete rec.depth; delete rec.elev;
+    }
     // caught in a named storm: the catch remembers which one
     if (R.storm && R.area && R.area.id === areaId && R.cls && R.cls.ids.indexOf('namedstorm') !== -1) rec.storm = R.storm.name;
     return rec;
@@ -1967,6 +2335,9 @@
       prev = prev.filter(function (p) { return t - p.t <= 3 * HOUR; });
       prev.push({ id: G.id, t: t });
       S.recent[G.areaId] = prev.slice(-8);
+    } else if (G.kind === 'flight') {
+      var fp = R.flightPos || R.pos;
+      list.push(awardOne(G.id, G.key, 'above the clouds', 'Caught from a plane' + (fp && typeof fp.altF === 'number' ? ' ' + Math.round(fp.altF).toLocaleString('en-GB') + ' m up' : '') + ', as the sun set at ' + hm(t) + '.', 'flight', G.areaId));
     } else {
       list.push(awardOne(G.id, G.key, place, 'Matches the sky over ' + place + ' at ' + hm(t) + '.', 'sky', G.areaId));
     }
@@ -2093,19 +2464,22 @@
     var box = $('c-vars');
     if (!box) return;
     var e = id && S.book[id];
-    setJarNav(!!(e && e.n));
-    if (!e || !e.n) { box.hidden = true; box.innerHTML = ''; return; }
+    var show = !!id && RU.catchable(T(id));
+    setJarNav(show);
+    if (!show) { box.hidden = true; box.innerHTML = ''; return; }
+    var have = !!(e && e.n);
     box.hidden = false;
     var list = RU.variants(id), lv = list[list.length - 1];
-    box.innerHTML = '<div class="var-h"><span class="h2">Variants</span><span class="var-n">' + varsFound(e) + ' of ' + list.length + ' found</span></div>' +
+    box.innerHTML = '<div class="var-h"><span class="h2">Variants</span><span class="var-n">' + (have ? varsFound(e) : 0) + ' of ' + list.length + ' found</span></div>' +
       '<div class="var-strip" role="group" aria-label="Variants of this jar">' + list.map(function (vr) {
-        var x = e.vars && e.vars[vr.id];
+        var x = e && e.vars && e.vars[vr.id];
         var on = R.cardV === vr.id;
         return '<button type="button" class="vjar' + (on ? ' on' : '') + (x ? '' : ' locked') + (vr.legend ? ' legend' : '') + '" data-var="' + vr.id + '" aria-pressed="' + on + '"' +
           ' aria-label="' + esc(vr.name + (vr.legend ? ', legendary' : '') + (x ? ', found ' + x.n + ' ' + plural(x.n, 'time') : ', not found yet, ' + vr.odds + ' jars')) + '">' +
           '<canvas data-id="' + id + '" data-var="' + vr.id + '" aria-hidden="true"></canvas><span class="vjar-n">' + (x ? '×' + x.n : esc(vr.odds)) + '</span></button>';
       }).join('') + '</div>' +
-      (e.vars && e.vars.p ? '' : '<p class="small var-note"><span class="legend-text">' + esc(lv.name) + '</span> is this shelf’s legendary, the rarest find of all: about 1 in every 60 catches.</p>');
+      (!have ? '<p class="small var-note">Swipe the jar to see all eight. You find out which one you get when you catch it. <span class="legend-text">' + esc(lv.name) + '</span> is its legendary, about 1 in every 60 catches.</p>' :
+        e.vars && e.vars.p ? '' : '<p class="small var-note"><span class="legend-text">' + esc(lv.name) + '</span> is this jar’s legendary, the rarest find of all: about 1 in every 60 catches.</p>');
     R.previewJars = Array.prototype.slice.call(box.querySelectorAll('canvas[data-var]'));
   }
   /* scroll the strip sideways so the variant on show is in the middle, without moving the card */
@@ -2176,10 +2550,11 @@
   }
   function pickVariant(v) {
     var id = R.cardId, e = id && S.book[id];
-    var vr = e && RU.variant(id, v);
+    var vr = id && RU.variant(id, v);
     if (!vr || vr.id !== v || R.view !== 'card') return;
-    var x = e.vars && e.vars[v];
+    var x = e && e.vars && e.vars[v];
     R.cardV = v;
+    if (!e || !e.n) R.cardState = variantState(id, v);
     R.cardState.mark = markOf(id, v, x ? x.seed : PREVIEW_SEED, x ? x.power : undefined);
     R.cardState.preview = !x;
     setVariant(id, v, false, !x);
@@ -2258,14 +2633,17 @@
       $('c-stats').textContent = '×' + n + (e.places.length ? ' · Places: ' + e.places.slice(-12).join(', ') : '') + (season ? ' · ' + season : '');
       setVerify(e.first ? 'First caught ' + new Date(e.first.t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' at ' + hm(e.first.t) + (e.first.place ? ' in ' + e.first.place : '') : '');
     } else {
-      $('c-stats').textContent = t.how === 'photo' ? 'Caught with a photo when the weather makes it possible.' : t.how === 'change' ? 'Earned when the weather turns while you’re there.' : t.how === 'sky' ? 'Comes from the sky calendar.' : season;
+      $('c-stats').textContent = t.how === 'photo' ? 'Caught with a photo when the weather makes it possible.' : t.how === 'change' ? 'Earned when the weather turns while you’re there.' : t.how === 'sky' ? 'Comes from the sky calendar.' :
+        t.how === 'flight' ? 'Caught from a plane while the sun sets. Keep the app open on the flight: your phone’s GPS can tell you’re flying, even without wifi.' : season;
       setVerify('');
     }
     setTier(n);
-    R.cardState = jarState(id);
     R.cardId = id;
-    R.cardV = n ? bestVariant(e) : null;
-    setVariant(n ? id : null, R.cardV, false);
+    // a jar not caught yet shows a frosted preview of its Classic, and every variant can be looked at
+    var open = !n && RU.catchable(t);
+    R.cardV = n ? bestVariant(e) : open ? 'c' : null;
+    R.cardState = open ? variantState(id, 'c') : jarState(id);
+    setVariant(n || open ? id : null, R.cardV, false, open);
     setStrength(n && e.best ? e.best : null, '', 'Strongest');
     renderVars(id);
     R.share = null;
@@ -2321,7 +2699,7 @@
       body: '<p class="muted">The weather data can miss a passing shower or a patch of fog, and Sky Wonders like rainbows are caught with a photo. Only catch what you can really see, and never look straight at the sun.</p>' +
         (rows ? '<ul class="spot-list">' + rows + '</ul>' : '<p>Nothing else can be caught here right now.</p>') +
         (nots ? '<details class="not-box"><summary>Not possible right now (' + cannot.length + ')</summary><ul class="not-list">' + nots + '</ul></details>' : '') +
-        '<p class="muted">In this test version photos aren’t checked yet.</p>'
+        '<p class="muted">Photos are checked on your phone: they have to show the sky, with no faces in them.</p>'
     });
   }
   function takePhoto(id) {
@@ -2338,20 +2716,37 @@
     if (!file || !id) return;
     var key = id + '|' + today();
     if (S.caught[key]) { toast('You’ve already caught ' + T(id).name + ' today.'); return; }
-    toast('Putting your photo in a jar…');
+    toast('Checking your photo…');
     shrinkPhoto(file).then(function (blob) {
-      var before = RU.levelFor(S.points);
-      var place = placeFor(R.area ? R.area.id : '');
-      var r = awardOne(id, key, place, 'Photo taken in ' + place + ' at ' + hm(now()) + ', when the weather made it possible.', 'photo', R.area ? R.area.id : '');
-      var pk = 'p' + Date.now();
-      S.book[id].photo = pk;
-      lastCatch(S.book[id]).photo = pk;
-      var img = imgFromBlob(blob);
-      R.photos[pk] = img;
-      r.img = img;
-      putPhoto(pk, blob).catch(function () {});
-      afterAward([r], before);
+      var checker = WC.photoCheck ? WC.photoCheck.check(blob, id).catch(function () { return { ok: true, text: '' }; }) : Promise.resolve({ ok: true, text: '' });
+      return checker.then(function (v) {
+        if (!v.ok) { photoFailed(id, v); return; }
+        putInJar(id, key, blob, v);
+      });
     }).catch(function () { toast('That photo couldn’t be read. Try again.'); });
+  }
+  /* a photo that didn't pass: say why, and offer another go straight away */
+  function photoFailed(id, v) {
+    var el = $('toast');
+    if (el) el.hidden = true;
+    showInfo({
+      label: 'Photo check', labelClass: 'rc-danger', title: 'That photo didn’t pass',
+      body: '<p>' + esc(v.text) + '</p><p class="muted">Photos are checked on your phone, and nothing is sent anywhere. Take a new photo of the ' + esc(T(id).name) + ' to catch it.</p>',
+      actions: [{ label: 'Not now', fn: closeSheet }, { label: 'Try another photo', primary: true, fn: function () { closeSheet(); takePhoto(id); } }]
+    });
+  }
+  function putInJar(id, key, blob, v) {
+    var before = RU.levelFor(S.points);
+    var place = placeFor(R.area ? R.area.id : '');
+    var r = awardOne(id, key, place, (v && v.text ? v.text + ' ' : '') + 'Taken in ' + place + ' at ' + hm(now()) + ', when the weather made it possible.', 'photo', R.area ? R.area.id : '');
+    var pk = 'p' + Date.now();
+    S.book[id].photo = pk;
+    lastCatch(S.book[id]).photo = pk;
+    var img = imgFromBlob(blob);
+    R.photos[pk] = img;
+    r.img = img;
+    putPhoto(pk, blob).catch(function () {});
+    afterAward([r], before);
   }
 
   /* ---------- Drive mode ---------- */
@@ -2381,7 +2776,7 @@
      left the area the trip set off from. So nobody can skip the catching games where they are */
   function driving() { return R.fast && now() - R.speedAt < 2 * MIN; }
   function driveSeal() {
-    if (!S.drive || !R.cls || !R.area || !S.haul) return;
+    if (!S.drive || !R.cls || !R.area || !S.haul || flying()) return;
     if (!S.haul.from) { S.haul.from = R.area.id; save(); }
     if (R.area.id === S.haul.from || !driving()) return;
     if (!R.wx || R.wx.areaId !== R.area.id) return;
@@ -2628,6 +3023,10 @@
   }
   /* the scene for the live sky: the headline weather, or a clear or cloudy night when nothing's catchable */
   function skyScene() {
+    if (flying()) {
+      var fs = flightSun();
+      return fs && fs.now ? 'cloudsunset' : fs && fs.el > -6 ? 'flying' : 'flyingnight';
+    }
     if (!R.cls) return 'overcast';
     if (R.cls.headline) return R.cls.headline;
     if (R.reading && !R.reading.isDay) return typeof R.reading.cloud === 'number' && R.reading.cloud < 30 ? 'starry' : 'quiet';
@@ -2663,7 +3062,8 @@
       var w = R.wonders.filter(function (x) { return x.id === b.getAttribute('data-wonder'); })[0];
       if (w) beginCatch(w.id, 'wonder', w.key);
     });
-    $('spot-btn').addEventListener('click', openSpot);
+    $('spot-btn').addEventListener('click', function () { if (flying()) toast('You’re flying! The weather on the ground can’t be caught from up here.'); else openSpot(); });
+    if ($('fc-btn')) $('fc-btn').addEventListener('click', openFlightCatch);
     $('i-body').addEventListener('click', function (ev) {
       var b = ev.target.closest ? ev.target.closest('[data-photo]') : null;
       if (b) { takePhoto(b.getAttribute('data-photo')); return; }
@@ -2683,10 +3083,37 @@
     $('lock-passenger').addEventListener('click', function () { S.passengerUntil = now() + 3 * HOUR; save(); render(); toast('Passenger mode is on for the next 3 hours.'); });
     $('pass-off').addEventListener('click', function () { S.passengerUntil = 0; save(); render(); });
     $('drive-end').addEventListener('click', endDrive);
-    $('lvl').addEventListener('click', function () { selectTab('shelf'); });
+    $('lvl').addEventListener('click', openLevels);
     $('nav-catch').addEventListener('click', function () { selectTab('catch'); });
     $('nav-shelf').addEventListener('click', function () { selectTab('shelf'); });
+    if ($('nav-games')) $('nav-games').addEventListener('click', function () { selectTab('games'); });
     $('nav-more').addEventListener('click', function () { selectTab('more'); });
+    if ($('lv-tile')) $('lv-tile').addEventListener('click', openLevels);
+    if ($('rw-tile')) $('rw-tile').addEventListener('click', openStyle);
+    if ($('case-jar')) $('case-jar').addEventListener('click', function () { if (R.caseBest) openDetail(R.caseBest.id, R.caseBest.storm); });
+    if ($('row-chips')) $('row-chips').addEventListener('click', function (ev) {
+      var b = ev.target.closest ? ev.target.closest('[data-jump]') : null;
+      var to = b && $(b.getAttribute('data-jump'));
+      if (to) try { to.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' }); } catch (e) { to.scrollIntoView(); }
+    });
+    if ($('game-list')) $('game-list').addEventListener('click', function (ev) {
+      var b = ev.target.closest ? ev.target.closest('[data-game]') : null;
+      if (b) openMini(b.getAttribute('data-game'));
+    });
+    var mst = $('mg-stage');
+    if (mst) {
+      var mxy = function (e) { var r = mst.getBoundingClientRect(); return r.width ? [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height] : [0.5, 0.5]; };
+      mst.addEventListener('pointerdown', function (e) {
+        if (!WC.mini || !WC.mini.active()) return;
+        e.preventDefault();
+        try { mst.setPointerCapture(e.pointerId); } catch (x) {}
+        var p = mxy(e);
+        WC.mini.pointer('down', p[0], p[1], e.timeStamp);
+      });
+      mst.addEventListener('pointermove', function (e) { if (WC.mini && WC.mini.active()) { var p = mxy(e); WC.mini.pointer('move', p[0], p[1]); } });
+      mst.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+      mst.addEventListener('keydown', function (e) { if (WC.mini && WC.mini.key(e.key)) e.preventDefault(); });
+    }
     $('shelves').addEventListener('click', function (ev) {
       var row = ev.target.closest ? ev.target.closest('[data-row]') : null;
       if (row) { openRowInfo(row.getAttribute('data-row')); return; }
@@ -2793,7 +3220,7 @@
         if (S.onboarded && !R.problem) {
           if (R.watchId === null) startWatch();
           if (S.drive) requestWake();
-          if (R.area && (!R.wx || now() - R.wx.at > REFRESH)) refreshWeather();
+          if (R.area && !flying() && (!R.wx || now() - R.wx.at > REFRESH)) refreshWeather();
           else if (R.wx) { evaluate(); render(); }
         }
       }
@@ -2818,6 +3245,7 @@
   function tick() {
     if (R.speedAt && now() - R.speedAt > 3 * MIN) { R.fast = false; R.moving = false; }
     if (document.hidden) return;
+    if (flying()) { render(); return; }
     if (R.area && !R.fetching && (!R.wx || now() - R.wx.at > REFRESH)) refreshWeather();
     else if (R.wx) evaluate();
     render();
@@ -2859,6 +3287,7 @@
       win: function () { if (R.game) R.game.g.win(); },
       miss: function (text) { if (R.game) R.game.g.miss(text || 'Missed.'); },
       speed: function (mps) { noteSpeed(mps); noteSpeed(mps); render(); },
+      pos: function (lat, lon, alt, mps) { onPos({ coords: { latitude: lat, longitude: lon, accuracy: 30, altitude: alt === undefined ? null : alt, altitudeAccuracy: alt === undefined ? null : 20, speed: mps === undefined ? null : mps }, timestamp: now() }); },
       refresh: function () { return refreshWeather(true); },
       evaluate: function () { evaluate(); render(); },
       pending: function () { checkPendingRewards(); },
@@ -2866,7 +3295,10 @@
       variant: function (v) { R.forceV = v || null; },
       jarState: function (id) { return jarState(id); },
       checkUpdate: function () { checkForUpdate(true); },
-      fetchStorms: function () { return fetchStorms(true); }
+      fetchStorms: function () { return fetchStorms(true); },
+      photo: function (id) { R.pendingSpot = id; },
+      levels: function () { openLevels(); },
+      flying: function () { return flying(); }
     };
   }
 

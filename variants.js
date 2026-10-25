@@ -99,7 +99,9 @@
   }
 
   /* ---------- the first variants ---------- */
+  var KITE = null, BALLOON = null, OWL = null, POT = null;
   function kite(ctx, W, H, t) {
+    var k1 = KITE ? KITE[0] : '#FF5A5A', k2 = KITE ? KITE[1] : '#FFD84D';
     var u = W / 68;
     var cx = W * (0.6 + J.dx * 0.6), cy = H * (0.44 + J.dy * 0.5) + Math.sin(t * 0.9) * 1.2 * u;
     var a = Math.sin(t * 1.3) * 0.1 + J.rot * 0.4;
@@ -121,14 +123,14 @@
     ctx.stroke();
     for (var b = 1; b <= 3; b++) {
       var bi = b * 3.6 / 0.9, by = 8 * u + b * 3.6 * u, bx = Math.sin(t * 3 + bi * 0.7) * 1.6 * u * (bi / 12);
-      ctx.fillStyle = b % 2 ? '#FF5A5A' : '#FFD84D';
+      ctx.fillStyle = b % 2 ? k1 : k2;
       ctx.beginPath();
       ctx.moveTo(bx, by); ctx.lineTo(bx - 1.5 * u, by - 1 * u); ctx.lineTo(bx - 1.5 * u, by + 1 * u); ctx.closePath();
       ctx.moveTo(bx, by); ctx.lineTo(bx + 1.5 * u, by - 1 * u); ctx.lineTo(bx + 1.5 * u, by + 1 * u); ctx.closePath();
       ctx.fill();
     }
     var top = -6.5 * u, side = 4.8 * u, bot = 8 * u;
-    var quads = [[[0, top], [side, 0], '#FF5A5A'], [[side, 0], [0, bot], '#FFD84D'], [[0, bot], [-side, 0], '#FF5A5A'], [[-side, 0], [0, top], '#FFD84D']];
+    var quads = [[[0, top], [side, 0], k1], [[side, 0], [0, bot], k2], [[0, bot], [-side, 0], k1], [[-side, 0], [0, top], k2]];
     quads.forEach(function (q) {
       ctx.fillStyle = q[2];
       ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(q[0][0], q[0][1]); ctx.lineTo(q[1][0], q[1][1]); ctx.closePath(); ctx.fill();
@@ -142,7 +144,8 @@
     ctx.restore();
   }
   function balloon(ctx, W, H, t) {
-    var u = W / 70, R = 7.5 * u;
+    var b1 = BALLOON ? BALLOON[0] : '#E8484A', b2 = BALLOON ? BALLOON[1] : '#FFD84D';
+    var u = W / 70 * (BALLOON ? BALLOON[2] : 1), R = 7.5 * u;
     var cx = W * (0.42 - J.dx * 0.5) + Math.sin(t * 0.25) * 1.5 * u, cy = H * (0.45 + J.dy * 0.4) + Math.sin(t * 0.5) * 1.8 * u;
     var ty = cy + R * 1.42, tw = R * 0.3;
     ctx.save();
@@ -154,11 +157,11 @@
     ctx.closePath();
     ctx.save();
     ctx.clip();
-    ctx.fillStyle = '#E8484A';
+    ctx.fillStyle = b1;
     ctx.fillRect(cx - R * 1.2, cy - R * 1.2, R * 2.4, R * 2.8);
-    ctx.fillStyle = '#FFD84D';
+    ctx.fillStyle = b2;
     ctx.beginPath(); ctx.ellipse(cx, cy + R * 0.3, R * 0.68, R * 1.5, 0, 0, TAU); ctx.fill();
-    ctx.fillStyle = '#E8484A';
+    ctx.fillStyle = b1;
     ctx.beginPath(); ctx.ellipse(cx, cy + R * 0.3, R * 0.3, R * 1.5, 0, 0, TAU); ctx.fill();
     var hl = ctx.createRadialGradient(cx - R * 0.45, cy - R * 0.45, 0, cx - R * 0.45, cy - R * 0.45, R * 1.3);
     hl.addColorStop(0, 'rgba(255,255,255,0.38)');
@@ -758,9 +761,14 @@
   function frog(ctx, W, H, t) {
     var u = W / 44;
     var f = 0.62 + J.dx * 0.25, x = f * W, gy = standY(f) * H;
-    var breathe = 1 + Math.sin(t * 2.5) * 0.03;
     ctx.save();
     ctx.translate(x, gy);
+    frogBody(ctx, u, t);
+    ctx.restore();
+  }
+  /* a frog sitting with its feet at 0, 0 */
+  function frogBody(ctx, u, t) {
+    var breathe = 1 + Math.sin(t * 2.5) * 0.03;
     ctx.fillStyle = '#3E9B3E';
     ell(ctx, -2.7 * u, -1.2 * u, 2.1 * u, 1.3 * u, -0.3); ctx.fill();
     ell(ctx, 2.7 * u, -1.2 * u, 2.1 * u, 1.3 * u, 0.3); ctx.fill();
@@ -783,7 +791,6 @@
     ctx.fillStyle = '#3E9B3E';
     ell(ctx, -1.6 * u, -0.3 * u, 1 * u, 0.45 * u); ctx.fill();
     ell(ctx, 1.6 * u, -0.3 * u, 1 * u, 0.45 * u); ctx.fill();
-    ctx.restore();
   }
   function snail(ctx, W, H, t) {
     var u = W / 48;
@@ -1314,17 +1321,19 @@
   function owl(ctx, W, H, t) {
     var u = W / 60;
     var f = 0.36 + J.dx * 0.25, x = f * W, gy = standY(f) * H, top = gy - 8 * u, by = top - 3.6 * u;
+    var O = OWL || { body: '#8A6A48', face: '#D8C29E', spot: 'rgba(110,80,50,0.55)', wing: '#6E5236', eye: '#FFB020' };
     ctx.fillStyle = '#4A3A2E';
     ctx.fillRect(x - 1.2 * u, top, 2.4 * u, gy - top);
-    ctx.fillStyle = '#8A6A48';
+    ctx.fillStyle = O.body;
     ell(ctx, x, by, 3 * u, 3.8 * u); ctx.fill();
     tri(ctx, x - 2.5 * u, by - 2.4 * u, x - 2.3 * u, by - 4.8 * u, x - 0.9 * u, by - 3.2 * u); ctx.fill();
     tri(ctx, x + 2.5 * u, by - 2.4 * u, x + 2.3 * u, by - 4.8 * u, x + 0.9 * u, by - 3.2 * u); ctx.fill();
-    ctx.fillStyle = '#D8C29E';
+    ctx.fillStyle = O.face;
     ell(ctx, x, by + 1 * u, 1.9 * u, 2.5 * u); ctx.fill();
-    ctx.fillStyle = 'rgba(110,80,50,0.55)';
+    ctx.fillStyle = O.spot;
     for (var s = 0; s < 6; s++) { ell(ctx, x + ((s % 3) - 1) * 0.9 * u, by + (0.2 + Math.floor(s / 3) * 1.2) * u, 0.3 * u, 0.18 * u); ctx.fill(); }
-    ctx.fillStyle = '#6E5236';
+    if (OWL) for (var s2 = 0; s2 < 5; s2++) { ell(ctx, x + (s2 - 2) * 1.1 * u, by - 3 * u + (s2 % 2) * 0.6 * u, 0.28 * u, 0.16 * u); ctx.fill(); }
+    ctx.fillStyle = O.wing;
     ell(ctx, x - 2.6 * u, by + 0.5 * u, 1 * u, 2.8 * u, 0.15); ctx.fill();
     ell(ctx, x + 2.6 * u, by + 0.5 * u, 1 * u, 2.8 * u, -0.15); ctx.fill();
     var blink = (t % 4.3) < 0.15;
@@ -1336,7 +1345,7 @@
         ctx.lineWidth = Math.max(1, 0.3 * u);
         ctx.beginPath(); ctx.moveTo(x + (ex - 0.8) * u, by - 1.8 * u); ctx.lineTo(x + (ex + 0.8) * u, by - 1.8 * u); ctx.stroke();
       } else {
-        ctx.fillStyle = '#FFB020'; circ(ctx, x + ex * u, by - 1.8 * u, 0.72 * u); ctx.fill();
+        ctx.fillStyle = O.eye; circ(ctx, x + ex * u, by - 1.8 * u, 0.72 * u); ctx.fill();
         ctx.fillStyle = '#1F2433'; circ(ctx, x + ex * u, by - 1.8 * u, 0.36 * u); ctx.fill();
       }
     });
@@ -1368,9 +1377,24 @@
     }
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    threads('rgba(40,50,70,0.35)', Math.max(1.5, 0.75 * u));
-    threads('rgba(255,255,255,0.92)', Math.max(1, 0.35 * u));
+    var frosty = kind === 'frost' || kind === 'ice' || kind === 'snow';
+    threads('rgba(40,50,70,0.35)', Math.max(1.5, (frosty ? 1.1 : 0.75) * u));
+    threads(frosty ? 'rgba(250,253,255,0.98)' : 'rgba(255,255,255,0.92)', Math.max(1, (frosty ? 0.7 : 0.35) * u));
     var r = sr(371);
+    if (frosty) {
+      // rime: little spikes of ice all along the threads, glinting
+      for (var rg = 1; rg <= 5; rg++) {
+        ang.forEach(function (a, k) {
+          var rr = R * rg / 5.4, x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr;
+          var tw = Math.max(0, Math.sin(t * 2.2 + rg * 1.3 + k));
+          ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+          ctx.lineWidth = Math.max(1, 0.3 * u);
+          ctx.beginPath(); ctx.moveTo(x - 0.8 * u, y - 0.8 * u); ctx.lineTo(x + 0.8 * u, y + 0.8 * u); ctx.moveTo(x + 0.8 * u, y - 0.8 * u); ctx.lineTo(x - 0.8 * u, y + 0.8 * u); ctx.stroke();
+          if (tw > 0.6) star4(ctx, x, y, 1.4 * u * tw, 'rgba(255,255,255,' + tw + ')');
+        });
+      }
+      return;
+    }
     for (var ring = 1; ring <= 5; ring++) {
       ang.forEach(function (a) {
         if (r() < 0.45) return;
@@ -1640,12 +1664,13 @@
   function gold(ctx, W, H, t) {
     var u = W / 44;
     var f = 0.64 + J.dx * 0.2, x = f * W, gy = standY(f) * H + 0.4 * u;
+    var coin = POT ? POT[0] : '#FFC93C', rim = POT ? POT[1] : '#B57F0E';
     ctx.fillStyle = '#23252E';
     ell(ctx, x, gy - 3 * u, 4.4 * u, 3.2 * u); ctx.fill();
     ctx.fillRect(x - 3.6 * u, gy - 0.6 * u, 0.9 * u, 0.8 * u);
     ctx.fillRect(x + 2.7 * u, gy - 0.6 * u, 0.9 * u, 0.8 * u);
-    ctx.fillStyle = '#FFC93C';
-    ctx.strokeStyle = '#B57F0E';
+    ctx.fillStyle = coin;
+    ctx.strokeStyle = rim;
     ctx.lineWidth = Math.max(1, 0.2 * u);
     [[-2.6, -5.4], [-1, -6.2], [0.8, -6], [2.4, -5.4], [-1.8, -6.9], [0.2, -7.5], [1.6, -6.9]].forEach(function (c) { ell(ctx, x + c[0] * u, gy + c[1] * u, 1.3 * u, 0.9 * u); ctx.fill(); ctx.stroke(); });
     ctx.fillStyle = '#2F323D';
@@ -1793,6 +1818,894 @@
     ctx.restore();
   }
 
+  /* ---------- 0.7: more variants, so every jar's eight fit its weather ---------- */
+
+  /* a soft cloud made of overlapping circles, like the sky's own */
+  function cloudPuff(ctx, x, y, s, col) {
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    [[0, 0, 0.55], [0.55, -0.28, 0.66], [1.15, 0, 0.5], [0.5, 0.18, 0.56]].forEach(function (c) {
+      ctx.moveTo(x + c[0] * s + c[2] * s, y + c[1] * s);
+      ctx.arc(x + c[0] * s, y + c[1] * s, c[2] * s, 0, TAU);
+    });
+    ctx.fill();
+  }
+  function sunAt(dx, dy) {
+    var s = scene && scene.sun ? scene.sun : [dx, dy];
+    return [s[0] + J.sx, s[1] + J.sy];
+  }
+
+  /* legendary: sunbeams, shafts of light fanning out from behind a cloud */
+  function sunbeams(ctx, W, H, t) {
+    var u = W / 100, sp = sunAt(0.7, 0.26);
+    // the sun sits low enough to be seen in the jar, hidden behind its own cloud
+    var sx = W * Math.max(0.3, Math.min(0.68, sp[0])), sy = H * Math.max(0.37, sp[1] + 0.1);
+    var a0 = Math.atan2(H * 0.95 - sy, W * 0.5 - sx);
+    for (var i = 0; i < 9; i++) {
+      var a = a0 + (i - 4) * 0.14 + Math.sin(t * 0.25 + i) * 0.012;
+      var L = H * 1.1, w = 0.02 + (i % 3) * 0.012;
+      var p = 0.5 + 0.5 * Math.sin(t * 0.7 + i * 1.9);
+      var g = ctx.createLinearGradient(sx, sy, sx + Math.cos(a) * L, sy + Math.sin(a) * L);
+      g.addColorStop(0, 'rgba(255,247,220,' + (0.55 + 0.25 * p) + ')');
+      g.addColorStop(0.6, 'rgba(255,247,220,' + (0.16 + 0.1 * p) + ')');
+      g.addColorStop(1, 'rgba(255,247,220,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx + Math.cos(a - w) * L, sy + Math.sin(a - w) * L);
+      ctx.lineTo(sx + Math.cos(a + w) * L, sy + Math.sin(a + w) * L);
+      ctx.closePath();
+      ctx.fill();
+    }
+    glow(ctx, sx, sy, 22 * u, [255, 236, 190], 0.65);
+    var s = 11 * u;
+    cloudPuff(ctx, sx - 0.55 * s, sy - 1 * u, s, 'rgba(255,255,255,0.98)');
+    ctx.strokeStyle = 'rgba(255,214,130,0.95)';
+    ctx.lineWidth = Math.max(1, 0.9 * u);
+    ctx.beginPath(); ctx.arc(sx, sy + 1.2 * u, s * 0.66, 0.12 * Math.PI, 0.88 * Math.PI); ctx.stroke();
+  }
+
+  /* legendary: an air show, three jets trailing red, white and blue smoke */
+  function airshow(ctx, W, H, t) {
+    var u = W / 70;
+    var cx = W * (0.56 + J.dx * 0.3), cy = H * (0.46 + J.dy * 0.25) + Math.sin(t * 0.6) * u;
+    var cols = [[230, 64, 64], [255, 255, 255], [64, 116, 230]];
+    var a = -0.42;
+    for (var i = 0; i < 3; i++) {
+      var off = (i - 1) * 4.2 * u;
+      var jx = cx + Math.cos(a + Math.PI / 2) * off - Math.cos(a) * Math.abs(i - 1) * 3 * u;
+      var jy = cy + Math.sin(a + Math.PI / 2) * off - Math.sin(a) * Math.abs(i - 1) * 3 * u;
+      var c = cols[i];
+      // the smoke curves back the way they came, in a loop
+      var g = ctx.createLinearGradient(jx, jy, jx - 30 * u, jy + 16 * u);
+      g.addColorStop(0, 'rgba(' + c.join(',') + ',0.9)');
+      g.addColorStop(1, 'rgba(' + c.join(',') + ',0)');
+      ctx.strokeStyle = g;
+      ctx.lineWidth = 2.4 * u;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(jx - Math.cos(a) * 1.6 * u, jy - Math.sin(a) * 1.6 * u);
+      ctx.bezierCurveTo(jx - 14 * u, jy + 8 * u, jx - 22 * u, jy + 22 * u + off * 0.4, jx - 34 * u, jy + 14 * u + off * 0.6);
+      ctx.stroke();
+      ctx.save();
+      ctx.translate(jx, jy);
+      ctx.rotate(a);
+      ctx.fillStyle = '#C8202A';
+      ell(ctx, 0, 0, 2.4 * u, 0.45 * u); ctx.fill();
+      tri(ctx, 0.6 * u, 0, -1.2 * u, -2 * u, -1.6 * u, 0); ctx.fill();
+      tri(ctx, 0.6 * u, 0, -1.2 * u, 2 * u, -1.6 * u, 0); ctx.fill();
+      tri(ctx, -1.6 * u, 0, -2.4 * u, -0.9 * u, -2.2 * u, 0); ctx.fill();
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(-1.4 * u, -0.12 * u, 2.6 * u, 0.24 * u);
+      ctx.fillStyle = '#9CC9F0';
+      ell(ctx, 1.3 * u, -0.15 * u, 0.55 * u, 0.22 * u); ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  /* legendary: the ice cream van, here for the hot day */
+  function icecream(ctx, W, H, t) {
+    var u = W / 62;
+    var f = 0.55 + J.dx * 0.2, x = f * W, gy = standY(f) * H;
+    ctx.save();
+    ctx.translate(x, gy);
+    ctx.fillStyle = 'rgba(20,24,40,0.25)';
+    ell(ctx, 0, -0.2 * u, 11 * u, 1.1 * u); ctx.fill();
+    // body and cab
+    ctx.fillStyle = '#FFF7F2';
+    roundRect(ctx, -10 * u, -10.5 * u, 15 * u, 8.6 * u, 1.4 * u); ctx.fill();
+    roundRect(ctx, 4 * u, -7.4 * u, 6.2 * u, 5.5 * u, 1.4 * u); ctx.fill();
+    ctx.strokeStyle = 'rgba(90,70,80,0.45)';
+    ctx.lineWidth = Math.max(1, 0.25 * u);
+    roundRect(ctx, -10 * u, -10.5 * u, 15 * u, 8.6 * u, 1.4 * u); ctx.stroke();
+    ctx.fillStyle = '#FF86B4';
+    ctx.fillRect(-10 * u, -4.1 * u, 20.2 * u, 1.5 * u);
+    ctx.fillStyle = '#8FD0F2';
+    roundRect(ctx, 5.4 * u, -6.6 * u, 3.6 * u, 2.4 * u, 0.6 * u); ctx.fill();
+    // the serving hatch, with a striped awning
+    ctx.fillStyle = '#3A3550';
+    roundRect(ctx, -8 * u, -8.8 * u, 8.4 * u, 3.6 * u, 0.5 * u); ctx.fill();
+    for (var k = 0; k < 6; k++) {
+      ctx.fillStyle = k % 2 ? '#FFFFFF' : '#FF86B4';
+      ctx.beginPath(); ctx.moveTo(-8.4 * u + k * 1.53 * u, -9.4 * u); ctx.lineTo(-8.4 * u + (k + 1) * 1.53 * u, -9.4 * u); ctx.lineTo(-8.4 * u + (k + 1) * 1.53 * u, -8.3 * u); ctx.quadraticCurveTo(-8.4 * u + (k + 0.5) * 1.53 * u, -7.6 * u, -8.4 * u + k * 1.53 * u, -8.3 * u); ctx.closePath(); ctx.fill();
+    }
+    // the big cone on the roof
+    var bob = Math.sin(t * 2) * 0.3 * u;
+    ctx.fillStyle = '#E2A458';
+    ctx.beginPath(); ctx.moveTo(-3.3 * u, -14.4 * u + bob); ctx.lineTo(-0.5 * u, -14.4 * u + bob); ctx.lineTo(-1.9 * u, -10.4 * u + bob); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#FFB6D3';
+    circ(ctx, -1.9 * u, -15.3 * u + bob, 1.7 * u); ctx.fill();
+    ctx.fillStyle = '#FFFFFF';
+    circ(ctx, -2.4 * u, -15.9 * u + bob, 0.55 * u); ctx.fill();
+    ctx.fillStyle = '#C0392B';
+    circ(ctx, -1.6 * u, -17 * u + bob, 0.55 * u); ctx.fill();
+    // wheels
+    [-6.5, 6].forEach(function (wx) {
+      ctx.fillStyle = '#2A2E3A';
+      circ(ctx, wx * u, -1.7 * u, 1.8 * u); ctx.fill();
+      ctx.fillStyle = '#C9CED8';
+      circ(ctx, wx * u, -1.7 * u, 0.7 * u); ctx.fill();
+    });
+    // a little tune
+    ctx.fillStyle = 'rgba(40,40,70,' + (0.5 + 0.4 * Math.sin(t * 3)) + ')';
+    ctx.font = '700 ' + Math.round(3 * u) + 'px system-ui, sans-serif';
+    ctx.fillText('♪', 7 * u + Math.sin(t * 1.5) * u, -11 * u - (t * 3 % 3) * u);
+    ctx.restore();
+  }
+
+  /* legendary: a mirage, the road ahead turning into shimmering water in the heat */
+  function mirage(ctx, W, H, t) {
+    var u = W / 100;
+    var hy = H * 0.82, cx = W * (0.5 + J.dx * 0.2);
+    ctx.fillStyle = 'rgba(70,64,62,0.82)';
+    ctx.beginPath(); ctx.moveTo(cx - 3 * u, hy); ctx.lineTo(cx + 3 * u, hy); ctx.lineTo(cx + 40 * u, H); ctx.lineTo(cx - 40 * u, H); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,240,200,0.8)';
+    ctx.lineWidth = Math.max(1, 0.8 * u);
+    ctx.setLineDash([3 * u, 3 * u]);
+    ctx.beginPath(); ctx.moveTo(cx, hy + 2 * u); ctx.lineTo(cx, H); ctx.stroke();
+    ctx.setLineDash([]);
+    // the "water": the sky's own colour, wobbling, where the road meets the horizon
+    var top = scene && scene.sky ? scene.sky[0] : '#2D86EA';
+    var g = ctx.createLinearGradient(0, hy - 3 * u, 0, hy + 7 * u);
+    g.addColorStop(0, 'rgba(255,255,255,0)');
+    g.addColorStop(0.35, 'rgba(190,225,255,0.85)');
+    g.addColorStop(1, 'rgba(190,225,255,0)');
+    ctx.fillStyle = g;
+    ell(ctx, cx, hy + 2.4 * u, 22 * u, 4.2 * u); ctx.fill();
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = top;
+    ell(ctx, cx, hy + 2.6 * u, 14 * u, 2.2 * u); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.lineWidth = Math.max(1, 0.5 * u);
+    for (var i = 0; i < 4; i++) {
+      var y = hy + (0.8 + i * 1.3) * u, w = (16 - i * 3) * u;
+      ctx.beginPath();
+      for (var x = -w; x <= w; x += 2 * u) ctx.lineTo(cx + x, y + Math.sin(x / u * 0.6 + t * 4 + i) * 0.4 * u);
+      ctx.stroke();
+    }
+    // a car far off, and its upside-down reflection
+    var car = function (dir) {
+      ctx.fillStyle = dir > 0 ? 'rgba(200,40,40,0.95)' : 'rgba(200,40,40,0.35)';
+      ctx.fillRect(cx - 2.6 * u, hy - dir * 1.6 * u - (dir > 0 ? 0 : 0), 5.2 * u, dir * 1.6 * u);
+      ctx.fillRect(cx - 1.6 * u, hy - dir * 2.6 * u, 3.2 * u, dir * 1.1 * u);
+    };
+    var wob = Math.sin(t * 5) * 0.2 * u;
+    ctx.save(); ctx.translate(wob, 0); car(1); ctx.restore();
+    ctx.save(); ctx.translate(-wob, 2 * u); car(-1); ctx.restore();
+  }
+
+  /* legendary: a dust devil, a little whirlwind of dust spinning up from the hot ground */
+  function dustdevil(ctx, W, H, t) {
+    var u = W / 100;
+    var f = 0.58 + J.dx * 0.2, gx = f * W, gy = standY(f) * H;
+    var top = H * 0.36;
+    function cxAt(q) { return gx + Math.sin(t * 1.6 + q * 4) * 3 * u * q + q * 7 * u; }
+    function wAt(q) { return (2.4 + q * q * 15) * u; }
+    var g = ctx.createLinearGradient(0, top, 0, gy);
+    g.addColorStop(0, 'rgba(214,168,104,0.1)');
+    g.addColorStop(0.5, 'rgba(206,158,96,0.55)');
+    g.addColorStop(1, 'rgba(190,140,80,0.8)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    var n = 24, k;
+    for (k = 0; k <= n; k++) { var q = k / n; ctx.lineTo(cxAt(q) - wAt(q), gy - q * (gy - top)); }
+    for (k = n; k >= 0; k--) { var q2 = k / n; ctx.lineTo(cxAt(q2) + wAt(q2), gy - q2 * (gy - top)); }
+    ctx.closePath();
+    ctx.fill();
+    // spiral streaks of dust round the funnel
+    ctx.strokeStyle = 'rgba(150,104,52,0.7)';
+    ctx.lineWidth = Math.max(1, 0.5 * u);
+    for (var b = 0; b < 7; b++) {
+      var q3 = (b + 0.5) / 7, y = gy - q3 * (gy - top), w = wAt(q3), ph = t * 4 + b * 1.3;
+      ctx.beginPath(); ctx.ellipse(cxAt(q3), y, w * 0.9, 1.2 * u, 0, ph % TAU, ph % TAU + 2.2); ctx.stroke();
+    }
+    var r = sr(511);
+    ctx.fillStyle = 'rgba(130,90,45,0.9)';
+    for (var d = 0; d < 16; d++) {
+      var qq = r(), ph2 = r() * TAU, spd = 2 + r() * 2;
+      var yy = gy - qq * (gy - top), xx = cxAt(qq) + Math.cos(t * spd + ph2) * wAt(qq) * 1.1;
+      circ(ctx, xx, yy, (0.4 + r() * 0.5) * u); ctx.fill();
+    }
+    ctx.fillStyle = 'rgba(200,160,100,0.45)';
+    ell(ctx, gx, gy, 10 * u, 1.6 * u); ctx.fill();
+  }
+
+  /* the plane's own wing, out of the window */
+  function wing(ctx, W, H, t) {
+    var u = W / 100;
+    ctx.save();
+    var g = ctx.createLinearGradient(0, H * 0.78, 0, H);
+    g.addColorStop(0, '#E9ECF3');
+    g.addColorStop(1, '#8D94A6');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(-2 * u, H * 0.9);
+    ctx.lineTo(W * 0.66, H * 0.8);
+    ctx.lineTo(W * 0.7, H * 0.8);
+    ctx.lineTo(W * 0.44, H * 1.02);
+    ctx.lineTo(-2 * u, H * 1.02);
+    ctx.closePath();
+    ctx.fill();
+    // the winglet, catching the sunset
+    ctx.fillStyle = '#C9CFDC';
+    ctx.beginPath(); ctx.moveTo(W * 0.66, H * 0.8); ctx.lineTo(W * 0.71, H * 0.7); ctx.lineTo(W * 0.735, H * 0.7); ctx.lineTo(W * 0.7, H * 0.8); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,190,120,0.9)';
+    ctx.lineWidth = Math.max(1, 0.6 * u);
+    ctx.beginPath(); ctx.moveTo(-2 * u, H * 0.9); ctx.lineTo(W * 0.66, H * 0.8); ctx.lineTo(W * 0.71, H * 0.7); ctx.stroke();
+    ctx.strokeStyle = 'rgba(60,66,84,0.35)';
+    ctx.lineWidth = Math.max(1, 0.4 * u);
+    ctx.beginPath(); ctx.moveTo(W * 0.1, H * 0.95); ctx.lineTo(W * 0.52, H * 0.86); ctx.stroke();
+    var on = (t % 1.2) < 0.15;
+    if (on) glow(ctx, W * 0.725, H * 0.705, 5 * u, [255, 60, 60], 0.9);
+    ctx.fillStyle = on ? '#FF5A5A' : '#9B3B3B';
+    circ(ctx, W * 0.725, H * 0.705, 0.9 * u); ctx.fill();
+    ctx.restore();
+  }
+
+  /* the evening star: Venus, the first bright light after sunset */
+  function evestar(ctx, W, H, t) {
+    var u = W / 100;
+    var x = W * (0.3 + J.dx * 0.3), y = H * (0.36 + J.dy * 0.2);
+    var a = 0.85 + 0.15 * Math.sin(t * 1.6);
+    glow(ctx, x, y, 9 * u, [255, 250, 230], 0.55 * a);
+    star4(ctx, x, y, 4.2 * u * a, 'rgba(255,255,248,0.95)');
+    ctx.fillStyle = '#FFFFFF';
+    circ(ctx, x, y, 1.1 * u); ctx.fill();
+  }
+
+  /* legendary: a glory, a rainbow ring round the plane's shadow on the cloud below */
+  function glory(ctx, W, H, t) {
+    var u = W / 100;
+    var cx = W * (0.5 + J.dx * 0.25), cy = H * 0.86;
+    var cols = ['255,80,80', '255,170,60', '255,235,90', '90,220,120', '80,160,255', '150,110,255'];
+    var pulse = 0.85 + 0.15 * Math.sin(t * 1.3);
+    for (var i = 0; i < cols.length; i++) {
+      ctx.strokeStyle = 'rgba(' + cols[i] + ',' + ((0.7 - i * 0.05) * pulse) + ')';
+      ctx.lineWidth = 1.4 * u;
+      ell(ctx, cx, cy, (13 - i * 1.4) * u, (5.6 - i * 0.6) * u); ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(40,40,70,0.55)';
+    ell(ctx, cx, cy, 3.8 * u, 0.7 * u); ctx.fill();
+    ell(ctx, cx, cy, 0.8 * u, 2 * u); ctx.fill();
+    ell(ctx, cx - 0.2 * u, cy + 1.6 * u, 1.6 * u, 0.4 * u); ctx.fill();
+  }
+
+  /* legendary: a kingfisher, a flash of blue over the water on a grey day */
+  function kingfisher(ctx, W, H, t) {
+    var u = W / 60;
+    var cx = W * (0.5 + J.dx * 0.25), cy = H * 0.905;
+    pond(ctx, cx, cy, 13 * u, 2.8 * u, t);
+    // a reed bent over the water
+    ctx.strokeStyle = '#6B7F3A';
+    ctx.lineWidth = Math.max(1, 0.7 * u);
+    ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(cx - 12 * u, cy + 1 * u); ctx.quadraticCurveTo(cx - 9 * u, cy - 12 * u, cx + 2 * u, cy - 10 * u); ctx.stroke();
+    var bob = Math.max(0, Math.sin(t * 2.4)) * 0.4 * u;
+    ctx.save();
+    ctx.translate(cx - 2 * u, cy - 12.4 * u - bob);
+    var g = ctx.createLinearGradient(-3 * u, -3 * u, 3 * u, 2 * u);
+    g.addColorStop(0, '#21A7E0');
+    g.addColorStop(1, '#0F5FA8');
+    ctx.fillStyle = '#0F5FA8';
+    tri(ctx, -2.4 * u, 0.8 * u, -5 * u, 2.6 * u, -2.2 * u, 2 * u); ctx.fill();
+    ctx.fillStyle = g;
+    ell(ctx, 0, 0, 2.8 * u, 2 * u, -0.25); ctx.fill();
+    circ(ctx, 1.8 * u, -1.8 * u, 1.55 * u); ctx.fill();
+    ctx.fillStyle = '#F08A2A';
+    ell(ctx, 0.8 * u, 0.9 * u, 1.8 * u, 1.1 * u, -0.2); ctx.fill();
+    ell(ctx, 2.4 * u, -1.3 * u, 0.7 * u, 0.5 * u); ctx.fill();
+    ctx.fillStyle = '#FFFFFF';
+    ell(ctx, 2.2 * u, -0.6 * u, 0.55 * u, 0.35 * u); ctx.fill();
+    ctx.fillStyle = '#1F2433';
+    circ(ctx, 2.1 * u, -2.1 * u, 0.3 * u); ctx.fill();
+    tri(ctx, 3 * u, -2.2 * u, 6.2 * u, -1.5 * u, 3 * u, -1.3 * u); ctx.fill();
+    ctx.fillStyle = 'rgba(160,230,255,0.8)';
+    ell(ctx, -0.6 * u, -0.7 * u, 1 * u, 0.35 * u, -0.3); ctx.fill();
+    ctx.restore();
+  }
+
+  /* legendary: raining frogs, scooped up by a shower and dropped somewhere new */
+  function frograin(ctx, W, H, t) {
+    var u = W / 80, r = sr(521);
+    for (var i = 0; i < 6; i++) {
+      var x0 = W * (0.18 + r() * 0.64), sp = 0.1 + r() * 0.06, ph = r();
+      var p = (t * sp + ph) % 1;
+      var y = H * (0.2 + p * 0.68), x = x0 + Math.sin(t * 1.5 + i) * 2 * u;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(Math.sin(t * 2 + i * 1.3) * 0.6);
+      ctx.globalAlpha = p > 0.9 ? (1 - p) * 10 : 1;
+      frogBody(ctx, u * (0.8 + r() * 0.4), t + i);
+      ctx.restore();
+    }
+    var f = 0.66 + J.dx * 0.2;
+    ctx.save();
+    ctx.translate(f * W, standY(f) * H);
+    frogBody(ctx, u * 1.15, t);
+    ctx.restore();
+  }
+
+  /* a frozen pond, scratched by skates, and the skates left beside it */
+  function skates(ctx, W, H, t) {
+    var u = W / 60;
+    var cx = W * (0.46 + J.dx * 0.2), cy = H * 0.9;
+    var g = ctx.createLinearGradient(cx - 14 * u, cy - 3 * u, cx + 14 * u, cy + 3 * u);
+    g.addColorStop(0, 'rgba(200,230,250,0.95)');
+    g.addColorStop(0.5, 'rgba(240,250,255,0.98)');
+    g.addColorStop(1, 'rgba(170,205,235,0.95)');
+    ctx.fillStyle = g;
+    ell(ctx, cx, cy, 14 * u, 3 * u); ctx.fill();
+    ctx.strokeStyle = 'rgba(120,160,200,0.7)';
+    ctx.lineWidth = Math.max(1, 0.25 * u);
+    ell(ctx, cx, cy, 14 * u, 3 * u); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+    ctx.beginPath(); ctx.moveTo(cx - 9 * u, cy - 0.5 * u); ctx.bezierCurveTo(cx - 3 * u, cy - 2.4 * u, cx + 2 * u, cy + 2 * u, cx + 9 * u, cy - 0.6 * u); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(cx + 2 * u, cy + 0.3 * u, 4 * u, 1.1 * u, 0, 0.2, 5.4); ctx.stroke();
+    var tw = Math.max(0, Math.sin(t * 2));
+    star4(ctx, cx - 6 * u, cy - 1.2 * u, 1.2 * u * tw + 0.3 * u, 'rgba(255,255,255,0.95)');
+    // the skates
+    [[cx + 15.5 * u, 0], [cx + 19.5 * u, 0.6 * u]].forEach(function (sk) {
+      var x = sk[0], y = standY(x / W) * H - sk[1] * 0.2;
+      ctx.fillStyle = '#FFFFFF';
+      ctx.strokeStyle = 'rgba(80,90,110,0.6)';
+      ctx.beginPath(); ctx.moveTo(x - 1.6 * u, y - 1.4 * u); ctx.lineTo(x - 1.6 * u, y - 5.4 * u); ctx.lineTo(x + 0.6 * u, y - 5.4 * u); ctx.lineTo(x + 0.8 * u, y - 3 * u); ctx.lineTo(x + 2.6 * u, y - 2.4 * u); ctx.lineTo(x + 2.6 * u, y - 1.4 * u); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = '#B8C2D4';
+      ctx.lineWidth = Math.max(1, 0.45 * u);
+      ctx.beginPath(); ctx.moveTo(x - 2 * u, y - 0.4 * u); ctx.lineTo(x + 3.2 * u, y - 0.4 * u); ctx.quadraticCurveTo(x + 3.8 * u, y - 0.8 * u, x + 3.4 * u, y - 1.2 * u); ctx.stroke();
+      ctx.strokeStyle = '#E2453A';
+      ctx.lineWidth = Math.max(1, 0.25 * u);
+      ctx.beginPath(); ctx.moveTo(x - 1.4 * u, y - 4.6 * u); ctx.lineTo(x + 0.4 * u, y - 4.2 * u); ctx.moveTo(x - 1.4 * u, y - 3.6 * u); ctx.lineTo(x + 0.6 * u, y - 3.2 * u); ctx.stroke();
+      ctx.lineWidth = Math.max(1, 0.25 * u);
+    });
+  }
+
+  /* legendary: frost flowers, ribbons of ice curling out of plant stems on a frozen morning */
+  function frostflowers(ctx, W, H, t) {
+    var u = W / 60;
+    [[0.34, 1], [0.52, 1.2], [0.68, 0.9]].forEach(function (p, i) {
+      var f = p[0] + J.dx * 0.15, x = f * W, gy = standY(f) * H, s = p[1];
+      ctx.strokeStyle = '#7A6248';
+      ctx.lineWidth = Math.max(1, 0.45 * u);
+      ctx.beginPath(); ctx.moveTo(x, gy); ctx.lineTo(x + 0.4 * u, gy - 9 * u * s); ctx.stroke();
+      // the ribbons: curls of white ice, layered like petals
+      for (var k = 0; k < 5; k++) {
+        var a = -Math.PI / 2 + (k - 2) * 0.55;
+        var bx = x + 0.2 * u, by = gy - 2.4 * u * s;
+        var L = (3.6 + (k % 2) * 1.2) * u * s;
+        ctx.strokeStyle = 'rgba(255,255,255,0.97)';
+        ctx.lineWidth = Math.max(1.2, 1.1 * u * s);
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(bx, by);
+        ctx.bezierCurveTo(bx + Math.cos(a - 0.6) * L, by + Math.sin(a - 0.6) * L, bx + Math.cos(a + 0.9) * L * 1.2, by + Math.sin(a + 0.9) * L * 1.2, bx + Math.cos(a + 0.3) * L * 0.5, by + Math.sin(a + 0.3) * L * 0.5);
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(150,190,230,0.55)';
+        ctx.lineWidth = Math.max(1, 0.3 * u);
+        ctx.stroke();
+      }
+      var tw = Math.max(0, Math.sin(t * 2.4 + i * 2));
+      if (tw > 0.3) star4(ctx, x + 1.4 * u, gy - 4.4 * u * s, 1.5 * u * tw, 'rgba(255,255,255,' + tw + ')');
+    });
+  }
+
+  /* legendary: the gritter, out spreading salt so the roads don't freeze */
+  function gritter(ctx, W, H, t) {
+    var u = W / 62;
+    var f = 0.52 + J.dx * 0.2, x = f * W, gy = standY(f) * H;
+    ctx.save();
+    ctx.translate(x, gy);
+    // salt spraying out behind
+    var r = sr(531);
+    for (var k = 0; k < 26; k++) {
+      var p = (t * (0.9 + r() * 0.5) + r()) % 1, a = Math.PI * (0.85 + r() * 0.35);
+      ctx.fillStyle = 'rgba(245,240,230,' + (0.9 * (1 - p)) + ')';
+      circ(ctx, -11 * u + Math.cos(a) * p * 10 * u, -2 * u + Math.sin(a) * p * 6 * u + p * p * 4 * u, (0.3 + r() * 0.25) * u); ctx.fill();
+    }
+    ctx.fillStyle = 'rgba(20,24,40,0.25)';
+    ell(ctx, 0, -0.2 * u, 12 * u, 1.1 * u); ctx.fill();
+    // the hopper full of salt, and the cab
+    ctx.fillStyle = '#F29A1E';
+    ctx.beginPath(); ctx.moveTo(-11 * u, -9 * u); ctx.lineTo(1 * u, -9 * u); ctx.lineTo(0, -3 * u); ctx.lineTo(-10 * u, -3 * u); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#F3EEE4';
+    ell(ctx, -5 * u, -9 * u, 6 * u, 1.2 * u); ctx.fill();
+    ctx.fillStyle = '#F7B733';
+    roundRect(ctx, 1 * u, -9.4 * u, 8 * u, 7.4 * u, 1.4 * u); ctx.fill();
+    ctx.fillStyle = '#8FD0F2';
+    roundRect(ctx, 4.8 * u, -8.4 * u, 3.4 * u, 2.8 * u, 0.6 * u); ctx.fill();
+    ctx.fillStyle = '#2A2E3A';
+    ctx.fillRect(-11.5 * u, -3.2 * u, 21 * u, 1.4 * u);
+    // reflective stripes
+    for (var s = 0; s < 4; s++) {
+      ctx.fillStyle = s % 2 ? '#2A2E3A' : '#FFE14D';
+      ctx.fillRect(-10 * u + s * 2.6 * u, -5 * u, 2.6 * u, 1.2 * u);
+    }
+    // the flashing beacon
+    var on = (t % 0.8) < 0.4;
+    if (on) glow(ctx, 5 * u, -10.4 * u, 4 * u, [255, 170, 40], 0.85);
+    ctx.fillStyle = on ? '#FFB020' : '#B9771A';
+    roundRect(ctx, 4.2 * u, -10.8 * u, 1.6 * u, 1.4 * u, 0.4 * u); ctx.fill();
+    [-7, 5.6].forEach(function (wx) {
+      ctx.fillStyle = '#2A2E3A';
+      circ(ctx, wx * u, -1.6 * u, 1.8 * u); ctx.fill();
+      ctx.fillStyle = '#C9CED8';
+      circ(ctx, wx * u, -1.6 * u, 0.7 * u); ctx.fill();
+    });
+    ctx.restore();
+  }
+
+  /* icicles hanging from a branch, one of them dripping */
+  function icicles(ctx, W, H, t) {
+    var u = W / 80;
+    var y0 = H * (0.44 + J.dy * 0.12);
+    ctx.strokeStyle = '#4E3B2A';
+    ctx.lineCap = 'round';
+    ctx.lineWidth = 2.4 * u;
+    ctx.beginPath(); ctx.moveTo(W * 0.06, y0 - 3 * u); ctx.quadraticCurveTo(W * 0.42, y0 + 2 * u, W * 0.8, y0 - 2 * u); ctx.stroke();
+    ctx.lineWidth = 1.3 * u;
+    ctx.beginPath(); ctx.moveTo(W * 0.52, y0 + 0.3 * u); ctx.lineTo(W * 0.64, y0 - 6 * u); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.96)';
+    ctx.beginPath(); ctx.moveTo(W * 0.07, y0 - 4.3 * u); ctx.quadraticCurveTo(W * 0.42, y0 + 0.6 * u, W * 0.8, y0 - 3.4 * u); ctx.lineTo(W * 0.8, y0 - 2.2 * u); ctx.quadraticCurveTo(W * 0.42, y0 + 1.8 * u, W * 0.07, y0 - 3 * u); ctx.closePath(); ctx.fill();
+    var r = sr(541);
+    for (var i = 0; i < 10; i++) {
+      var q = 0.1 + i * 0.072 + (r() - 0.5) * 0.02;
+      // the branch's own curve, so each icicle hangs from it
+      var bx = (q - 0.06) / 0.74, yy = y0 - 3 * u + bx * 1 * u + 4 * u * bx * (1 - bx) * 1.25 + 0.6 * u;
+      var x = W * q, L = (6 + r() * 11) * u, w = (0.9 + r() * 0.8) * u;
+      var g = ctx.createLinearGradient(x - w, 0, x + w, 0);
+      g.addColorStop(0, 'rgba(180,218,248,0.95)');
+      g.addColorStop(0.5, 'rgba(255,255,255,0.99)');
+      g.addColorStop(1, 'rgba(140,188,232,0.95)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.moveTo(x - w, yy); ctx.lineTo(x + w, yy); ctx.lineTo(x + 0.1 * u, yy + L); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = 'rgba(110,150,200,0.45)';
+      ctx.lineWidth = Math.max(1, 0.2 * u);
+      ctx.stroke();
+      if (i === 5) {
+        var p = (t * 0.6) % 1;
+        ctx.fillStyle = 'rgba(170,212,255,' + (0.95 - p * 0.6) + ')';
+        circ(ctx, x + 0.1 * u, yy + L + 1.2 * u + p * H * 0.36, 0.8 * u); ctx.fill();
+      }
+      var tw = Math.max(0, Math.sin(t * 2 + i * 1.7));
+      if (tw > 0.7) star4(ctx, x, yy + L * 0.4, 1.6 * u * tw, 'rgba(255,255,255,' + tw + ')');
+    }
+  }
+
+  /* legendary: a giant hailstone, bouncing, as big as a golf ball */
+  function hailstone(ctx, W, H, t) {
+    var u = W / 60;
+    var f = 0.55 + J.dx * 0.2, x = f * W, gy = standY(f) * H;
+    var ph = (t * 0.9) % 1, hop = Math.abs(Math.sin(ph * Math.PI)) * 9 * u * (1 - ph * 0.3);
+    var R = 6 * u, cy = gy - R - hop;
+    ctx.fillStyle = 'rgba(20,24,40,0.28)';
+    ell(ctx, x, gy, R * (1.1 - hop / (18 * u)), 1 * u); ctx.fill();
+    glow(ctx, x, cy, R * 2.2, [220, 235, 255], 0.35);
+    var g = ctx.createRadialGradient(x - R * 0.4, cy - R * 0.4, R * 0.1, x, cy, R);
+    g.addColorStop(0, '#FFFFFF');
+    g.addColorStop(1, '#BFD0E6');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    for (var k = 0; k <= 14; k++) {
+      var a = k / 14 * TAU, rr = R * (0.9 + 0.1 * Math.sin(k * 2.7));
+      if (k === 0) ctx.moveTo(x + Math.cos(a) * rr, cy + Math.sin(a) * rr); else ctx.lineTo(x + Math.cos(a) * rr, cy + Math.sin(a) * rr);
+    }
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(110,140,185,0.6)';
+    ctx.lineWidth = Math.max(1, 0.35 * u);
+    ctx.stroke();
+    // the layers of ice it grew in the storm cloud
+    [0.7, 0.45, 0.22].forEach(function (q) { ctx.beginPath(); ctx.arc(x + R * 0.05, cy + R * 0.05, R * q, 0, TAU); ctx.stroke(); });
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    ell(ctx, x - R * 0.38, cy - R * 0.45, R * 0.3, R * 0.16, -0.6); ctx.fill();
+    var r = sr(551);
+    for (var i = 0; i < 7; i++) {
+      var bx = W * (0.18 + r() * 0.64), p2 = (t * (1.4 + r()) + r()) % 1, h2 = Math.abs(Math.sin(p2 * Math.PI)) * 3 * u;
+      ctx.fillStyle = 'rgba(245,250,255,0.95)';
+      circ(ctx, bx, standY(bx / W) * H - 0.8 * u - h2, (0.6 + r() * 0.5) * u); ctx.fill();
+    }
+  }
+
+  /* legendary: a snow angel, pressed into fresh snow */
+  function snowangel(ctx, W, H, t) {
+    var u = W / 60;
+    var f = 0.5 + J.dx * 0.2, x = f * W, gy = standY(f) * H + 0.6 * u;
+    ctx.save();
+    ctx.translate(x, gy - 2.4 * u);
+    ctx.scale(1, 0.42);
+    var shade = 'rgba(140,165,210,0.55)', edge = 'rgba(255,255,255,0.9)';
+    var sw = Math.sin(t * 0.8) * 0.05;
+    ctx.fillStyle = shade;
+    ctx.beginPath();
+    ctx.moveTo(0, -6 * u);
+    ctx.bezierCurveTo(-10 * u, -11 * u - sw * 20 * u, -14 * u, -2 * u, -5 * u, -1 * u);
+    ctx.lineTo(-7 * u, 9 * u); ctx.quadraticCurveTo(0, 11 * u, 7 * u, 9 * u); ctx.lineTo(5 * u, -1 * u);
+    ctx.bezierCurveTo(14 * u, -2 * u, 10 * u, -11 * u - sw * 20 * u, 0, -6 * u);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = edge;
+    ctx.lineWidth = 1.2 * u;
+    ctx.stroke();
+    ctx.fillStyle = shade;
+    circ(ctx, 0, -9.4 * u, 3 * u); ctx.fill(); ctx.stroke();
+    ctx.restore();
+    for (var i = 0; i < 4; i++) {
+      var a = Math.max(0, Math.sin(t * 2 + i * 1.8));
+      if (a > 0.3) star4(ctx, x + (i - 1.5) * 5 * u, gy - (1 + (i % 2) * 2) * u, 1.4 * u * a, 'rgba(255,255,255,' + a + ')');
+    }
+  }
+
+  /* legendary: silver thaw, a tree glazed in clear ice by freezing rain */
+  function silverthaw(ctx, W, H, t) {
+    var u = W / 70;
+    var f = 0.5 + J.dx * 0.2, x = f * W, gy = standY(f) * H;
+    var segs = [];
+    (function branch(x0, y0, a, L, d) {
+      var x1 = x0 + Math.cos(a) * L, y1 = y0 + Math.sin(a) * L;
+      segs.push([x0, y0, x1, y1, d]);
+      if (d >= 4) return;
+      branch(x1, y1, a - 0.5, L * 0.68, d + 1);
+      branch(x1, y1, a + 0.45, L * 0.66, d + 1);
+    })(x, gy, -Math.PI / 2, 11 * u, 0);
+    ctx.lineCap = 'round';
+    segs.forEach(function (s) { ctx.strokeStyle = '#4A3A2E'; ctx.lineWidth = Math.max(1, (2.4 - s[4] * 0.45) * u); ctx.beginPath(); ctx.moveTo(s[0], s[1]); ctx.lineTo(s[2], s[3]); ctx.stroke(); });
+    segs.forEach(function (s) { ctx.strokeStyle = 'rgba(220,240,255,0.75)'; ctx.lineWidth = Math.max(1, (1.4 - s[4] * 0.2) * u); ctx.beginPath(); ctx.moveTo(s[0], s[1] - 0.4 * u); ctx.lineTo(s[2], s[3] - 0.4 * u); ctx.stroke(); });
+    segs.forEach(function (s, i) {
+      if (s[4] < 3) return;
+      ctx.fillStyle = 'rgba(235,248,255,0.95)';
+      ctx.beginPath(); ctx.moveTo(s[2] - 0.4 * u, s[3]); ctx.lineTo(s[2] + 0.4 * u, s[3]); ctx.lineTo(s[2], s[3] + 2 * u); ctx.closePath(); ctx.fill();
+      var a = Math.max(0, Math.sin(t * 2.5 + i * 1.7));
+      if (a > 0.55) star4(ctx, s[2], s[3], 1.8 * u * a, 'rgba(255,255,255,' + a + ')');
+    });
+  }
+
+  /* legendary: a snowy owl, white as the snow it came in on */
+  function snowyowl(ctx, W, H, t) {
+    OWL = { body: '#F3F5FA', face: '#FFFFFF', spot: 'rgba(40,46,64,0.6)', wing: '#E1E6EF', eye: '#FFD21F' };
+    try { glow(ctx, W * (0.36 + J.dx * 0.25), H * 0.72, W * 0.16, [255, 255, 255], 0.35); owl(ctx, W, H, t); } finally { OWL = null; }
+  }
+
+  /* legendary: a yeti, out for a walk in the blizzard */
+  function yeti(ctx, W, H, t) {
+    var u = W / 60;
+    var f = 0.56 + J.dx * 0.2, x = f * W, gy = standY(f) * H;
+    var wave = Math.sin(t * 3) * 0.35;
+    ctx.save();
+    ctx.translate(x, gy);
+    var fur = '#F4F7FC', sh = 'rgba(150,170,205,0.6)';
+    function shag(cx, cy, rx, ry, n) {
+      ctx.beginPath();
+      for (var k = 0; k <= n; k++) {
+        var a = k / n * TAU, rr = k % 2 ? 1 : 0.88;
+        var px = cx + Math.cos(a) * rx * rr, py = cy + Math.sin(a) * ry * rr;
+        if (k === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+    }
+    ctx.fillStyle = sh;
+    ell(ctx, 0, 0, 6 * u, 1 * u); ctx.fill();
+    ctx.fillStyle = fur;
+    shag(-2 * u, -1 * u, 1.6 * u, 1.4 * u, 10); ctx.fill();
+    shag(2 * u, -1 * u, 1.6 * u, 1.4 * u, 10); ctx.fill();
+    shag(0, -7 * u, 5 * u, 6.4 * u, 26); ctx.fill();
+    ctx.strokeStyle = sh;
+    ctx.lineWidth = Math.max(1, 0.3 * u);
+    ctx.stroke();
+    // arms: one hanging, one waving
+    ctx.save(); ctx.translate(-4.2 * u, -9 * u); ctx.rotate(0.35); shag(0, 3 * u, 1.4 * u, 3.6 * u, 12); ctx.fillStyle = fur; ctx.fill(); ctx.stroke(); ctx.restore();
+    ctx.save(); ctx.translate(4.2 * u, -10 * u); ctx.rotate(-2.4 + wave); shag(0, 3 * u, 1.4 * u, 3.6 * u, 12); ctx.fillStyle = fur; ctx.fill(); ctx.stroke(); ctx.restore();
+    // face
+    ctx.fillStyle = '#8FA3C8';
+    ell(ctx, 0, -10.2 * u, 2.6 * u, 2.2 * u); ctx.fill();
+    ctx.fillStyle = '#1F2433';
+    circ(ctx, -0.9 * u, -10.8 * u, 0.4 * u); ctx.fill();
+    circ(ctx, 0.9 * u, -10.8 * u, 0.4 * u); ctx.fill();
+    ctx.strokeStyle = '#1F2433';
+    ctx.lineWidth = Math.max(1, 0.35 * u);
+    ctx.beginPath(); ctx.arc(0, -9.8 * u, 1.1 * u, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+    ctx.restore();
+  }
+
+  /* legendary: a kite festival, the whole sky full of kites */
+  function kitefest(ctx, W, H, t) {
+    var save = J;
+    var set = [[['#4DA3FF', '#FFFFFF'], 0.18, -0.12, 0.3], [['#FF5A5A', '#FFD84D'], -0.05, 0.02, -0.2], [['#7ED957', '#FF8FD0'], -0.28, -0.08, 0.6]];
+    try {
+      set.forEach(function (k, i) {
+        KITE = k[0];
+        J = { dx: k[1], dy: k[2], rot: k[3], sx: save.sx, sy: save.sy, bx: 0, h1: 0, h2: 0, f: 0, rb: 0 };
+        ctx.save();
+        if (i !== 1) { var sc = 0.75; ctx.translate(W * (0.5 - 0.5 * sc), H * (0.4 - 0.4 * sc)); ctx.scale(sc, sc); }
+        kite(ctx, W, H, t + i * 1.7);
+        ctx.restore();
+      });
+    } finally { KITE = null; J = save; }
+  }
+
+  /* legendary: a flying trampoline. Trampolines are leaving gardens */
+  function trampoline(ctx, W, H, t) {
+    var u = W / 70;
+    var p = (t * 0.12) % 1;
+    var x = W * (-0.1 + p * 1.2), y = H * (0.42 + J.dy * 0.2) + Math.sin(p * TAU * 1.5) * 4 * u;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(t * 1.4);
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+    ctx.lineWidth = Math.max(1, 0.4 * u);
+    ctx.fillStyle = '#2B7BE0';
+    ell(ctx, 0, 0, 8 * u, 3.2 * u); ctx.fill();
+    ctx.fillStyle = '#1C1F2A';
+    ell(ctx, 0, 0, 6.4 * u, 2.4 * u); ctx.fill();
+    ctx.strokeStyle = '#5C6478';
+    ctx.lineWidth = Math.max(1, 0.6 * u);
+    ctx.beginPath();
+    [-5, 5].forEach(function (lx) { ctx.moveTo(lx * u, 1.6 * u); ctx.lineTo(lx * u * 1.1, 6 * u); ctx.lineTo(lx * u * 0.7, 6 * u); });
+    ctx.stroke();
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.lineWidth = Math.max(1, 0.4 * u);
+    for (var i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(x - (12 + i * 3) * u, y + (i - 1) * 3 * u); ctx.lineTo(x - (18 + i * 3) * u, y + (i - 1) * 3 * u); ctx.stroke(); }
+  }
+
+  /* legendary: the eye of the storm, a calm hole of blue sky in the middle of it all */
+  function eye(ctx, W, H, t) {
+    var u = W / 100;
+    var cx = W * (0.5 + J.sx), cy = H * (0.38 + J.sy), R = 13 * u;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(t * 0.3);
+    ctx.strokeStyle = 'rgba(235,232,255,0.55)';
+    ctx.lineWidth = 3 * u;
+    for (var i = 0; i < 3; i++) {
+      ctx.rotate(TAU / 3);
+      ctx.beginPath();
+      for (var a = 0; a < 4.2; a += 0.15) ctx.lineTo(Math.cos(a) * (R + a * 4 * u), Math.sin(a) * (R + a * 4 * u));
+      ctx.stroke();
+    }
+    ctx.restore();
+    var g = ctx.createRadialGradient(cx, cy, R * 0.2, cx, cy, R);
+    g.addColorStop(0, '#9FD2FF');
+    g.addColorStop(0.75, '#5E9EEA');
+    g.addColorStop(1, 'rgba(94,158,234,0)');
+    ctx.fillStyle = g;
+    circ(ctx, cx, cy, R); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.lineWidth = 1.6 * u;
+    circ(ctx, cx, cy, R * 0.86); ctx.stroke();
+    glow(ctx, cx + 2 * u, cy - 2 * u, 6 * u, [255, 240, 200], 0.8);
+    ctx.fillStyle = '#FFF4D8';
+    circ(ctx, cx + 2 * u, cy - 2 * u, 2.4 * u); ctx.fill();
+  }
+
+  /* legendary: a murmuration, thousands of starlings swirling as one at dusk */
+  function murmuration(ctx, W, H, t) {
+    var u = W / 100, r = sr(561);
+    var cx = W * (0.52 + J.dx * 0.2), cy = H * (0.46 + J.dy * 0.2);
+    ctx.fillStyle = 'rgba(28,32,48,0.85)';
+    for (var i = 0; i < 230; i++) {
+      var a = r() * TAU, d = Math.sqrt(r());
+      var px = Math.cos(a) * d, py = Math.sin(a) * d;
+      // stretch and bend the flock, slowly changing shape
+      var sx = px * (22 + 8 * Math.sin(t * 0.5)) * u, sy = py * (8 + 3 * Math.cos(t * 0.37)) * u;
+      var bend = Math.sin(px * 2.2 + t * 0.8) * 7 * u;
+      var x = cx + sx * Math.cos(0.3 * Math.sin(t * 0.3)) - sy * 0.3, y = cy + sy + bend;
+      ctx.fillRect(x, y, Math.max(1, 0.55 * u), Math.max(1, 0.4 * u));
+    }
+  }
+
+  /* a seal, hauled out on a rock in the sea fret */
+  function seal(ctx, W, H, t) {
+    var u = W / 54;
+    var x = W * (0.56 + J.dx * 0.2), gy = standY(0.56) * H;
+    // the rock, with the sea washing round it
+    ctx.fillStyle = '#4A5264';
+    ctx.beginPath(); ctx.moveTo(x - 10 * u, gy + 1.2 * u); ctx.quadraticCurveTo(x - 8 * u, gy - 3.6 * u, x - 1 * u, gy - 3.4 * u); ctx.quadraticCurveTo(x + 7 * u, gy - 4 * u, x + 10 * u, gy + 1.2 * u); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.lineWidth = Math.max(1, 0.35 * u);
+    ctx.beginPath(); ctx.moveTo(x - 11 * u, gy + 1 * u + Math.sin(t * 1.5) * 0.3 * u); ctx.quadraticCurveTo(x, gy + 1.8 * u, x + 11 * u, gy + 1 * u + Math.sin(t * 1.5 + 1) * 0.3 * u); ctx.stroke();
+    var lift = Math.max(0, Math.sin(t * 0.9)) * 0.9 * u;
+    ctx.save();
+    ctx.translate(x, gy - 3.2 * u);
+    var g = ctx.createLinearGradient(0, -6 * u, 0, 0);
+    g.addColorStop(0, '#C3CAD6');
+    g.addColorStop(1, '#8B94A6');
+    ctx.fillStyle = g;
+    // a banana-shaped body, tail up at one end and head up at the other
+    ctx.beginPath();
+    ctx.moveTo(-7.4 * u, -1.6 * u);
+    ctx.quadraticCurveTo(-4 * u, 0.4 * u, 2 * u, 0.2 * u);
+    ctx.quadraticCurveTo(5 * u, 0, 5.4 * u, -3 * u - lift);
+    ctx.quadraticCurveTo(4 * u, -5.4 * u - lift, 2.2 * u, -3.6 * u - lift * 0.5);
+    ctx.quadraticCurveTo(-2 * u, -2.6 * u, -6.8 * u, -2.6 * u);
+    ctx.closePath(); ctx.fill();
+    ell(ctx, -7.8 * u, -2.4 * u, 1.6 * u, 0.7 * u, -0.5); ctx.fill();
+    circ(ctx, 4.6 * u, -4.6 * u - lift, 2.3 * u); ctx.fill();
+    ctx.fillStyle = 'rgba(70,80,100,0.5)';
+    for (var s2 = 0; s2 < 6; s2++) { circ(ctx, (-4 + s2 * 1.4) * u, (-1.6 + (s2 % 2) * 0.5) * u, 0.3 * u); ctx.fill(); }
+    ctx.fillStyle = '#1F2433';
+    circ(ctx, 4.1 * u, -5.2 * u - lift, 0.48 * u); ctx.fill();
+    circ(ctx, 5.9 * u, -5.1 * u - lift, 0.48 * u); ctx.fill();
+    circ(ctx, 5.3 * u, -3.9 * u - lift, 0.42 * u); ctx.fill();
+    ctx.fillStyle = '#FFFFFF';
+    circ(ctx, 4.25 * u, -5.4 * u - lift, 0.16 * u); ctx.fill();
+    circ(ctx, 6.05 * u, -5.3 * u - lift, 0.16 * u); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+    ctx.lineWidth = Math.max(1, 0.15 * u);
+    ctx.beginPath(); ctx.moveTo(5.8 * u, -3.7 * u - lift); ctx.lineTo(8 * u, -4.1 * u - lift); ctx.moveTo(5.8 * u, -3.5 * u - lift); ctx.lineTo(7.8 * u, -3.1 * u - lift); ctx.stroke();
+    ctx.fillStyle = '#7C8597';
+    ell(ctx, 1 * u, -0.6 * u, 1.6 * u, 0.6 * u, 0.4); ctx.fill();
+    ctx.restore();
+  }
+
+  /* a pot of silver at the end of the fogbow, a rainbow that forgot its colours */
+  function silverpot(ctx, W, H, t) {
+    POT = ['#E6ECF5', '#7E8AA2'];
+    try { gold(ctx, W, H, t); } finally { POT = null; }
+  }
+
+  /* legendary: a balloon fiesta, the balloons rising as the fog lifts */
+  function balloonfest(ctx, W, H, t) {
+    var save = J;
+    var set = [[['#4DA3FF', '#FFFFFF', 0.7], 0.24, -0.16], [['#E8484A', '#FFD84D', 1], -0.04, 0.03], [['#7ED957', '#7A3FC2', 0.6], -0.3, -0.1]];
+    try {
+      set.forEach(function (b, i) {
+        BALLOON = b[0];
+        J = { dx: b[1], dy: b[2], rot: 0, sx: save.sx, sy: save.sy, bx: 0, h1: 0, h2: 0, f: 0, rb: 0 };
+        balloon(ctx, W, H, t + i * 2.1);
+      });
+    } finally { BALLOON = null; J = save; }
+  }
+
+  /* legendary: snowdrops, the first flowers pushing up through the melting snow */
+  function snowdrops(ctx, W, H, t) {
+    var u = W / 60;
+    var base = 0.46 + J.dx * 0.2;
+    [[-0.12, 0.9], [0, 1.15], [0.1, 1], [0.2, 0.85]].forEach(function (p, i) {
+      var f = base + p[0], x = f * W, gy = standY(f) * H, s = p[1];
+      ctx.fillStyle = 'rgba(248,250,255,0.95)';
+      ell(ctx, x, gy - 0.2 * u, 3 * u * s, 0.8 * u); ctx.fill();
+      var sway = Math.sin(t * 1.2 + i) * 0.3 * u;
+      ctx.strokeStyle = '#4E8A3E';
+      ctx.lineWidth = Math.max(1, 0.4 * u);
+      ctx.lineCap = 'round';
+      var tx = x + 1.6 * u * s + sway, ty = gy - 8.2 * u * s;
+      ctx.beginPath(); ctx.moveTo(x, gy); ctx.quadraticCurveTo(x - 0.4 * u, ty, tx, ty + 0.6 * u); ctx.stroke();
+      ctx.fillStyle = '#5DA34A';
+      ell(ctx, x - 1 * u, gy - 2.6 * u * s, 0.5 * u, 2.6 * u * s, -0.2); ctx.fill();
+      ctx.fillStyle = '#5DA34A';
+      circ(ctx, tx, ty + 0.9 * u, 0.45 * u); ctx.fill();
+      ctx.fillStyle = '#FFFFFF';
+      [-0.6, 0, 0.6].forEach(function (o) { ell(ctx, tx + o * u, ty + 2.6 * u * s, 0.75 * u * s, 1.6 * u * s, o * 0.5); ctx.fill(); });
+      ctx.fillStyle = 'rgba(110,170,90,0.9)';
+      circ(ctx, tx, ty + 3.6 * u * s, 0.3 * u); ctx.fill();
+    });
+  }
+
+  /* legendary: a red kite, soaring again now the wind has dropped */
+  function redkite(ctx, W, H, t) {
+    var u = W / 70;
+    var x = W * (0.52 + J.dx * 0.3) + Math.cos(t * 0.35) * 6 * u, y = H * (0.42 + J.dy * 0.2) + Math.sin(t * 0.35) * 2.5 * u;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(Math.sin(t * 0.35) * 0.18);
+    var flex = Math.sin(t * 1.4) * 0.6 * u;
+    ctx.fillStyle = '#A9532A';
+    [-1, 1].forEach(function (s) {
+      ctx.beginPath();
+      ctx.moveTo(0, -0.4 * u);
+      ctx.quadraticCurveTo(s * 5 * u, -2.4 * u - flex, s * 10.5 * u, -1 * u - flex);
+      ctx.lineTo(s * 9.6 * u, 0.4 * u - flex * 0.5);
+      ctx.quadraticCurveTo(s * 5 * u, 0.2 * u, 0, 1.4 * u);
+      ctx.closePath(); ctx.fill();
+    });
+    ctx.fillStyle = '#2C2622';
+    [-1, 1].forEach(function (s) { tri(ctx, s * 8.4 * u, -1.1 * u - flex, s * 10.5 * u, -1 * u - flex, s * 9.6 * u, 0.4 * u - flex * 0.5); ctx.fill(); });
+    ctx.fillStyle = '#F2E8DC';
+    [-1, 1].forEach(function (s) { ell(ctx, s * 6.6 * u, -0.6 * u - flex * 0.8, 0.9 * u, 0.35 * u, s * -0.2); ctx.fill(); });
+    ctx.fillStyle = '#8E4320';
+    ell(ctx, 0, 0.8 * u, 0.9 * u, 2.4 * u); ctx.fill();
+    // the forked tail
+    ctx.fillStyle = '#C56A34';
+    ctx.beginPath(); ctx.moveTo(-0.7 * u, 2.6 * u); ctx.lineTo(-1.8 * u, 6.4 * u); ctx.lineTo(0, 5 * u); ctx.lineTo(1.8 * u, 6.4 * u); ctx.lineTo(0.7 * u, 2.6 * u); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#D9D2C8';
+    circ(ctx, 0, -1.4 * u, 0.9 * u); ctx.fill();
+    ctx.restore();
+  }
+
+  /* legendary: one perfect snowflake, big enough to see every branch */
+  function snowflake(ctx, W, H, t) {
+    var u = W / 100;
+    var cx = W * (0.5 + J.dx * 0.2), cy = H * (0.52 + J.dy * 0.15) + Math.sin(t * 0.7) * 2 * u, R = 14 * u;
+    glow(ctx, cx, cy, R * 1.5, [210, 232, 255], 0.55);
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(t * 0.15);
+    ctx.lineCap = 'round';
+    for (var pass = 0; pass < 2; pass++) {
+      ctx.strokeStyle = pass ? 'rgba(255,255,255,0.98)' : 'rgba(120,160,210,0.45)';
+      ctx.lineWidth = pass ? Math.max(1, 0.9 * u) : Math.max(2, 2 * u);
+      for (var k = 0; k < 6; k++) {
+        ctx.save();
+        ctx.rotate(k * Math.PI / 3);
+        ctx.beginPath();
+        ctx.moveTo(0, 0); ctx.lineTo(0, -R);
+        [0.35, 0.58, 0.8].forEach(function (q, i) {
+          var L = R * (0.32 - i * 0.07);
+          ctx.moveTo(0, -R * q); ctx.lineTo(-L * 0.8, -R * q - L * 0.6);
+          ctx.moveTo(0, -R * q); ctx.lineTo(L * 0.8, -R * q - L * 0.6);
+        });
+        ctx.moveTo(-R * 0.12, -R * 0.18); ctx.lineTo(0, -R * 0.24); ctx.lineTo(R * 0.12, -R * 0.18);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+    ctx.fillStyle = '#FFFFFF';
+    circ(ctx, 0, 0, 1.4 * u); ctx.fill();
+    ctx.restore();
+    for (var i = 0; i < 3; i++) {
+      var a = Math.max(0, Math.sin(t * 2.4 + i * 2.1));
+      if (a > 0.3) star4(ctx, cx + Math.cos(i * 2.1 + t * 0.15) * R * 0.9, cy + Math.sin(i * 2.1 + t * 0.15) * R * 0.9, 2 * u * a, 'rgba(255,255,255,' + a + ')');
+    }
+  }
+
+  /* legendary: a shelf cloud, the dark wedge rolling in at the front of a storm */
+  function shelfcloud(ctx, W, H, t) {
+    var u = W / 100;
+    var drift = Math.sin(t * 0.2) * 1.5 * u;
+    // a wedge rolling in from the right: tall at the storm, thinning out ahead of it
+    var tiers = [[0, '#232742'], [4 * u, '#3A4062'], [8 * u, '#596288']];
+    tiers.forEach(function (tr, i) {
+      var off = tr[0];
+      ctx.fillStyle = tr[1];
+      ctx.beginPath();
+      ctx.moveTo(W * 0.08 + drift, 0);
+      ctx.lineTo(W + 2 * u, 0);
+      ctx.lineTo(W + 2 * u, H * 0.56 + off * 0.4);
+      // the underside: a lumpy shelf sloping up to the left
+      for (var k = 0; k <= 10; k++) {
+        var q = 1 - k / 10, x = W * (0.08 + 0.92 * q) + drift;
+        var y = H * (0.3 + 0.24 * q) + off * (0.4 + 0.6 * q) + Math.sin(q * 14 + i + t * 0.4) * 1 * u;
+        ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fill();
+    });
+    // the pale lip along its leading edge
+    ctx.strokeStyle = 'rgba(210,218,236,0.75)';
+    ctx.lineWidth = 1.4 * u;
+    ctx.beginPath();
+    for (var k2 = 0; k2 <= 10; k2++) {
+      var q2 = 1 - k2 / 10, x2 = W * (0.08 + 0.92 * q2) + drift, y2 = H * (0.3 + 0.24 * q2) + 8 * u * (0.4 + 0.6 * q2) + Math.sin(q2 * 14 + 2 + t * 0.4) * 1 * u;
+      if (k2 === 0) ctx.moveTo(x2, y2); else ctx.lineTo(x2, y2);
+    }
+    ctx.stroke();
+    // gusts racing out ahead of it
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.lineWidth = Math.max(1, 0.5 * u);
+    for (var i = 0; i < 4; i++) {
+      var p = (t * 0.6 + i * 0.25) % 1, yy = H * (0.6 + i * 0.05);
+      ctx.beginPath(); ctx.moveTo(W * (1 - p) - 4 * u, yy); ctx.lineTo(W * (1 - p) - 16 * u, yy + 0.5 * u); ctx.stroke();
+    }
+  }
+
   /* ---------- the list: name, layer, picture ---------- */
 
   add('kite', 'front', kite);
@@ -1863,4 +2776,35 @@
   add('wallcat', 'ground', wallcat);
   add('ladybird', 'ground', ladybird);
   add('redsky', 'front', redsky);
+
+  add('sunbeams', 'front', sunbeams, { noSun: true });
+  add('airshow', 'front', airshow);
+  add('icecream', 'ground', icecream);
+  add('mirage', 'ground', mirage);
+  add('dustdevil', 'ground', dustdevil);
+  add('wing', 'ground', wing);
+  add('evestar', 'back', evestar);
+  add('glory', 'ground', glory);
+  add('kingfisher', 'ground', kingfisher);
+  add('frograin', 'front', frograin);
+  add('skates', 'ground', skates);
+  add('frostflowers', 'ground', frostflowers);
+  add('gritter', 'ground', gritter);
+  add('icicles', 'front', icicles);
+  add('hailstone', 'ground', hailstone);
+  add('snowangel', 'ground', snowangel);
+  add('silverthaw', 'ground', silverthaw);
+  add('snowyowl', 'ground', snowyowl);
+  add('yeti', 'ground', yeti);
+  add('kitefest', 'front', kitefest);
+  add('trampoline', 'front', trampoline);
+  add('eye', 'front', eye);
+  add('murmuration', 'front', murmuration);
+  add('seal', 'ground', seal);
+  add('silverpot', 'ground', silverpot);
+  add('balloonfest', 'front', balloonfest);
+  add('snowdrops', 'ground', snowdrops);
+  add('redkite', 'front', redkite);
+  add('snowflake', 'front', snowflake);
+  add('shelfcloud', 'front', shelfcloud);
 })(typeof window !== 'undefined' ? window : globalThis);

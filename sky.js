@@ -57,6 +57,7 @@
     hotday: { sky: ['#2D86EA', '#CFE9FF'], sun: [0.6, 0.24, 0.085, 4], shimmer: 0.6 },
     heatwave: { sky: ['#F0913F', '#FFE2A6'], sun: [0.5, 0.3, 0.1, 4.2], shimmer: 1 },
     scorcher: { sky: ['#D9502A', '#FFC56B'], sun: [0.5, 0.3, 0.12, 5, '#FFFFFF'], shimmer: 1.6 },
+    cloudsunset: { sky: ['#1E2766', '#FF9C5E'], sun: [0.64, 0.66, 0.065, 5, '#FFE4AE'], clouds: [cl(2, 0.16, 0.32, 0.11, 0.004, 'pink', 96)], ground: 'cloudtops' },
 
     drizzle: { sky: ['#66738A', '#B0B8C6'], clouds: [cl(7, 0, 0.35, 0.26, 0.006, 'grey', 15)], rain: rain(70, 0.028, 0.32, 0.5, 1, 0.18, 16) },
     rain: { sky: ['#4F5A70', '#949EAF'], clouds: [cl(7, 0, 0.35, 0.27, 0.007, 'dark', 17)], rain: rain(120, 0.055, 0.85, 0.55, 1.2, 0.22, 18) },
@@ -118,7 +119,10 @@
     stormfront: { sky: ['#3D78C9', '#9EC6F0'], sun: [0.18, 0.24, 0.055, 3], front: true, rain: rain(90, 0.065, 1.1, 0.5, 1.2, 0.22, 49, 0.55), bolt: [0.74, null, 4.6] },
     calm: { sky: ['#5C93D8', '#E3ECF5'], sun: [0.3, 0.3, 0.06, 3.4], clouds: [cl(3, 0.02, 0.2, 0.24, 0.02, 'dark', 91)], ground: 'wet' },
 
-    quiet: { night: true, sky: ['#0B1230', '#26355F'], stars: 30, moon: [0.72, 0.24, 0.045, 'crescent'], clouds: [cl(4, 0.1, 0.45, 0.2, 0.004, 'dark', 92)] }
+    quiet: { night: true, sky: ['#0B1230', '#26355F'], stars: 30, moon: [0.72, 0.24, 0.045, 'crescent'], clouds: [cl(4, 0.1, 0.45, 0.2, 0.004, 'dark', 92)] },
+    /* the live sky while flying: above the clouds by day, and at night */
+    flying: { sky: ['#1C5FD4', '#A6D2FF'], sun: [0.72, 0.24, 0.06, 3.4], ground: 'whitetops' },
+    flyingnight: { night: true, sky: ['#060B22', '#1F2E5C'], stars: 110, moon: [0.74, 0.22, 0.05, 'crescent'], ground: 'nighttops' }
   };
 
   /* ---------- layers ---------- */
@@ -641,6 +645,26 @@
       case 'peaks':
         peaks(ctx, W, H, dk ? '#1A2238' : '#55617C', dk ? '#8A96B4' : '#E8EDF5', 0.12);
         break;
+      case 'cloudtops': case 'whitetops': case 'nighttops':
+        // the tops of the clouds, seen from a plane: lit pink at sunset, white by day, silver by night
+        var tc = kind === 'cloudtops' ? ['#F4B9A6', '#B98BB5', '#6E5A93', 'rgba(250,200,178,0.98)', 'rgba(238,176,168,0.98)'] :
+          kind === 'whitetops' ? ['#FFFFFF', '#E4ECF7', '#C4D2E6', 'rgba(255,255,255,0.99)', 'rgba(240,245,252,0.99)'] :
+          ['#3A4670', '#262F52', '#151B36', 'rgba(70,82,120,0.98)', 'rgba(58,68,104,0.98)'];
+        var cg = ctx.createLinearGradient(0, H * 0.74, 0, H);
+        cg.addColorStop(0, tc[0]);
+        cg.addColorStop(0.5, tc[1]);
+        cg.addColorStop(1, tc[2]);
+        ctx.fillStyle = cg;
+        ctx.fillRect(0, H * 0.77, W, H * 0.23);
+        for (var c2 = 0; c2 < 11; c2++) puff(ctx, W * (c2 * 0.11 - 0.09) + Math.sin(t * 0.12 + c2) * W * 0.006, H * (0.765 + (c2 % 3) * 0.008), W * 0.075, c2 % 2 ? tc[3] : tc[4]);
+        if (kind === 'cloudtops') {
+          var sg2 = ctx.createRadialGradient(W * 0.64, H * 0.77, 0, W * 0.64, H * 0.77, W * 0.4);
+          sg2.addColorStop(0, 'rgba(255,225,170,0.7)');
+          sg2.addColorStop(1, 'rgba(255,225,170,0)');
+          ctx.fillStyle = sg2;
+          ctx.fillRect(0, H * 0.72, W, H * 0.2);
+        }
+        break;
       case 'cloudsea':
         peaks(ctx, W, H, '#4E5C78', '#F4F7FB', 0.0);
         ctx.fillStyle = 'rgba(250,252,255,0.97)';
@@ -672,6 +696,7 @@
   function standY(kind, f) {
     if (kind === 'sea') return 0.9;
     if (kind === 'peaks' || kind === 'cloudsea' || kind === 'photo') return 0.95;
+    if (kind === 'cloudtops' || kind === 'whitetops' || kind === 'nighttops') return 0.84;
     return hillY(f, 0.88 - LIFT, 0.03, 2.1 + J.h2) + 0.012;
   }
   /* the variant pictures live in variants.js. Each one is drawn on its own layer with what it needs from this scene */
@@ -909,6 +934,39 @@
     });
   }
 
+  /* a jar still to catch: empty glass with dust settled in the bottom, and a cobweb on some */
+  function dusty(ctx, x, top, w, h, k, seed) {
+    var r = rng(seed || 7);
+    var g = ctx.createLinearGradient(0, top + h * 0.74, 0, top + h);
+    g.addColorStop(0, 'rgba(160,150,130,0)');
+    g.addColorStop(1, 'rgba(160,150,130,0.34)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x, top + h * 0.7, w, h * 0.3);
+    ctx.fillStyle = 'rgba(150,140,120,0.45)';
+    for (var i = 0; i < 16; i++) {
+      ctx.beginPath(); ctx.arc(x + w * (0.12 + r() * 0.76), top + h * (0.24 + r() * 0.72), (0.5 + r() * 0.9) * k, 0, TAU); ctx.fill();
+    }
+    if (r() < 0.55) {
+      var cx = x + w * (r() < 0.5 ? 0.06 : 0.94), cy = top + h * 0.18, dir = cx < x + w / 2 ? 1 : -1, R = w * 0.2;
+      ctx.strokeStyle = 'rgba(150,150,160,0.5)';
+      ctx.lineWidth = Math.max(1, 0.5 * k);
+      ctx.beginPath();
+      for (var a = 0; a <= 4; a++) {
+        var an = (a / 4) * Math.PI / 2;
+        ctx.moveTo(cx, cy); ctx.lineTo(cx + dir * Math.cos(an) * R, cy + Math.sin(an) * R);
+      }
+      for (var ring = 1; ring <= 3; ring++) {
+        var rr = R * ring / 3.4;
+        for (var b = 0; b <= 4; b++) {
+          var an2 = (b / 4) * Math.PI / 2, px = cx + dir * Math.cos(an2) * rr, py = cy + Math.sin(an2) * rr;
+          if (b === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+      }
+      ctx.stroke();
+    }
+  }
+  function seedOf(id) { var h = 7; for (var i = 0; i < (id || '').length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619) >>> 0; return h; }
+
   /* a padlock badge, on a variant that hasn't been found yet */
   function padlock(ctx, cx, cy, s) {
     ctx.save();
@@ -957,8 +1015,9 @@
       ctx.fillStyle = look.veil || 'rgba(200,206,220,0.72)';
       ctx.fillRect(0, 0, W, H);
     } else if (st.locked) {
-      ctx.fillStyle = 'rgba(150,160,182,0.14)';
+      ctx.fillStyle = 'rgba(150,160,182,0.1)';
       ctx.fillRect(0, 0, W, H);
+      if (!st.later) dusty(ctx, x, top, w, h, k, seedOf(st.id));
     } else if (st.sealed) {
       var sg = ctx.createLinearGradient(0, top, 0, top + h);
       sg.addColorStop(0, '#3A4466');
@@ -988,6 +1047,7 @@
     jarShape(ctx, x, top, w, h);
     ctx.strokeStyle = lg ? 'rgba(214,160,60,0.95)' : look.glass;
     ctx.lineWidth = Math.max(1, (lg ? 2 : 1.5) * k);
+    if (st.locked && !st.ghost) ctx.setLineDash([5 * k, 3.5 * k]);
     ctx.stroke();
     ctx.restore();
     if (lg) legendGlints(ctx, x, top, w, h, t, k);
@@ -1019,7 +1079,7 @@
         ctx.fill();
       }
     }
-    if (st.locked) {
+    if (st.locked && (st.later || st.ghost)) {
       ctx.fillStyle = look.q;
       ctx.font = '800 ' + Math.round(W * 0.28) + 'px Archivo, system-ui, sans-serif';
       ctx.textAlign = 'center';

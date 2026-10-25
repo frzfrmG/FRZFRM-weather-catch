@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en-GB" data-v="0.6.1">
+<html lang="en-GB" data-v="0.7.0">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -18,7 +18,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap">
 <!-- on every release, bump data-v above and ?v= below to match VERSION in app.js, so a phone never mixes old and new files -->
-<link rel="stylesheet" href="app.css?v=0.6.1">
+<link rel="stylesheet" href="app.css?v=0.7.0">
 </head>
 <body>
 <div class="app" id="app">
@@ -72,6 +72,16 @@
           <button class="link-btn" type="button" id="refresh-btn">Refresh</button>
         </div>
         <p class="storm-note" id="storm-note" role="status" hidden></p>
+
+        <div class="flight-card" id="flight-card" hidden>
+          <div class="fc-top">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15.5l-8-4.5V5a1.5 1.5 0 0 0-3 0v6l-8 4.5V17l8-2.5V19l-2.5 1.5V22l4-1 4 1v-1.5L13 19v-4.5l8 2.5z"></path></svg>
+            <span class="fc-title">You&rsquo;re flying</span>
+            <span class="fc-alt" id="fc-alt"></span>
+          </div>
+          <p class="fc-text" id="fc-text"></p>
+          <button class="btn btn-primary" type="button" id="fc-btn" disabled>Not sunset yet</button>
+        </div>
 
         <div class="lock-card" id="lock-card" hidden>
           <h2 class="lc-title">You&rsquo;re moving fast</h2>
@@ -133,37 +143,55 @@
     </section>
 
     <section class="panel" id="panel-shelf" aria-label="Shelf" hidden>
-      <div class="level-card">
-        <div class="lv-row">
-          <span class="lv-big">Level <span id="lv-n">1</span></span>
-          <span class="lv-title" id="lv-title">Puddle Spotter</span>
-        </div>
-        <div class="bar" aria-hidden="true"><span id="lv-fill"></span></div>
-        <div class="lv-row">
-          <span class="lv-pts" id="lv-pts">0 / 50 points</span>
-        </div>
-        <p class="small" id="lv-next"></p>
-      </div>
-      <div class="reward-card" id="reward-card">
-        <div class="rw-top">
-          <div class="rw-text">
-            <div class="h2" id="rw-label">Next reward</div>
-            <div class="rw-name" id="rw-name">Oak shelves</div>
-            <p class="small" id="rw-sub"></p>
+      <div class="case" id="case">
+        <div class="case-label">Your best jar</div>
+        <div class="case-stage">
+          <button class="case-jar" type="button" id="case-jar" aria-label="Your best jar"><canvas id="case-canvas" data-dark="1" aria-hidden="true"></canvas></button>
+          <div class="case-info">
+            <div class="case-name" id="case-name">Your best jar goes here</div>
+            <div class="case-var" id="case-var"></div>
+            <div class="case-meta" id="case-meta"></div>
           </div>
-          <div class="rw-swatch" id="rw-swatch" aria-hidden="true"></div>
         </div>
-        <div class="bar" id="rw-bar" aria-hidden="true"><span id="rw-fill"></span></div>
-        <div class="rw-row">
-          <span class="lv-pts" id="rw-count"></span>
-          <button class="link-btn" type="button" id="style-btn">Shelf style</button>
+        <div class="case-stats" id="case-stats"></div>
+      </div>
+      <div class="tiles">
+        <button class="tile" type="button" id="lv-tile">
+          <span class="h2">Level <span id="lv-n">1</span></span>
+          <span class="tile-v" id="lv-title">Puddle Spotter</span>
+          <span class="bar" aria-hidden="true"><span id="lv-fill"></span></span>
+          <span class="tile-s" id="lv-pts">0 / 50 points</span>
+          <span class="tile-go">Levels ahead</span>
+        </button>
+        <button class="tile" type="button" id="rw-tile">
+          <span class="h2" id="rw-label">Next reward</span>
+          <span class="tile-v" id="rw-name">Oak shelves</span>
+          <span class="bar" id="rw-bar" aria-hidden="true"><span id="rw-fill"></span></span>
+          <span class="tile-s" id="rw-count"></span>
+          <span class="tile-go">Shelf style</span>
+        </button>
+      </div>
+      <div class="row-chips" id="row-chips" role="group" aria-label="Jump to a shelf"></div>
+      <p class="small" id="shelf-note"></p>
+      <div class="shelves cabinet" id="shelves"></div>
+    </section>
+
+    <section class="panel" id="panel-games" aria-label="Games" hidden>
+      <div class="rank-card">
+        <span class="rank-badge" id="rank-badge" data-r="0" aria-hidden="true">1</span>
+        <div class="rank-body">
+          <span class="h2">Games rank</span>
+          <span class="rank-name" id="rank-name">Drizzle Rookie</span>
+          <span class="bar" aria-hidden="true"><span id="rank-fill"></span></span>
+          <span class="lv-pts" id="rank-xp">0 Games XP</span>
         </div>
       </div>
-      <div class="shelf-head">
-        <span class="shelf-count"><span id="jar-n">0</span> of <span id="jar-total">58</span> jars</span>
-        <p class="small" id="shelf-note"></p>
+      <p class="small">Weather games to play any time, anywhere. They earn Games XP for your Games rank, which is separate from your catching level.</p>
+      <div class="game-list" id="game-list"></div>
+      <div class="block">
+        <h2 class="h2">Ranks</h2>
+        <ol class="rank-road" id="rank-road"></ol>
       </div>
-      <div class="shelves" id="shelves"></div>
     </section>
 
     <section class="panel" id="panel-more" aria-label="More" hidden>
@@ -179,7 +207,11 @@
           <li><strong>Named storms:</strong> when the Met Office, Met &Eacute;ireann or KNMI names a storm, you can catch it while it&rsquo;s over the UK and Ireland, in gusts of 35 mph or more, or rain with gusts of 25 mph. The jar takes the storm&rsquo;s name, like Storm Boelo, and each name only comes once.</li>
           <li>The weather data can miss a passing shower or a patch of fog. If you can see weather the app hasn&rsquo;t picked up, tap <strong>Spot something</strong>. The app checks the weather around you first.</li>
           <li>Catch the same weather again to level its jar up: <strong>bronze at 2 catches, silver at 5, gold at 15 and rainbow at 30</strong>. Each level gives the jar a new lid. Every catch counts and nothing is used up: every variant you find stays in the jar.</li>
-          <li><strong>Mystery variants:</strong> every jar opens as Classic (1 in 2 jars) or one of six surprises for its shelf, from 1 in 6 to 1 in 40, like a kite or a hot-air balloon in a sunny jar. Rarest of all is each shelf&rsquo;s legendary (1 in 60), like the Green Flash at sunset or Raining Cats and Dogs. Each catch is drawn its own way too, so even when everyone nearby catches the same storm, your jar won&rsquo;t look quite like theirs.</li>
+          <li><strong>Mystery variants:</strong> every jar opens as Classic (1 in 2 jars) or one of six surprises picked to fit that jar&rsquo;s weather, from 1 in 6 to 1 in 40, like a kite on a breezy day or a snowman in the snow. Rarest of all is each jar&rsquo;s legendary (1 in 60), like the Green Flash at sunset, Sunbeams through the clouds or a Yeti in a blizzard. Tap any jar, even one you haven&rsquo;t caught yet, to see all eight. Each catch is drawn its own way too, so even when everyone nearby catches the same storm, your jar won&rsquo;t look quite like theirs.</li>
+          <li><strong>Photo catches</strong> are checked on your phone: the photo has to show the right kind of sky, like a dark night with a green glow for the Northern Lights, and it can&rsquo;t have a face in it. Nothing is sent anywhere.</li>
+          <li><strong>Flying?</strong> Keep the app open on the plane. When the sun sets while you&rsquo;re flying, you can catch <strong>Sunset Over the Clouds</strong>. Your phone&rsquo;s GPS can tell you&rsquo;re flying, even without wifi.</li>
+          <li><strong>Levels:</strong> tap your level to see what&rsquo;s ahead: new titles, new powers and new looks for your shelf. The next ones are shown in full, and the rest are only hinted at.</li>
+          <li><strong>Games:</strong> the Games tab has four weather games, with a Games rank of their own. They never change your catching level or your jars.</li>
           <li><strong>Strength:</strong> each catch gets 1 to 5 stars for how strong the weather really was, like how hard it rained, how hot it got, how deep the snow was or how thick the fog. 4 stars are worth half as many points again, and 5 stars double. Each jar remembers its strongest catch.</li>
           <li><strong>Shelf rewards:</strong> every 10 jars unlocks a new wood or lights for your shelf, with bonus points. Finish a row and that shelf changes for good. Get every jar in a row to gold and the shelf turns gold. Fill the whole shelf to earn the Sky Jar.</li>
         </ul>
@@ -208,8 +240,8 @@
       </div>
       <div class="more-card">
         <h2 class="mc-title">About</h2>
-        <p class="mc-text">FRZFRM Weather Catch, test version <span id="version"></span>. Some rare weather is worked out from forecasts, and photo catches aren&rsquo;t checked yet.</p>
-        <p class="mc-text">Weather data by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a> (CC BY 4.0). Place names from <a href="https://www.bigdatacloud.com/" target="_blank" rel="noopener">BigDataCloud</a>.</p>
+        <p class="mc-text">FRZFRM Weather Catch, test version <span id="version"></span>. Some rare weather is worked out from forecasts. Photos are checked on the phone, for faces and for the right kind of sky.</p>
+        <p class="mc-text">Weather data by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a> (CC BY 4.0). Place names from <a href="https://www.bigdatacloud.com/" target="_blank" rel="noopener">BigDataCloud</a>. Faces are found with OpenCV&rsquo;s LBP face cascade (BSD licence).</p>
       </div>
     </section>
   </main>
@@ -223,6 +255,10 @@
   <button class="nav-btn" type="button" id="nav-shelf">
     <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 4h8v3l1.5 2v10a1.5 1.5 0 0 1-1.5 1.5H8A1.5 1.5 0 0 1 6.5 19V9L8 7z"></path><path d="M8 7h8"></path></svg>
     <span>Shelf <span class="nav-n" id="nav-n"></span></span>
+  </button>
+  <button class="nav-btn" type="button" id="nav-games">
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2L4 14h7l-1 8 9-12h-7z"></path></svg>
+    <span>Games</span>
   </button>
   <button class="nav-btn" type="button" id="nav-more">
     <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5.5" cy="12" r="1.4"></circle><circle cx="12" cy="12" r="1.4"></circle><circle cx="18.5" cy="12" r="1.4"></circle></svg>
@@ -243,6 +279,19 @@
       <div class="g-meter" aria-hidden="true"><span id="g-fill"></span></div>
       <div class="g-row"><span id="g-status">Get ready</span><span id="g-flee"></span></div>
       <div class="actions" id="g-actions"></div>
+    </div>
+    <div class="view" id="mini-view" hidden>
+      <div class="ov-label rc-rare" id="mg-label">Games</div>
+      <h2 class="g-title" id="mg-title"></h2>
+      <p class="g-instr" id="mg-instr"></p>
+      <div class="g-stage" id="mg-stage" tabindex="0" aria-label="Game area. Tap, or use the arrow keys and the space bar.">
+        <canvas id="mg-canvas" aria-hidden="true"></canvas>
+      </div>
+      <div class="mg-choices" id="mg-choices" hidden></div>
+      <p class="mg-status" id="mg-status" role="status" aria-live="polite"></p>
+      <div class="mg-msg" id="mg-msg" role="status" hidden></div>
+      <div class="g-row"><span id="mg-best"></span></div>
+      <div class="actions" id="mg-actions"></div>
     </div>
     <div class="view" id="card-view" hidden>
       <div class="ov-label" id="c-label">New jar</div>
@@ -293,10 +342,12 @@
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 <input type="file" id="photo-input" accept="image/*" capture="environment" hidden>
 
-<script src="rules.js?v=0.6.1" defer></script>
-<script src="sky.js?v=0.6.1" defer></script>
-<script src="variants.js?v=0.6.1" defer></script>
-<script src="game.js?v=0.6.1" defer></script>
-<script src="app.js?v=0.6.1" defer></script>
+<script src="rules.js?v=0.7.0" defer></script>
+<script src="sky.js?v=0.7.0" defer></script>
+<script src="variants.js?v=0.7.0" defer></script>
+<script src="game.js?v=0.7.0" defer></script>
+<script src="photocheck.js?v=0.7.0" defer></script>
+<script src="minigames.js?v=0.7.0" defer></script>
+<script src="app.js?v=0.7.0" defer></script>
 </body>
 </html>
