@@ -716,6 +716,48 @@
     balloonfest: 'Balloon Fiesta', snowdrops: 'Snowdrops', redkite: 'Red Kite', snowflake: 'Perfect Snowflake', shelfcloud: 'Shelf Cloud',
     wing: 'Plane Wing', evestar: 'Evening Star', glory: 'Glory'
   };
+  /* the names of each jar's own pictures, added row by row */
+  var JAR_NAMES = {
+    slug: 'Slug',
+    wellies: 'Wellies',
+    heron: 'Heron',
+    angler: 'Angler',
+    mistywindow: 'Misty Window',
+    blackbird: 'Blackbird and Worm',
+    wetdog: 'Wet Dog Shake',
+    birdbath: 'Bird Bath',
+    rainshaft: 'Rain Shaft',
+    puddlebike: 'Puddle Bike',
+    virga: 'Virga',
+    drainpipe: 'Gushing Drainpipe',
+    carsplash: 'Car Splash',
+    runcover: 'Running for Cover',
+    floodduck: 'Swimming Duck',
+    raincurtain: 'Rain Curtain',
+    bucket: 'Overflowing Bucket',
+    ark: 'Noah’s Ark',
+    leaner: 'Leaning Walker',
+    benttrees: 'Bent Trees',
+    wheeliebin: 'Wheelie Bin',
+    tent: 'Festival Tent',
+    seawall: 'Seawall Spray',
+    backgull: 'Backwards Seagull',
+    football: 'Floating Football',
+    manhole: 'Manhole Fountain',
+    sandbags: 'Sandbags',
+    kayak: 'Kayak Street',
+    raingauge: 'Full Rain Gauge',
+    steps: 'Waterfall Steps',
+    rainbomb: 'Rain Bomb',
+    leafbrolly: 'Banana Leaf',
+    lotus: 'Lotus Flowers',
+    terraces: 'Rice Terraces',
+    tuktuk: 'Tuk-tuk',
+    elephant: 'Bathing Elephant',
+    buffalo: 'Water Buffalo',
+    peacock: 'Dancing Peacock'
+  };
+  Object.keys(JAR_NAMES).forEach(function (k) { DECO_NAMES[k] = JAR_NAMES[k]; });
   /* each jar's six surprises, commonest first, then its legendary. 'deco=Name' gives a picture its own name in that jar */
   var NIGHT_SET = 'shooting plough bats orion lanterns milkyway comet';
   var MOON_SET = 'shooting plough bats orion lanterns owl comet';
@@ -731,13 +773,13 @@
     scorcher: 'sunflowers butterflies bubbles plane seeds parachute dustdevil',
     cloudsunset: 'wing plane=Passing_Jet evestar birds=Geese shooting greenflash glory',
 
-    drizzle: 'ripples umbrella ducklings boat frog snail kingfisher',
+    drizzle: 'web=Dewy_Cobweb slug wellies heron angler mistywindow kingfisher',
     rain: 'ripples umbrella ducklings boat frog snail catsdogs',
-    showers: 'ripples umbrella ducklings boat frog snail frograin',
-    downpour: 'ripples umbrella ducklings boat frog snail catsdogs',
-    sidewaysrain: 'ripples flyaway ducklings boat frog snail catsdogs',
-    cloudburst: 'ripples umbrella ducklings boat frog snail catsdogs',
-    monsoon: 'ripples umbrella ducklings boat frog snail catsdogs',
+    showers: 'blackbird wetdog birdbath rainshaft puddlebike virga frograin',
+    downpour: 'drainpipe carsplash runcover floodduck raincurtain bucket ark',
+    sidewaysrain: 'leaner benttrees flyaway wheeliebin tent seawall backgull',
+    cloudburst: 'football manhole sandbags kayak raingauge steps rainbomb',
+    monsoon: 'leafbrolly lotus terraces tuktuk elephant buffalo peacock',
 
     frost: 'crystals robin web=Frosty_Web fox skates stag frostflowers',
     sleet: 'robin umbrella ripples fox cottage lamp gritter',
