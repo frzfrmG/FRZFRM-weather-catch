@@ -5,7 +5,7 @@
   'use strict';
   var WC = window.WC;
   var RU = WC.rules, SKY = WC.sky;
-  var VERSION = '0.6.0';
+  var VERSION = '0.6.1';
   var TEST = /[?&]test=1(&|$)/.test(location.search);
   var KEY = 'frzfrm-wc-state-1';
   var WX_KEY = 'frzfrm-wc-weather-1';
@@ -959,11 +959,12 @@
   /* ---------- the shelf ---------- */
 
   function tierText(n) {
-    if (n >= RU.GOLD_AT) return 'Gold';
-    if (n >= RU.SILVER_AT) return 'Silver, ' + (RU.GOLD_AT - n) + ' more for gold';
-    return (RU.SILVER_AT - n) + ' more for silver';
+    var t = RU.tierFor(n), nx = RU.nextTier(n);
+    if (!nx) return t.name;
+    return (t ? t.name + ', ' : '') + (nx.at - n) + ' more for ' + nx.name.toLowerCase();
   }
-  function tierOf(n) { return n >= RU.GOLD_AT ? 'gold' : n >= RU.SILVER_AT ? 'silver' : ''; }
+  function tierOf(n) { var t = RU.tierFor(n); return t ? t.id : ''; }
+  function medal(n) { var t = RU.tierFor(n); return t ? '<span class="medal m-' + t.id + '" aria-hidden="true"></span>' : ''; }
   function listText(a) { return a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]; }
   function dateLabel(t) { return new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }); }
   function shelfIds() { return RU.ORDERED.filter(RU.catchable).map(function (t) { return t.id; }); }
@@ -1026,11 +1027,12 @@
     var later = !RU.catchable(t);
     var label = t.name + ', ' + rlabel(t.id) + (n ? ', caught ' + n + ' ' + plural(n, 'time') + (tierOf(n) ? ', ' + tierOf(n) : '') + ', ' + varsFound(e) + ' of ' + VARS.length + ' variants' : later ? ', coming in a later version' : ', not caught yet');
     var meta = n ? rlabel(t.id) + (tierOf(n) ? ' · ' + tierOf(n) : '') : later ? 'Later' : rlabel(t.id);
-    var bar = n && n < RU.GOLD_AT ? '<span class="tierbar ' + (n < RU.SILVER_AT ? 't-silver' : 't-gold') + '" aria-hidden="true"><i style="width:' + Math.round((n < RU.SILVER_AT ? n / RU.SILVER_AT : n / RU.GOLD_AT) * 100) + '%"></i></span>' : '';
-    if (n && n < RU.GOLD_AT) label += ', ' + (n < RU.SILVER_AT ? (RU.SILVER_AT - n) + ' more for silver' : (RU.GOLD_AT - n) + ' more for gold');
+    var nx = n ? RU.nextTier(n) : null;
+    var bar = nx ? '<span class="tierbar t-' + nx.id + '" aria-hidden="true"><i style="width:' + Math.round(n / nx.at * 100) + '%"></i></span>' : '';
+    if (nx) label += ', ' + (nx.at - n) + ' more for ' + nx.name.toLowerCase();
     return '<button type="button" class="jarcell' + (n ? '' : ' locked') + '" data-jar="' + t.id + '" aria-label="' + esc(label) + '">' +
       '<canvas data-id="' + t.id + '"' + (dark ? ' data-dark="1"' : '') + ' aria-hidden="true"></canvas><span class="plank"></span>' +
-      '<span class="jar-name">' + esc(t.name) + (n > 1 ? ' ×' + n : '') + '</span><span class="jar-meta rc-' + t.r + '">' + esc(meta) + '</span>' + bar + '</button>';
+      '<span class="jar-name">' + esc(t.name) + (n > 1 ? ' ×' + n : '') + '</span><span class="jar-meta rc-' + t.r + '">' + (n ? medal(n) : '') + esc(meta) + '</span>' + bar + '</button>';
   }
   /* a small shelf for previews. o: { el, themed, gold, wood, lights } */
   function miniShelf(ids, o) {
@@ -1155,7 +1157,7 @@
     return {
       id: id, glow: RU.rank(id) >= 3 ? { rare: '#7DB4FF', epic: '#C4A0FF', legendary: '#FFC766' }[t.r] : null,
       drip: frosty && sunny, hat: frosty && snowy, img: e.photo ? photoImg(e.photo) : null,
-      lidTone: e.n >= RU.GOLD_AT ? 'gold' : null, mark: shelfMark(id, e)
+      lidTone: tierOf(e.n) || null, mark: shelfMark(id, e)
     };
   }
   function drawJarOn(cv, st, t, look) {
@@ -1664,7 +1666,7 @@
     list.forEach(function (a) {
       var b = document.createElement('button');
       b.type = 'button';
-      b.className = 'btn' + (a.primary ? ' btn-primary' : '');
+      b.className = 'btn' + (a.primary ? ' btn-primary' : '') + (a.danger ? ' btn-danger' : '');
       b.textContent = a.label;
       if (a.id) b.id = a.id;
       b.addEventListener('click', a.fn);
@@ -1935,7 +1937,7 @@
     var spotted = how === 'spotted';
     var pts = Math.round(RU.points(id) * (sg ? RU.starBonus(sg.stars) : 1));
     S.points += pts;
-    var tier = before < 15 && e.n >= 15 ? 'Gold' : before < 5 && e.n >= 5 ? 'Silver' : null;
+    var tier = RU.tierReached(before, e.n);
     var r = { id: id, isNew: isNew, n: e.n, newPlace: newPlace && !isNew, place: place, pts: pts, tier: tier, verify: verify || '', spotted: spotted, v: rec.v, seed: rec.seed, newV: newV, rec: rec,
       sg: sg, newBest: newBest };
     var t = T(id);
@@ -2043,17 +2045,21 @@
     if (r.v && spinOn()) spinReveal(r, land); else land();
     if (r.lvUp) toast('Level ' + r.lvUp + '! ' + unlockText(r.lvUp));
   }
-  /* how a jar levels up: silver at 5 catches, gold at 15. Every catch counts, and nothing is used up.
-     reached: 'Silver' or 'Gold' when this catch got it there */
+  /* how a jar levels up: bronze, silver, gold, then rainbow (RU.TIERS). Every catch counts, and nothing is used up.
+     reached: the tier's name when this catch got it there */
   function setTier(n, reached) {
     var box = $('c-tier');
     if (!box) return;
     if (!n) { box.hidden = true; return; }
     box.hidden = false;
-    var sv = RU.SILVER_AT, gd = RU.GOLD_AT, txt, f, kind;
-    if (n >= gd) { txt = '<strong>Gold jar' + (reached === 'Gold' ? '!' : '.') + '</strong> ' + n + ' catches, the top level.'; f = 1; kind = 'gold'; }
-    else if (n >= sv) { txt = '<strong>Silver jar' + (reached === 'Silver' ? '!' : '.') + '</strong> <strong>' + (gd - n) + ' more</strong> ' + plural(gd - n, 'catch', 'catches') + ' for gold (' + n + ' of ' + gd + ').'; f = n / gd; kind = 'gold'; }
-    else { txt = '<strong>' + (sv - n) + ' more</strong> ' + plural(sv - n, 'catch', 'catches') + ' for a silver jar (' + n + ' of ' + sv + ').'; f = n / sv; kind = 'silver'; }
+    var cur = RU.tierFor(n), nx = RU.nextTier(n), txt, f, kind;
+    var head = cur ? medal(n) + '<strong>' + cur.name + ' jar' + (reached === cur.name ? '!' : '.') + '</strong> ' : '';
+    if (!nx) { txt = head + n + ' catches, the top level.'; f = 1; kind = cur.id; }
+    else {
+      var gap = nx.at - n;
+      txt = head + '<strong>' + gap + ' more</strong> ' + plural(gap, 'catch', 'catches') + ' for ' + (cur ? nx.name.toLowerCase() : 'a ' + nx.name.toLowerCase() + ' jar') + ' (' + n + ' of ' + nx.at + ').';
+      f = n / nx.at; kind = nx.id;
+    }
     $('c-tier-t').innerHTML = txt;
     box.className = 'ov-tier t-' + kind;
     $('c-tier-fill').style.width = Math.round(f * 100) + '%';
@@ -2475,7 +2481,7 @@
       e.last = now();
       return (byId[g.id] = {
         id: g.id, isNew: isNew, n: e.n, count: g.count, pts: 0, place: g.places[0], trip: true,
-        tier: b4 < 15 && e.n >= 15 ? 'Gold' : b4 < 5 && e.n >= 5 ? 'Silver' : null,
+        tier: RU.tierReached(b4, e.n),
         verify: 'Sealed on your trip, matching the live weather along the way.'
       });
     });
@@ -2737,18 +2743,24 @@
     } // an older page without the jar arrows, just after an update, simply has no swiping
     $('backup-btn').addEventListener('click', openBackup);
     $('restore-btn').addEventListener('click', openRestore);
-    var armed = false, armTimer = 0;
     $('reset-btn').addEventListener('click', function () {
-      var b = this;
-      if (!armed) {
-        armed = true;
-        b.textContent = 'Tap again to clear everything';
-        armTimer = setTimeout(function () { armed = false; b.textContent = 'Clear everything'; }, 4000);
-        return;
-      }
-      clearTimeout(armTimer);
-      armed = false;
-      b.textContent = 'Clear everything';
+      var jars = jarCount();
+      showInfo({
+        label: 'Warning', labelClass: 'rc-danger', title: 'Clear everything?',
+        body: '<p><strong>This can’t be undone.</strong> Every jar' + (jars ? ' (' + jars + ' on your shelf)' : '') + ', point, level, photo and shelf reward on this phone will be gone for good.</p>' +
+          '<p class="muted">Want to keep them? Close this and tap Back up first, so you can restore them later.</p>',
+        actions: [{ label: 'Keep my jars', primary: true, fn: closeSheet }, { label: 'Yes, clear everything', danger: true, fn: confirmClear }]
+      });
+    });
+    function confirmClear() {
+      showInfo({
+        label: 'Last check', labelClass: 'rc-danger', title: 'Are you really sure?',
+        body: '<p>Your whole shelf will be emptied now. There’s no way to get it back without a backup code.</p>',
+        actions: [{ label: 'No, keep them', primary: true, fn: closeSheet }, { label: 'Clear it all', danger: true, fn: doClear }]
+      });
+    }
+    function doClear() {
+      closeSheet();
       var keepNames = S.names;
       S = freshState();
       S.onboarded = true;
@@ -2760,7 +2772,7 @@
       render();
       if (R.tab === 'shelf') renderShelf();
       toast('Everything is cleared. Happy catching.');
-    });
+    }
     $('install-btn').addEventListener('click', function () {
       var ev = R.installEvt;
       if (!ev) return;

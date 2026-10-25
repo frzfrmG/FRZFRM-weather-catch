@@ -184,6 +184,7 @@ main{display:flex;flex-direction:column}
 .rc-rare{color:var(--r-rare)}
 .rc-epic{color:var(--r-epic)}
 .rc-legendary{color:var(--r-legendary)}
+.rc-danger{color:var(--danger)}
 
 .nav{position:fixed;left:0;right:0;bottom:0;z-index:30;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;padding-top:6px;padding-bottom:max(6px,env(safe-area-inset-bottom,0px));padding-left:max(12px,env(safe-area-inset-left,0px));padding-right:max(12px,env(safe-area-inset-right,0px));background:var(--surface);border-top:1px solid var(--line)}
 .nav-btn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:52px;border:0;border-radius:12px;background:transparent;color:var(--muted);font-weight:700;font-size:12px;max-width:160px;width:100%;margin:0 auto}
@@ -229,6 +230,15 @@ main{display:flex;flex-direction:column}
 .tierbar i{display:block;height:100%;border-radius:3px}
 .tierbar.t-silver i{background:#A9B4CC}
 .tierbar.t-gold i{background:#E0A93B}
+.t-bronze .tier-bar span{background:linear-gradient(90deg,#E7A970,#9A5E2C)}
+.t-rainbow .tier-bar span,.tierbar.t-rainbow i{background:linear-gradient(90deg,#FF5A5A,#FFA63D,#FFE14D,#5FD36B,#4DA6FF,#9B6BFF)}
+.tierbar.t-bronze i{background:#C27C43}
+.medal{display:inline-block;width:9px;height:9px;margin:0 4px 0 0;border-radius:50%;vertical-align:-1px;box-shadow:0 0 0 1px rgba(0,0,0,.25)}
+.tier-t .medal{width:12px;height:12px;margin-right:6px}
+.m-bronze{background:radial-gradient(circle at 35% 30%,#F3C08F,#A2622D 70%)}
+.m-silver{background:radial-gradient(circle at 35% 30%,#FFFFFF,#9AA5BB 70%)}
+.m-gold{background:radial-gradient(circle at 35% 30%,#FFF1B8,#D29A2E 70%)}
+.m-rainbow{background:conic-gradient(#FF5A5A,#FFA63D,#FFE14D,#5FD36B,#4DA6FF,#9B6BFF,#FF5A5A)}
 .ov-verify{margin:0;display:flex;gap:8px;align-items:flex-start;font-size:13px;line-height:1.45;color:var(--good)}
 .ov-verify svg{flex:none;margin-top:1px}
 .actions{display:flex;gap:8px;flex-wrap:wrap}

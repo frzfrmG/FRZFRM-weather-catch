@@ -564,6 +564,17 @@
      Jars marked 'later' can't be caught yet, so they don't count towards any of it. */
 
   var SILVER_AT = 5, GOLD_AT = 15;
+  /* jar levels: bronze, silver, gold, then rainbow for the keenest catchers. Every catch counts. */
+  var TIERS = [
+    { id: 'bronze', name: 'Bronze', at: 2 },
+    { id: 'silver', name: 'Silver', at: SILVER_AT },
+    { id: 'gold', name: 'Gold', at: GOLD_AT },
+    { id: 'rainbow', name: 'Rainbow', at: 30 }
+  ];
+  function tierFor(n) { var t = null; TIERS.forEach(function (x) { if (n >= x.at) t = x; }); return t; }
+  function nextTier(n) { for (var i = 0; i < TIERS.length; i++) if (n < TIERS[i].at) return TIERS[i]; return null; }
+  /* the tier a catch just reached, going from before to after catches, or null */
+  function tierReached(before, after) { var a = tierFor(after), b = tierFor(before); return a && a !== b ? a.name : null; }
   function catchable(t) { return !!t && t.how !== 'later'; }
   var SHELF = ORDERED.filter(catchable);
   var SHELF_TOTAL = SHELF.length;
@@ -776,7 +787,7 @@
     isSupermoon: isSupermoon, moonIllumination: moonIllumination, meteorShower: meteorShower, eclipseNow: eclipseNow,
     dayKey: dayKey, nightKey: nightKey,
     levelFor: levelFor, pointsFor: pointsFor, titleFor: titleFor, UNLOCKS: UNLOCKS, unlocked: unlocked,
-    SILVER_AT: SILVER_AT, GOLD_AT: GOLD_AT, catchable: catchable, SHELF_TOTAL: SHELF_TOTAL, rowTypes: rowTypes,
+    SILVER_AT: SILVER_AT, GOLD_AT: GOLD_AT, TIERS: TIERS, tierFor: tierFor, nextTier: nextTier, tierReached: tierReached, catchable: catchable, SHELF_TOTAL: SHELF_TOTAL, rowTypes: rowTypes,
     WOODS: WOODS, LIGHTS: LIGHTS, JAR_REWARDS: JAR_REWARDS, ROW_LOOKS: ROW_LOOKS, KEEPER: KEEPER,
     reward: reward, shelfProgress: shelfProgress, rewardsEarned: rewardsEarned, nextJarReward: nextJarReward, styleReward: styleReward,
     variants: variants, variant: variant, variantRank: variantRank, rollVariant: rollVariant, VARIANT_SLOTS: SLOTS.map(function (x) { return x[0]; }),

@@ -847,14 +847,30 @@
   function lid(ctx, cx, bottom, w, h, k, tone) {
     var x = cx - w / 2;
     var g = ctx.createLinearGradient(x, 0, x + w, 0);
-    var gold = tone === 'gold';
-    g.addColorStop(0, gold ? '#B8862B' : '#9AA3B5');
-    g.addColorStop(0.45, gold ? '#FBE29A' : '#E3E7EE');
-    g.addColorStop(1, gold ? '#9A6B17' : '#7E879A');
+    /* a plain tin lid until the jar levels up: bronze, silver, gold, then rainbow */
+    var LIDS = {
+      plain: ['#7F8696', '#B4BAC6', '#666D7C', 'rgba(40,46,64,0.35)'],
+      bronze: ['#7A4A22', '#E7A970', '#5E3517', 'rgba(60,30,8,0.45)'],
+      silver: ['#A9B3C6', '#FFFFFF', '#8792A8', 'rgba(40,46,64,0.3)'],
+      gold: ['#B8862B', '#FBE29A', '#9A6B17', 'rgba(90,58,8,0.4)']
+    };
+    var c = LIDS[tone] || LIDS.plain;
+    if (tone === 'rainbow') {
+      ['#FF5A5A', '#FFA63D', '#FFE14D', '#5FD36B', '#4DA6FF', '#9B6BFF'].forEach(function (col, i) { g.addColorStop(i / 5, col); });
+      c = [0, 0, 0, 'rgba(255,255,255,0.55)'];
+    } else {
+      g.addColorStop(0, c[0]);
+      g.addColorStop(0.45, c[1]);
+      g.addColorStop(1, c[2]);
+    }
     ctx.fillStyle = g;
     roundRect(ctx, x, bottom - h, w, h, 3 * k);
     ctx.fill();
-    ctx.strokeStyle = gold ? 'rgba(90,58,8,0.4)' : 'rgba(40,46,64,0.35)';
+    if (tone && tone !== 'bronze') {
+      // a little glint so silver, gold and rainbow lids catch the eye
+      star4(ctx, x + w * 0.82, bottom - h * 1.05, Math.max(2, h * 0.55), 'rgba(255,255,255,0.8)');
+    }
+    ctx.strokeStyle = c[3];
     ctx.lineWidth = Math.max(1, 0.9 * k);
     for (var i = 1; i < 6; i++) {
       var lx = x + (w * i) / 6;
