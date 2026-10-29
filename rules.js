@@ -956,13 +956,18 @@
     });
   });
   function setFor(t) { return SETS[t.id] || null; }
+  /* a chance as a percentage: 50%, 16.7%, 1.7%, 0.25% */
+  function pctText(f) {
+    var p = f * 100, v = p >= 1 ? Math.round(p * 10) / 10 : Math.round(p * 100) / 100;
+    return String(v) + '%';
+  }
   function variants(id) {
     var t = TYPES[id];
     var set = t && setFor(t);
     if (!set) return [];
     return SLOTS.map(function (s, i) {
       var d = i ? set[i - 1] : [null, 'Classic'];
-      return { id: s[0], name: d[1], odds: s[2], chance: s[1] / 240, deco: d[0], legend: s[0] === 'p' };
+      return { id: s[0], name: d[1], odds: s[2], chance: s[1] / 240, pct: pctText(s[1] / 240), deco: d[0], legend: s[0] === 'p' };
     });
   }
   function variant(id, v) {
@@ -1071,7 +1076,7 @@
     SILVER_AT: SILVER_AT, GOLD_AT: GOLD_AT, TIERS: TIERS, tierFor: tierFor, nextTier: nextTier, tierReached: tierReached, catchable: catchable, SHELF_TOTAL: SHELF_TOTAL, rowTypes: rowTypes,
     WOODS: WOODS, LIGHTS: LIGHTS, JAR_REWARDS: JAR_REWARDS, ROW_LOOKS: ROW_LOOKS, KEEPER: KEEPER,
     reward: reward, shelfProgress: shelfProgress, rewardsEarned: rewardsEarned, nextJarReward: nextJarReward, styleReward: styleReward,
-    variants: variants, variant: variant, variantRank: variantRank, rollVariant: rollVariant, VARIANT_SLOTS: SLOTS.map(function (x) { return x[0]; }), DECO_NAMES: DECO_NAMES,
+    variants: variants, variant: variant, variantRank: variantRank, pctText: pctText, rollVariant: rollVariant, VARIANT_SLOTS: SLOTS.map(function (x) { return x[0]; }), DECO_NAMES: DECO_NAMES,
     strength: strength, hasStrength: hasStrength, strengthText: strengthText, starBonus: starBonus,
     activeStorm: activeStorm, stormList: stormList, okStormName: okStormName, STORM_AREA: STORM_AREA
   };

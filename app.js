@@ -5,7 +5,7 @@
   'use strict';
   var WC = window.WC;
   var RU = WC.rules, SKY = WC.sky;
-  var VERSION = '0.8.2';
+  var VERSION = '0.9.0';
   var TEST = /[?&]test=1(&|$)/.test(location.search);
   var KEY = 'frzfrm-wc-state-1';
   var WX_KEY = 'frzfrm-wc-weather-1';
@@ -145,6 +145,8 @@
     if (o.oldJars && (typeof o.oldJars !== 'object' || !Array.isArray(o.oldJars.found) || typeof o.oldJars.n !== 'number')) o.oldJars = null;
     o.games = cleanGames(o.games);
     if (o.photoNote && !Array.isArray(o.photoNote)) o.photoNote = null;
+    if (o.day && (typeof o.day !== 'object' || typeof o.day.d !== 'string' || !o.day.n || typeof o.day.n !== 'object')) o.day = null;
+    if (o.tripNote && (typeof o.tripNote !== 'object' || !Array.isArray(o.tripNote.trips))) o.tripNote = null;
     return o;
   }
   function loadState() {
@@ -265,7 +267,7 @@
 
   var R = {
     tab: 'catch', problem: null, locating: false,
-    pos: null, speeds: [], fast: false, moving: false, speedAt: 0, lastFix: 0,
+    pos: null, speeds: [], fast: false, moving: false, speedAt: 0, lastFix: 0, fixes: [], hiddenAt: 0,
     area: null, place: null, wx: null, wxError: null, fetching: null,
     reading: null, ctx: null, cls: null, wonders: [], spots: [], seen: [], near: {}, coming: [], warning: null,
     watchId: null, game: null, view: null, queue: [], cardState: null, lastFocus: null,
@@ -398,11 +400,24 @@
     var sp = typeof c.speed === 'number' && isFinite(c.speed) && c.speed >= 0 ? c.speed : null;
     var prev = R.pos;
     var spF = sp;
-    if (sp === null && prev && pos.acc <= 150 && prev.acc <= 150 && t - prev.t >= 8000) sp = distM(prev, pos) / ((t - prev.t) / 1000);
+    // phones that don't say how fast they're going: work it out from an earlier fix, 8 seconds to 10 minutes before.
+    // Fixes can come every second, so the one just before is usually too close to measure from
+    if (sp === null && pos.acc <= 150) {
+      var base = null;
+      for (var i = R.fixes.length - 1; i >= 0; i--) {
+        var f = R.fixes[i], gap = t - f.t;
+        if (gap > 10 * MIN) break;
+        if (gap >= 8000 && f.acc <= 150) { base = f; break; }
+      }
+      if (base) sp = distM(base, pos) / ((t - base.t) / 1000);
+    }
+    R.fixes.push({ lat: pos.lat, lon: pos.lon, acc: pos.acc, t: t });
+    if (R.fixes.length > 40) R.fixes.shift();
     // a plane can be worked out from rougher fixes, as long as it has gone a long way fast
     if (spF === null && prev && pos.acc <= 1000 && prev.acc <= 1000 && t - prev.t >= 8000 && t - prev.t <= 120000 && distM(prev, pos) >= 3000) spF = distM(prev, pos) / ((t - prev.t) / 1000);
     if (spF === null) spF = sp;
     if (sp !== null) noteSpeed(sp);
+    noteTripFix(t, sp);
     pos.spd = spF;
     R.pos = pos;
     R.lastFix = now();
@@ -434,6 +449,7 @@
   function flightKey() { return 'cloudsunset|' + today(); }
   function enterArea(a) {
     var first = !R.area;
+    if (S.drive && S.haul && !first) tripDiag().areas += 1;
     R.area = a;
     R.place = S.names[a.id] || null;
     R.cls = null; R.wonders = []; R.spots = []; R.seen = []; R.coming = []; R.warning = null; R.reading = null;
@@ -577,6 +593,7 @@
       }
     }).catch(function (e) {
       R.wxError = e;
+      if (S.drive && S.haul) tripDiag().wxFail += 1;
       if (!R.wx) showProblem('weather');
       else if (loud) toast('Couldn’t get new weather. Showing the last update.');
     }).then(function () {
@@ -852,7 +869,7 @@
       $('cond-name').textContent = liveName(head);
       pill.hidden = false;
       pill.setAttribute('data-r', T(head).r);
-      $('cond-rarity').textContent = rlabel(head) + ' · ' + RU.points(head) + ' pts';
+      $('cond-rarity').textContent = rlabel(head) + ' · ' + livePoints(head) + ' pts';
     }
     var up = $('updated');
     if (R.fetching && !R.wx) up.textContent = 'Checking the weather…';
@@ -949,8 +966,8 @@
     var html;
     if (stale()) html = 'The weather here is from ' + hm(R.wx.at) + '. Tap Catch and the app will check it first.';
     else if (!e || !e.n) html = '<strong>New jar!</strong> You haven’t caught ' + esc(liveName(target.id)) + ' before.';
-    else if (e.places.indexOf(placeFor(R.area.id)) === -1) html = 'On your shelf ×' + e.n + '. Catching it here adds <strong>a new place</strong>.';
-    else html = 'On your shelf ×' + e.n + '. Catching it again earns <strong>' + RU.points(target.id) + ' points</strong>.';
+    else if (e.places.indexOf(placeFor(R.area.id)) === -1) html = 'On your shelf ×' + e.n + '. Catching it here adds <strong>a new place</strong>' + (caughtToday(target.id) ? ', for ' + livePoints(target.id) + ' points: half, as you’ve caught it today already.' : '.');
+    else html = 'On your shelf ×' + e.n + '. Catching it again earns <strong>' + livePoints(target.id) + ' points</strong>' + (caughtToday(target.id) ? ', half, as you’ve caught it today already' : '') + '.';
     var ch = pendingChanges();
     if (ch.length) html += ' The weather has turned, so you’ll also get <strong>' + esc(T(ch[0]).name) + '</strong>.';
     hint.innerHTML = html;
@@ -963,7 +980,7 @@
     $('also-title').textContent = R.target ? 'Also here right now' : 'Here right now';
     $('also').innerHTML = list.map(function (c) {
       var t = T(c.id), name = liveName(c.id);
-      var state = c.caught ? 'Caught today' : c.cool ? 'Back in ' + minutes(c.cool) : RU.points(c.id) + ' pts';
+      var state = c.caught ? 'Caught today' : c.cool ? 'Back in ' + minutes(c.cool) : livePoints(c.id) + ' pts';
       var done = c.caught || c.cool;
       return '<button type="button" class="chip' + (done ? ' done' : '') + '" data-catch="' + c.id + '"' + (done ? ' disabled' : '') + ' aria-label="' + esc((done ? '' : 'Catch ') + name + ', ' + rlabel(c.id) + ', ' + state) + '">' +
         '<span class="rc-' + t.r + '">' + icon(c.id, 18) + '</span><span>' + esc(name) + '</span><span class="chip-pts">' + (c.caught ? icon('check', 14) + ' today' : esc(state)) + '</span></button>';
@@ -982,7 +999,7 @@
         cool ? '<span class="small">Back in ' + minutes(cool) + '</span>' :
         '<button class="btn" type="button" data-wonder="' + w.id + '"' + (blockedByMoving() ? ' disabled' : '') + '>Catch</button>';
       return '<div class="wcard"><span class="rc-' + t.r + '">' + icon(w.id, 26) + '</span><div class="wcard-body"><div class="wcard-name">' + esc(t.name) + '</div>' +
-        '<div class="tl-r rc-' + t.r + '">' + rlabel(w.id) + ' · ' + RU.points(w.id) + ' pts</div><div class="wcard-note">' + esc(note) + '</div></div>' + btn + '</div>';
+        '<div class="tl-r rc-' + t.r + '">' + rlabel(w.id) + ' · ' + livePoints(w.id) + ' pts</div><div class="wcard-note">' + esc(note) + '</div></div>' + btn + '</div>';
     }).join('');
   }
   var TIP_ORDER = ['moonbow', 'cloudinversion', 'rainbow', 'fogbow', 'sheetlightning'];
@@ -1259,7 +1276,7 @@
     var t = b ? T(b.id) : null, vr = b ? RU.variant(b.id, b.v) : null, e = b ? S.book[b.id] : null;
     var name = b ? (b.storm ? 'Storm ' + b.storm : t.name) : 'Your best jar goes here';
     $('case-name').textContent = name;
-    $('case-var').innerHTML = b ? '<span class="' + (vr.legend ? 'legend-text' : '') + '">' + esc(vr.name) + '</span><span class="case-odds">' + esc(vr.odds) + '</span>' : 'Catch your first weather to start your shelf.';
+    $('case-var').innerHTML = b ? '<span class="' + (vr.legend ? 'legend-text' : '') + '">' + esc(vr.name) + '</span><span class="case-odds">' + esc(vr.odds) + ' · ' + esc(vr.pct) + '</span>' : 'Catch your first weather to start your shelf.';
     $('case-meta').innerHTML = b ? '<span class="pill rc-' + t.r + '">' + esc(rlabel(b.id)) + '</span>' + (e && RU.tierFor(e.n) ? '<span class="case-tier">' + medal(e.n) + esc(RU.tierFor(e.n).name) + '</span>' : '') : '';
     var jb = $('case-jar');
     jb.setAttribute('aria-label', b ? 'Your best jar: ' + name + ', ' + vr.name + '. Open it' : 'No jars yet');
@@ -1911,7 +1928,7 @@
       y += 52;
       var vr = RU.variant(id, (rec && rec.v) || 'c');
       var kind = rlabel(id).toUpperCase() + (t.el === 'wonder' ? ' · SKY WONDER' : t.el === 'change' ? ' · CHANGE MOMENT' : '') +
-        (vr.id !== 'c' ? ' · ' + vr.name.toUpperCase() + ', ' + vr.odds.toUpperCase() : e.n > 1 ? ' · ×' + e.n : '');
+        (vr.id !== 'c' ? ' · ' + vr.name.toUpperCase() + ', ' + vr.odds.toUpperCase() + ' (' + vr.pct + ')' : e.n > 1 ? ' · ×' + e.n : '');
       ctx.fillStyle = INK_R[t.r];
       fitText(ctx, kind, '600', 26, MONO, maxW);
       ctx.fillText(kind, lx + pad, y);
@@ -1938,7 +1955,7 @@
   function shareText(id, rec) {
     var vr = RU.variant(id, (rec && rec.v) || 'c');
     var sg = rec ? RU.strength(id, rec) : null;
-    return 'Look what I caught' + (rec && rec.place ? ' in ' + rec.place : '') + ': ' + recName(id, rec) + ' (' + rlabel(id) + (vr.id !== 'c' ? ', ' + vr.name + ', ' + vr.odds : '') + ')' +
+    return 'Look what I caught' + (rec && rec.place ? ' in ' + rec.place : '') + ': ' + recName(id, rec) + ' (' + rlabel(id) + (vr.id !== 'c' ? ', ' + vr.name + ', ' + vr.odds + ', ' + vr.pct : '') + ')' +
       (sg ? ', ' + sg.stars + ' ' + plural(sg.stars, 'star') + ': ' + RU.strengthText(sg) : '') + '. Catch the weather where you are: ' + appUrl();
   }
   /* rec: the catch to share. Without one, the newest */
@@ -1982,6 +1999,7 @@
   function isIOS() { return /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); }
   function renderMore() {
     $('version').textContent = VERSION;
+    renderPhotosCard();
     var text = $('install-text'), btn = $('install-btn');
     if (isStandalone()) { text.textContent = 'You’re using it from your home screen. Your jars are safest here.'; btn.hidden = true; }
     else if (R.installEvt) { text.textContent = 'It opens like an app, and your jars are safer there.'; btn.hidden = false; }
@@ -2046,6 +2064,7 @@
   }
   function closeSheet() {
     stopSpin();
+    freeThumbs();
     if (WC.mini) WC.mini.stop();
     $('overlay').hidden = true;
     R.game = null;
@@ -2075,6 +2094,16 @@
     el.hidden = false;
     el.innerHTML = icon('check', 16) + '<span></span>';
     el.lastChild.textContent = text;
+  }
+  /* on a photo jar's card: how many photos it holds, and a way to see or delete them */
+  function setPhotoLine(id) {
+    var el = $('c-photo');
+    if (!el) return;
+    var n = id ? photoCount(id) : 0;
+    el.hidden = !n;
+    if (!n) return;
+    $('c-photo-t').textContent = n === 1 ? 'This jar holds 1 photo.' : 'This jar holds ' + n + ' photos.';
+    R.photoJar = id;
   }
   function setPill(id) {
     var t = T(id);
@@ -2296,6 +2325,26 @@
     return total;
   }
 
+  /* ---------- points ----------
+     A catch earns its rarity's points, more for 4 and 5 stars. The first catch of each kind of weather each day earns full
+     points; catching it again the same day, in another area, earns half. Trip jars earn half too: there was no game */
+  function dayCounts() {
+    var d = today();
+    if (!S.day || S.day.d !== d || !S.day.n || typeof S.day.n !== 'object') S.day = { d: d, n: {} };
+    return S.day.n;
+  }
+  function caughtToday(id) { return (dayCounts()[id] || 0) > 0; }
+  function countToday(id) { var n = dayCounts(); n[id] = (n[id] || 0) + 1; }
+  function catchPoints(id, sg, trip, again) {
+    var p = RU.points(id) * (sg ? RU.starBonus(sg.stars) : 1);
+    if (trip) p *= 0.5;
+    if (again) p *= 0.5;
+    return Math.max(1, Math.round(p));
+  }
+  /* what a saved catch earned: saved with it from 0.9.0, worked out the old way (full points) before that */
+  function earned(id, rec) { return typeof rec.pts === 'number' && isFinite(rec.pts) ? rec.pts : Math.round(RU.points(id) * (rec.stars ? RU.starBonus(rec.stars) : 1)); }
+  /* what catching it now would earn, before stars */
+  function livePoints(id) { return catchPoints(id, null, false, caughtToday(id)); }
   /* how: live, spotted, change, sky or photo */
   function awardOne(id, key, place, verify, how, areaId) {
     S.caught[key] = 1;
@@ -2314,11 +2363,14 @@
     var newV = addVariant(e, rec) && !isNew;
     var newBest = sg ? bestUpdate(e, rec, sg) : false;
     var spotted = how === 'spotted';
-    var pts = Math.round(RU.points(id) * (sg ? RU.starBonus(sg.stars) : 1));
+    var again = caughtToday(id);
+    var pts = catchPoints(id, sg, false, again);
+    rec.pts = pts;
+    countToday(id);
     S.points += pts;
     var tier = RU.tierReached(before, e.n);
     var r = { id: id, isNew: isNew, n: e.n, newPlace: newPlace && !isNew, place: place, pts: pts, tier: tier, verify: verify || '', spotted: spotted, v: rec.v, seed: rec.seed, newV: newV, rec: rec,
-      sg: sg, newBest: newBest };
+      sg: sg, newBest: newBest, again: again };
     var t = T(id);
     var lead = spotted ? (isNew ? 'Spotted a new jar: ' : 'Spotted: ') : isNew ? (t.el === 'change' ? 'Change moment: ' : t.el === 'wonder' ? 'Sky Wonder: ' : 'New jar: ') : '';
     addLog(lead + recName(id, rec) + variantNote(id, rec.v) + (isNew ? '' : ' again') + (place ? ' in ' + place : '') + (isNew ? ' (+' + pts + ')' : ' (×' + e.n + ', +' + pts + ')'));
@@ -2389,17 +2441,21 @@
     $('c-label').className = 'ov-label rc-' + t.r;
     $('c-title').textContent = recName(r.id, r.rec);
     setPill(r.id);
-    var bonus = r.sg && !r.trip ? RU.starBonus(r.sg.stars) : 1;
-    var pts = '+' + r.pts + ' points' + (bonus > 1 ? ' · ×' + bonus + ' for ' + r.sg.stars + ' stars' : '');
+    var bonus = r.sg ? RU.starBonus(r.sg.stars) : 1;
+    var halves = [];
+    if (r.trip) halves.push('half on a trip');
+    if (r.again) halves.push('half as it’s your second today');
+    var pts = '+' + r.pts + ' points' + (bonus > 1 ? ' · ×' + bonus + ' for ' + r.sg.stars + ' stars' : '') + (halves.length ? ' · ' + halves.join(', ') : '');
     if (r.lvUp) pts += ' · Level ' + r.lvUp + '! ' + unlockText(r.lvUp);
     $('c-points').textContent = pts;
     $('c-line').textContent = t.line;
     var stats;
-    if (r.trip) stats = '×' + r.count + ' on this trip · ' + e.n + ' on your shelf · ' + e.places.length + ' ' + plural(e.places.length, 'place');
+    if (r.trip) stats = r.isNew ? 'First one on your shelf.' : '×' + e.n + ' on your shelf · ' + e.places.length + ' ' + plural(e.places.length, 'place');
     else if (r.isNew) stats = 'First one on your shelf.';
     else stats = '×' + r.n + ' · ' + e.places.length + ' ' + plural(e.places.length, 'place') + (r.newPlace ? ' · new place: ' + r.place : '');
     $('c-stats').textContent = stats;
     setTier(e.n, r.tier);
+    setPhotoLine(null);
     setVerify(r.verify);
     R.cardState = jarState(r.id);
     if (r.img) R.cardState.img = r.img;
@@ -2462,10 +2518,12 @@
   function setVariant(id, v, fresh, locked) {
     var el = $('c-var');
     if (!el) return;
+    // while the reel spins
+    if (id && v === null) { el.hidden = false; el.innerHTML = '<span class="v-name">Opening the jar…</span>'; return; }
     var vr = id && RU.variant(id, v);
     if (!vr) { el.hidden = true; el.innerHTML = ''; return; }
     el.hidden = false;
-    el.innerHTML = '<span class="v-name' + (vr.legend ? ' legend-text' : '') + '">' + esc(vr.name) + '</span><span class="v-odds">' + esc(vr.odds) + ' jars</span>' +
+    el.innerHTML = '<span class="v-name' + (vr.legend ? ' legend-text' : '') + '">' + esc(vr.name) + '</span><span class="v-odds">' + esc(vr.odds) + ' · ' + esc(vr.pct) + '</span>' +
       (vr.legend ? '<span class="v-legend">Legendary</span>' : '') +
       (fresh ? '<span class="v-new">New variant</span>' : locked ? '<span class="v-lock">' + icon('lock', 13) + 'Not found yet</span>' : '');
   }
@@ -2524,33 +2582,108 @@
       cv.style.opacity = '';
     }, 150);
   }
-  /* the reveal: the jar spins through its variants, slowing down, and lands on the one caught. Tap the jar to skip */
+  /* the reveal: a reel of jars spins past a marker, slows down and lands on the variant caught, then the jar opens.
+     The jars on the reel turn up at the real odds, and what's caught is decided before the reel starts. Tap to skip */
   function spinOn() { return !reduce && !(TEST && !/[?&]spin=1(&|$)/.test(location.search)); }
-  function stopSpin() { if (R.spin) { clearTimeout(R.spin.timer); R.spin = null; $('c-var').classList.remove('spinning'); } }
+  function stopSpin() {
+    var sp = R.spin;
+    if (!sp) return;
+    R.spin = null;
+    cancelAnimationFrame(sp.raf);
+    clearTimeout(sp.timer);
+    $('c-var').classList.remove('spinning');
+    if (sp.reel && sp.reel.parentNode) sp.reel.parentNode.removeChild(sp.reel);
+    $('c-jar').classList.remove('reeling');
+  }
+  var TILE_W = 78, TILE_GAP = 8, REEL_N = 34, REEL_AT = 28, REEL_MS = 3400;
+  /* a still picture of one variant, for the reel */
+  function variantPicture(id, v, seed, power, w, h) {
+    var cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    var st = jarState(id);
+    st.mark = markOf(id, v, seed, power);
+    st.glow = null;
+    st.hat = st.drip = false;
+    SKY.jar(cv.getContext('2d'), w, h, st, stillTime(id), glassLook());
+    return cv;
+  }
   function spinReveal(r, land) {
-    var list = RU.variants(r.id), target = 0;
-    list.forEach(function (vr, i) { if (vr.id === r.v) target = i; });
-    var start = Math.floor(Math.random() * list.length), n = 10;
-    while ((start + n) % list.length !== target) n++;
-    var k = 0, sp = { timer: 0 };
+    var list = RU.variants(r.id);
+    if (!list.length) { land(); return; }
+    var dpr = Math.min(2, window.devicePixelRatio || 1), pw = Math.round(64 * dpr), ph = Math.round(85 * dpr);
+    var pics = {};
+    var pic = function (v) { return pics[v] || (pics[v] = variantPicture(r.id, v, r.seed, r.rec && r.rec.power, pw, ph)); };
+    var seq = [];
+    for (var i = 0; i < REEL_N; i++) seq.push(i === REEL_AT ? r.v : RU.rollVariant(rand32() / 4294967296));
+    var reel = document.createElement('div');
+    reel.className = 'reel';
+    reel.setAttribute('aria-hidden', 'true');
+    var track = document.createElement('div');
+    track.className = 'reel-track';
+    seq.forEach(function (v) {
+      var vr = RU.variant(r.id, v);
+      var tile = document.createElement('div');
+      tile.className = 'reel-tile r-' + (vr.legend ? 'legend' : RU.variantRank(v) >= 5 ? 'epic' : RU.variantRank(v) >= 3 ? 'rare' : RU.variantRank(v) >= 1 ? 'uncommon' : 'classic');
+      var c = document.createElement('canvas');
+      c.width = pw; c.height = ph;
+      c.getContext('2d').drawImage(pic(v), 0, 0);
+      tile.appendChild(c);
+      var lab = document.createElement('span');
+      lab.className = 'reel-odds';
+      lab.textContent = vr.odds;
+      tile.appendChild(lab);
+      track.appendChild(tile);
+    });
+    reel.appendChild(track);
+    var mark = document.createElement('div');
+    mark.className = 'reel-mark';
+    reel.appendChild(mark);
+    var box = $('c-jar');
+    box.classList.add('reeling');
+    box.appendChild(reel);
+    var sp = { reel: reel, raf: 0, timer: 0 };
     R.spin = sp;
     $('c-var').classList.add('spinning');
+    setVariant(r.id, null);
+    var width = reel.clientWidth || 320;
+    // land somewhere inside the caught tile, not always dead centre
+    var jitter = (Math.random() - 0.5) * TILE_W * 0.6;
+    var to = REEL_AT * (TILE_W + TILE_GAP) + TILE_W / 2 + jitter - width / 2;
+    var t0 = 0, lastTile = -1;
     sp.finish = function () {
       if (R.spin !== sp) return;
-      clearTimeout(sp.timer);
-      R.spin = null;
-      $('c-var').classList.remove('spinning');
-      land();
+      track.style.transform = 'translateX(' + (-to) + 'px)';
+      var won = track.children[REEL_AT];
+      if (won) won.classList.add('won');
+      cancelAnimationFrame(sp.raf);
+      sp.raf = 0;
+      sp.timer = setTimeout(function () {
+        if (R.spin !== sp) return;
+        stopSpin();
+        land();
+        var cv = $('c-canvas');
+        cv.classList.remove('pop');
+        void cv.offsetWidth;
+        cv.classList.add('pop');
+      }, 520);
     };
-    (function step() {
-      if (R.spin !== sp || !R.cardState) return;
-      var vr = list[(start + k) % list.length];
-      R.cardState.mark = markOf(r.id, vr.id, r.seed, r.rec && r.rec.power);
-      setVariant(r.id, vr.id, false);
-      if (k >= n) { sp.finish(); return; }
-      k += 1;
-      sp.timer = setTimeout(step, 45 + 250 * Math.pow(k / n, 2.2));
-    })();
+    var step = function (ts) {
+      if (R.spin !== sp) return;
+      if (!t0) t0 = ts;
+      var f = Math.min(1, (ts - t0) / REEL_MS);
+      // fast at first, then a long slow-down
+      var e = 1 - Math.pow(1 - f, 4);
+      var x = to * e;
+      track.style.transform = 'translateX(' + (-x) + 'px)';
+      var under = Math.floor((x + width / 2) / (TILE_W + TILE_GAP));
+      if (under !== lastTile) {
+        lastTile = under;
+        if (f > 0.55) { try { if (navigator.vibrate) navigator.vibrate(4); } catch (err) {} }
+      }
+      if (f >= 1) { sp.finish(); return; }
+      sp.raf = requestAnimationFrame(step);
+    };
+    sp.raf = requestAnimationFrame(step);
   }
   function markStrip(v) {
     Array.prototype.forEach.call($('c-vars').querySelectorAll('button[data-var]'), function (b) {
@@ -2595,6 +2728,7 @@
     setVariant(null);
     setStrength(null);
     setTier(0);
+    setPhotoLine(null);
     renderVars(null);
     R.cardState = jarState('sky');
     setActions('c-actions', [{ label: 'Close', primary: true, fn: closeSheet }]);
@@ -2615,6 +2749,7 @@
     $('c-stats').textContent = '×' + x.n + (season ? ' · ' + season : '');
     setVerify(x.t ? 'First caught ' + new Date(x.t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' at ' + hm(x.t) + (x.place ? ' in ' + x.place : '') : '');
     setTier(0);
+    setPhotoLine(null);
     R.cardState = stormState(name);
     R.cardId = id;
     R.cardV = (rec && rec.v) || 'c';
@@ -2649,6 +2784,7 @@
       setVerify('');
     }
     setTier(n);
+    setPhotoLine(n && t.how === 'photo' ? id : null);
     R.cardId = id;
     // a jar not caught yet shows a frosted preview of its Classic, and every variant can be looked at
     var open = !n && RU.catchable(t);
@@ -2729,7 +2865,9 @@
     if (S.caught[key]) { toast('You’ve already caught ' + T(id).name + ' today.'); return; }
     toast('Checking your photo…');
     shrinkPhoto(file).then(function (blob) {
-      var checker = WC.photoCheck ? WC.photoCheck.check(blob, id).catch(function () { return { ok: true, text: '' }; }) : Promise.resolve({ ok: true, text: '' });
+      // a photo the phone can't check doesn't go in a jar
+      var cant = { ok: false, reason: 'error', text: 'Your phone couldn’t check this photo, so it can’t go in a jar.' };
+      var checker = WC.photoCheck ? WC.photoCheck.check(blob, id).catch(function () { return cant; }) : Promise.resolve(cant);
       return checker.then(function (v) {
         if (!v.ok) { photoFailed(id, v); return; }
         putInJar(id, key, blob, v);
@@ -2759,11 +2897,13 @@
     putPhoto(pk, blob).catch(function () {});
     afterAward([r], before);
   }
-  /* photos put in jars before photo checks existed (before 0.7.0) are checked once on each phone. One that fails,
-     with a face in it or the wrong kind of sky, is taken back: that catch stops counting, its points come off and the
-     photo is deleted, and a jar left with no catches is empty again. A catch whose photo can't be found stays as it is. */
+  /* photos already in jars are checked again each time the photo checks get stricter (0.7.1, then 0.9.0), once on each
+     phone. One that fails, with a face in it or the wrong kind of sky, is taken back: that catch stops counting, its
+     points come off and the photo is deleted, and a jar left with no catches is empty again. A catch whose photo can't be
+     found stays as it is. */
+  function checkLevel() { return WC.photoCheck && WC.photoCheck.VERSION ? WC.photoCheck.VERSION : 1; }
   function recheckPhotos() {
-    if (S.photoCheck || R.recheck || !WC.photoCheck || !S.onboarded) return Promise.resolve([]);
+    if ((S.photoCheck || 0) >= checkLevel() || R.recheck || !WC.photoCheck || !S.onboarded) return Promise.resolve([]);
     var jobs = [];
     RU.ORDERED.forEach(function (t) {
       var e = S.book[t.id];
@@ -2773,7 +2913,7 @@
       if (e.photo && keys.indexOf(e.photo) === -1) keys.push(e.photo);
       keys.forEach(function (pk) { jobs.push({ id: t.id, pk: pk }); });
     });
-    if (!jobs.length) { S.photoCheck = 1; save(); return Promise.resolve([]); }
+    if (!jobs.length) { S.photoCheck = checkLevel(); save(); return Promise.resolve([]); }
     R.recheck = true;
     var failed = [], broken = false;
     var chain = Promise.resolve();
@@ -2790,7 +2930,7 @@
       // if the phone's photo store couldn't be opened, try again next time
       if (broken) return [];
       var out = failed.map(function (f) { return takeBack(f); }).filter(Boolean);
-      S.photoCheck = 1;
+      S.photoCheck = checkLevel();
       // what to tell the player is saved, so it's still said if the app closes before the card shows
       if (out.length) S.photoNote = out;
       save();
@@ -2802,8 +2942,9 @@
       return out;
     });
   }
-  /* takes one photo catch off the shelf. Returns what to tell the player */
-  function takeBack(f) {
+  /* takes one photo catch off the shelf: one that failed a check, or one whose photo the player deleted (mine).
+     Returns what to tell the player */
+  function takeBack(f, mine) {
     var e = S.book[f.id];
     if (!e || !e.n) return null;
     var recs = (e.catches || []).filter(function (rec) { return rec && rec.photo === f.pk; });
@@ -2811,7 +2952,7 @@
     var pts = 0;
     recs.forEach(function (rec) {
       e.n -= 1;
-      pts += Math.round(RU.points(f.id) * (rec.stars ? RU.starBonus(rec.stars) : 1));
+      pts += earned(f.id, rec);
       var x = rec.v && e.vars && e.vars[rec.v];
       if (x) {
         x.n -= 1;
@@ -2836,7 +2977,7 @@
         if (mine.length) { var m = mine[mine.length - 1]; e.vars[v].seed = m.seed; e.vars[v].t = m.t; e.vars[v].place = m.place || ''; }
       });
     }
-    addLog('Photo check: ' + name + ' taken back (−' + pts + ')');
+    addLog((mine ? 'Photo deleted: ' : 'Photo check: ') + name + ' taken back (−' + pts + ')');
     return { id: f.id, name: name, text: f.text, pts: pts, gone: !S.book[f.id] };
   }
   function showPhotoNote() {
@@ -2850,7 +2991,7 @@
     var many = list.length > 1;
     showInfo({
       label: 'Photo check', labelClass: 'rc-danger', title: many ? 'Some photos didn’t pass' : 'Your ' + list[0].name + ' photo didn’t pass',
-      body: '<p class="muted">Photos are checked now, and the ones in your jars from before have just been checked too.</p>' +
+      body: '<p class="muted">Photo checks are stricter now, so the photos already in your jars have just been checked again.</p>' +
         list.map(function (x) {
           return '<p><strong>' + esc(x.name) + ':</strong> ' + esc(x.text) + ' That catch is taken back' + (x.pts ? ', with its ' + x.pts + ' points' : '') + '.' +
             (x.gone ? ' Catch it again with a photo of the real thing.' : '') + '</p>';
@@ -2858,6 +2999,115 @@
       actions: [{ label: 'OK', primary: true, fn: function () { closeSheet(); setTimeout(checkPendingRewards, 300); } }]
     });
   }
+  /* ---------- your photos ----------
+     Every photo in a jar, and any left on the phone outside one, each with a Delete button. Photos never leave the phone.
+     Deleting a jar's photo takes that catch back too, with its points, as a failed photo check does. */
+  function photoKeys() {
+    return db().then(function (d) {
+      return new Promise(function (res) {
+        try {
+          var q = d.transaction('photos', 'readonly').objectStore('photos').getAllKeys();
+          q.onsuccess = function () { res(q.result || []); };
+          q.onerror = function () { res([]); };
+        } catch (e) { res([]); }
+      });
+    }).catch(function () { return []; });
+  }
+  /* [{ pk, id (the jar, or null), t, place }], newest first */
+  function photoList() {
+    var items = [], seen = {};
+    RU.ORDERED.forEach(function (t) {
+      var e = S.book[t.id];
+      if (!e || !e.n) return;
+      (e.catches || []).forEach(function (rec) {
+        if (rec && rec.photo && !seen[rec.photo]) { seen[rec.photo] = 1; items.push({ pk: rec.photo, id: t.id, t: rec.t || 0, place: rec.place || '' }); }
+      });
+      if (e.photo && !seen[e.photo]) { seen[e.photo] = 1; items.push({ pk: e.photo, id: t.id, t: e.last || 0, place: '' }); }
+    });
+    return photoKeys().then(function (keys) {
+      keys.forEach(function (k) {
+        if (typeof k === 'string' && !seen[k]) { seen[k] = 1; items.push({ pk: k, id: null, t: Number(k.slice(1)) || 0, place: '' }); }
+      });
+      return items.sort(function (a, b) { return b.t - a.t; });
+    });
+  }
+  function photoCount(id) {
+    var e = S.book[id], keys = {};
+    if (!e) return 0;
+    (e.catches || []).forEach(function (rec) { if (rec && rec.photo) keys[rec.photo] = 1; });
+    if (e.photo) keys[e.photo] = 1;
+    return Object.keys(keys).length;
+  }
+  function freeThumbs() { (R.thumbs || []).forEach(function (u) { try { URL.revokeObjectURL(u); } catch (e) {} }); R.thumbs = []; }
+  /* only: just the photos in one jar */
+  function openPhotos(only) {
+    R.photoOnly = only || null;
+    photoList().then(function (items) {
+      if (only) items = items.filter(function (x) { return x.id === only; });
+      R.photoItems = items;
+      freeThumbs();
+      var list = items.map(function (x) {
+        var name = x.id ? T(x.id).name : 'Not in a jar';
+        var when = x.t ? new Date(x.t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) + ' at ' + hm(x.t) : '';
+        return '<li class="photo-item"><img class="ph-img" data-pk="' + esc(x.pk) + '" alt="' + esc('Photo in ' + name) + '">' +
+          '<div class="ph-body"><div class="ph-name">' + esc(name) + '</div><div class="ph-when">' + esc([when, x.place].filter(Boolean).join(' · ')) + '</div></div>' +
+          '<button class="btn btn-danger ph-del" type="button" data-delphoto="' + esc(x.pk) + '">Delete</button></li>';
+      }).join('');
+      showInfo({
+        label: 'Your photos', title: only ? T(only).name + ' photos' : 'Every photo in your jars',
+        body: (items.length ? '<ul class="photo-list">' + list + '</ul>' : '<p>' + (only ? 'There are no photos in this jar.' : 'There are no photos on this phone.') + '</p>') +
+          '<p class="muted">Photos are only kept on this phone. Deleting one from a jar takes that catch back too, with its points.</p>',
+        actions: only ? [{ label: 'Close', fn: closeSheet }, { label: 'All your photos', primary: true, fn: function () { openPhotos(); } }] : [{ label: 'Close', primary: true, fn: closeSheet }]
+      });
+      items.forEach(function (x) {
+        getPhoto(x.pk).then(function (b) {
+          var img = $('i-body').querySelector('img[data-pk="' + x.pk.replace(/[^\w-]/g, '') + '"]');
+          if (!img || !b || R.photoItems !== items) return;
+          var u = URL.createObjectURL(b);
+          R.thumbs.push(u);
+          img.src = u;
+        }).catch(function () {});
+      });
+    });
+  }
+  function photoPoints(id, pk) {
+    var e = S.book[id], pts = 0, any = false;
+    (e && e.catches || []).forEach(function (rec) { if (rec && rec.photo === pk) { any = true; pts += earned(id, rec); } });
+    return any ? pts : RU.points(id);
+  }
+  function confirmDeletePhoto(pk) {
+    var x = (R.photoItems || []).filter(function (it) { return it.pk === pk; })[0];
+    if (!x) return;
+    var back = function () { openPhotos(R.photoOnly); };
+    var img = $('i-body').querySelector('img[data-pk="' + pk.replace(/[^\w-]/g, '') + '"]');
+    var src = img && img.src ? img.src : '';
+    showInfo({
+      label: 'Delete photo', labelClass: 'rc-danger', title: 'Delete this photo?',
+      body: (src ? '<img class="share-img ph-big" src="' + esc(src) + '" alt="The photo">' : '') +
+        '<p>' + (x.id ? 'It’s deleted from this phone for good, and the ' + esc(T(x.id).name) + ' catch it was taken for comes off your shelf, with its ' + photoPoints(x.id, pk) + ' points.' :
+          'It’s deleted from this phone for good. It isn’t in any of your jars.') + '</p>',
+      actions: [{ label: 'Keep it', fn: back }, { label: 'Delete photo', danger: true, fn: function () { deleteOnePhoto(x); } }]
+    });
+  }
+  function deleteOnePhoto(x) {
+    var gone = null;
+    if (x.id && S.book[x.id]) gone = takeBack({ id: x.id, pk: x.pk, text: '' }, true);
+    else { deletePhoto(x.pk); delete R.photos[x.pk]; }
+    save();
+    render();
+    if (R.tab === 'shelf') renderShelf();
+    toast(gone ? 'Photo deleted. ' + gone.name + ' was taken back' + (gone.pts ? ' (−' + gone.pts + ' points)' : '') + '.' : 'Photo deleted.');
+    openPhotos(R.photoOnly && S.book[R.photoOnly] ? R.photoOnly : null);
+  }
+  function renderPhotosCard() {
+    var txt = $('photos-text');
+    if (!txt) return;
+    photoList().then(function (items) {
+      var n = items.length;
+      txt.textContent = n ? n + ' ' + plural(n, 'photo') + ' on this phone. See them all, and delete any you don’t want in a jar.' : 'Photos you take for your jars show here. They’re only kept on this phone.';
+    });
+  }
+
   /* runs fn once nothing else is on screen: no card, no catch and no Drive mode trip */
   function whenFree(fn, tries) {
     tries = tries || 0;
@@ -2865,12 +3115,18 @@
     if (tries < 400) setTimeout(function () { whenFree(fn, tries + 1); }, 1500);
   }
 
-  /* ---------- Drive mode ---------- */
+  /* ---------- Drive mode ----------
+     A trip seals the weather you drive through, with nothing to touch: each kind of weather once a trip, and 5 jars at
+     most. When the trip is full, a rarer kind of weather takes the place of the commonest one sealed so far. Trip jars
+     earn half points, because there's no catching game to play. */
 
+  var TRIP_MAX = 5;
   function openDriveIntro() {
     showInfo({
       label: 'Drive mode', title: 'Set it up before you set off',
-      body: '<p>Put your phone in a holder with the app open, and don’t touch it while you drive.</p><p>Every new area and change in the weather on your journey goes into a sealed jar, once you’ve driven out of the area you set off from. Open them when you’ve stopped.</p><p class="muted">Keep the app on screen. Phones stop sharing location with web apps when the screen is off.</p>',
+      body: '<p>Put your phone in a holder with the app open, and don’t touch it while you drive.</p>' +
+        '<p>Once you’ve driven out of the area you set off from, the weather on your journey goes into sealed jars: each kind of weather once a trip, up to ' + TRIP_MAX + ' jars, keeping the rarest. Open them when you’ve stopped. Trip jars earn half points, as there’s no catching game to play.</p>' +
+        '<p class="muted">Keep the app open on screen, ideally plugged in. A website only gets your location while it’s open, so if the screen turns off or you open another app, the trip stops following you.</p>',
       actions: [{ label: 'Not now', fn: closeSheet }, { label: 'Start Drive mode', primary: true, fn: startDrive }]
     });
   }
@@ -2878,6 +3134,7 @@
     closeSheet();
     S.drive = true;
     if (!S.haul) S.haul = { start: now(), jars: [], from: R.area ? R.area.id : null };
+    tripDiag();
     S.passengerUntil = 0;
     addLog('Drive mode on');
     save();
@@ -2888,44 +3145,79 @@
     else if (R.area) refreshWeather();
     renderDrive();
   }
+  /* what the trip saw, so an empty trip can say why: GPS fixes, how fast, new areas, time off screen, weather that didn't load */
+  function tripDiag() {
+    var h = S.haul;
+    if (!h) return {};
+    if (!h.diag || typeof h.diag !== 'object') h.diag = { fixes: 0, fast: 0, top: 0, areas: 0, left: false, hidden: 0, gaps: 0, wxFail: 0, swapped: 0, lastFix: 0 };
+    return h.diag;
+  }
+  function noteTripFix(t, sp) {
+    if (!S.drive || !S.haul) return;
+    var dg = tripDiag();
+    dg.fixes += 1;
+    if (typeof sp === 'number' && isFinite(sp)) {
+      if (sp > dg.top) dg.top = Math.round(sp * 10) / 10;
+      if (sp >= FAST) dg.fast += 1;
+    }
+    if (dg.lastFix && t - dg.lastFix > 2 * MIN) dg.gaps += 1;
+    dg.lastFix = t;
+  }
   /* Drive mode seals the weather only on the road: while the car is moving at driving speed, and only once it's
      left the area the trip set off from. So nobody can skip the catching games where they are */
   function driving() { return R.fast && now() - R.speedAt < 2 * MIN; }
+  function commonest(jars) {
+    var low = null;
+    jars.forEach(function (j) { if (!low || RU.rank(j.id) < RU.rank(low.id) || (RU.rank(j.id) === RU.rank(low.id) && j.t > low.t)) low = j; });
+    return low;
+  }
+  /* puts one kind of weather in the trip, if the rules allow. Returns true when it went in */
+  function sealOne(h, jar) {
+    if (S.caught[jar.key]) return false;
+    if (h.jars.some(function (j) { return j.id === jar.id; })) return false;
+    if (h.jars.length >= TRIP_MAX) {
+      var low = commonest(h.jars);
+      if (!low || RU.rank(jar.id) <= RU.rank(low.id)) return false;
+      h.jars.splice(h.jars.indexOf(low), 1);
+      // the weather it replaced can be caught again where it was
+      if (low.key && S.caught[low.key] === 2) delete S.caught[low.key];
+      tripDiag().swapped += 1;
+    }
+    h.jars.push(jar);
+    S.caught[jar.key] = 2;
+    return true;
+  }
   function driveSeal() {
     if (!S.drive || !R.cls || !R.area || !S.haul || flying()) return;
-    if (!S.haul.from) { S.haul.from = R.area.id; save(); }
-    if (R.area.id === S.haul.from || !driving()) return;
+    var h = S.haul;
+    if (!h.from) { h.from = R.area.id; save(); }
+    if (R.area.id === h.from) return;
+    var dg = tripDiag();
+    if (!dg.left) { dg.left = true; save(); }
+    if (!driving()) return;
     if (!R.wx || R.wx.areaId !== R.area.id) return;
     var a = R.area, place = placeFor(a.id), t = now();
     var w = snapshot(a.id, 'trip');
     var prev = (S.recent[a.id] || []).slice();
-    var sealedHere = [];
+    var changed = false, sealedHere = [];
     R.cls.ids.forEach(function (id) {
-      var key = wKey(a.id, id);
-      if (S.caught[key]) return;
-      S.caught[key] = 2;
-      S.haul.jars.push({ id: id, place: place, t: t, w: w });
-      sealedHere.push(id);
+      if (sealOne(h, { id: id, place: place, t: t, w: w, key: wKey(a.id, id) })) { changed = true; sealedHere.push(id); }
+    });
+    RU.changesFor(prev, R.cls.ids, R.reading ? R.reading.temp : 10, t).forEach(function (cid) {
+      if (sealOne(h, { id: cid, place: place, t: t, w: w, key: wKey(a.id, cid) })) changed = true;
+    });
+    R.wonders.forEach(function (sw) {
+      if (sealOne(h, { id: sw.id, place: place, t: t, w: w, key: sw.key })) changed = true;
     });
     if (sealedHere.length) {
-      RU.changesFor(prev, R.cls.ids, R.reading ? R.reading.temp : 10, t).forEach(function (cid) {
-        var ck = wKey(a.id, cid);
-        if (S.caught[ck]) return;
-        S.caught[ck] = 2;
-        S.haul.jars.push({ id: cid, place: place, t: t, w: w });
-      });
       prev = prev.filter(function (p) { return t - p.t <= 3 * HOUR; });
       sealedHere.forEach(function (id) { prev.push({ id: id, t: t }); });
       S.recent[a.id] = prev.slice(-8);
     }
-    R.wonders.forEach(function (sw) {
-      if (S.caught[sw.key]) return;
-      S.caught[sw.key] = 2;
-      S.haul.jars.push({ id: sw.id, place: place, t: t, w: w });
-    });
-    save();
+    if (changed) { save(); renderDrive(); }
   }
   function driveMoving() { return R.moving && now() - R.speedAt < 60000; }
+  function tripName(j) { return j.id === 'namedstorm' && j.w && RU.okStormName(j.w.storm) ? 'Storm ' + j.w.storm : T(j.id).name; }
   function renderDrive() {
     var hidden = !S.drive;
     $('drive').hidden = hidden;
@@ -2934,7 +3226,19 @@
     var end = $('drive-end');
     end.disabled = moving;
     end.textContent = moving ? 'Stop to end your trip' : 'End trip';
-    $('drive-note').textContent = R.wakeOk === false ? 'Keep the screen switched on so the app can follow your journey.' : R.wakeOk ? 'The screen will stay on while Drive mode is on.' : '';
+    $('drive-note').textContent = R.wakeHow === 'lock' ? 'The screen will stay on while Drive mode is on.' :
+      R.wakeHow === 'video' ? 'Keep the app open on screen. If the screen turns off, the trip stops following you.' :
+      R.wakeOk === false ? 'Keep the screen switched on so the app can follow your journey.' : '';
+    var st = $('drive-status');
+    if (!st) return;
+    var h = S.haul || { jars: [] }, n = h.jars.length;
+    var sealed = n ? n + ' of ' + TRIP_MAX + ' jars sealed: ' + h.jars.slice().sort(function (a, b) { return RU.rank(b.id) - RU.rank(a.id); }).map(tripName).join(', ') + '.' : 'No jars sealed yet.';
+    var how;
+    if (!R.pos) how = 'Waiting for your location…';
+    else if (!h.from || (R.area && R.area.id === h.from)) how = 'Jars start once you’ve driven out of ' + (R.place && R.area && R.area.id === h.from ? R.place.short : 'the area you set off from') + '.';
+    else if (!driving()) how = 'Jars are sealed while you’re driving, at about 15 mph or more.';
+    else how = n >= TRIP_MAX ? 'The trip is full. Rarer weather can still swap in for the commonest jar.' : 'Sealing the weather as you go.';
+    st.textContent = sealed + ' ' + how;
   }
   function endDrive() {
     if (driveMoving()) return;
@@ -2947,92 +3251,227 @@
     if (R.area) refreshWeather();
     openTrip();
   }
-  function groupHaul(jars) {
+  /* trips from before 0.9.0 could seal the same weather many times: a trip now keeps each kind of weather once,
+     and its 5 rarest kinds. The newest copy of each stays */
+  function trimHaul(h) {
     var by = {};
-    var order = [];
-    jars.forEach(function (j) {
-      if (!T(j.id)) return;
-      if (!by[j.id]) { by[j.id] = { id: j.id, count: 0, places: [], storms: [] }; order.push(j.id); }
-      by[j.id].count += 1;
-      if (j.place && by[j.id].places.indexOf(j.place) === -1) by[j.id].places.push(j.place);
-      var sn = j.w && j.w.storm;
-      if (j.id === 'namedstorm' && RU.okStormName(sn) && by[j.id].storms.indexOf(sn) === -1) by[j.id].storms.push(sn);
-    });
-    return order.map(function (id) { return by[id]; }).sort(function (a, b) { return RU.rank(b.id) - RU.rank(a.id); });
+    h.jars.forEach(function (j) { if (T(j.id) && (!by[j.id] || j.t >= by[j.id].t)) by[j.id] = j; });
+    var keep = Object.keys(by).map(function (id) { return by[id]; }).sort(function (a, b) { return RU.rank(b.id) - RU.rank(a.id) || a.t - b.t; }).slice(0, TRIP_MAX);
+    h.jars.forEach(function (j) { if (keep.indexOf(j) === -1 && j.key && S.caught[j.key] === 2) delete S.caught[j.key]; });
+    h.jars = keep;
+  }
+  /* why a trip came back empty, from what it saw */
+  function emptyTripWhy(h) {
+    var dg = h && h.diag;
+    if (!dg) return 'Drive mode seals the weather once you’ve driven out of the area you set off from.';
+    if (!dg.fixes || dg.hidden > 2 * MIN || dg.gaps) return 'Your phone stopped sharing where you were during the trip, probably because the screen turned off or another app was opened. A website only gets your location while it’s open on screen, so next time keep the app open in a phone holder, ideally plugged in.';
+    if (!dg.left) return 'You didn’t leave the area you set off from. Areas are about 5 km across, and jars are only sealed in the new ones you drive through.';
+    if (!dg.fast) return 'Your phone never showed the car going at driving speed (about 15 mph or more), so nothing was sealed.';
+    if (dg.wxFail) return 'The weather couldn’t load on the road, probably because there was no signal.';
+    return 'Everything you drove through had already been caught today.';
   }
   function openTrip() {
     var h = S.haul;
-    if (!h || !h.jars.length) { S.haul = null; save(); render(); toast('No jars on that trip. Drive mode seals the weather once you’ve driven out of the area you set off from.'); return; }
-    var groups = groupHaul(h.jars);
-    var fresh = groups.filter(function (g) { return !(S.book[g.id] && S.book[g.id].n); }).length;
+    if (h) trimHaul(h);
+    if (!h || !h.jars.length) {
+      var why = emptyTripWhy(h);
+      S.haul = null;
+      save();
+      render();
+      showInfo({ label: 'Your trip', title: 'No jars on that trip', body: '<p>' + esc(why) + '</p>' });
+      return;
+    }
+    var fresh = h.jars.filter(function (j) { return !(S.book[j.id] && S.book[j.id].n); }).length;
     var total = h.jars.length;
+    var list = h.jars.slice().sort(function (a, b) { return RU.rank(b.id) - RU.rank(a.id); });
     showInfo({
       label: 'Your trip', title: total + ' sealed ' + plural(total, 'jar') + (fresh ? ', ' + fresh + ' new' : ''),
-      body: '<ul class="trip-list">' + groups.map(function (g) {
-        var t = T(g.id);
-        var name = g.storms.length ? g.storms.map(function (n) { return 'Storm ' + n; }).join(', ') : t.name;
-        return '<li><span><span class="rc-' + t.r + '">' + esc(name) + '</span></span><span class="small">×' + g.count + ' · ' + esc(rlabel(g.id)) + '</span></li>';
-      }).join('') + '</ul>',
+      body: '<ul class="trip-list">' + list.map(function (j) {
+        var t = T(j.id);
+        return '<li><span><span class="rc-' + t.r + '">' + esc(tripName(j)) + '</span></span><span class="small">' + esc(rlabel(j.id)) + (j.place ? ' · ' + esc(j.place) : '') + '</span></li>';
+      }).join('') + '</ul><p class="muted">Each kind of weather goes in once a trip, up to ' + TRIP_MAX + ' jars. Trip jars earn half points, as there was no catching game.</p>',
       actions: [{ label: 'Open your jars', primary: true, fn: openHaul }]
     });
   }
   function openHaul() {
     var h = S.haul;
     if (!h) { closeSheet(); return; }
+    trimHaul(h);
     var before = RU.levelFor(S.points);
-    var groups = groupHaul(h.jars);
-    var total = 0, byId = {}, freshV = {};
-    var list = groups.map(function (g) {
-      var e = bookEntry(g.id);
-      var isNew = !e.n;
-      var b4 = e.n;
-      e.n += g.count;
-      g.places.forEach(function (p) { addPlace(e, p); });
-      if (!e.first) e.first = { t: h.start, place: g.places[0] || '' };
-      e.last = now();
-      return (byId[g.id] = {
-        id: g.id, isNew: isNew, n: e.n, count: g.count, pts: 0, place: g.places[0], trip: true,
-        tier: RU.tierReached(b4, e.n),
-        verify: 'Sealed on your trip, matching the live weather along the way.'
-      });
-    });
-    // each sealed jar opens as its own variant, with its own strength and points.
-    // The card for each kind of weather shows the rarest variant and the strongest catch
-    h.jars.forEach(function (j) {
-      var r = byId[j.id];
-      if (!r) return;
+    var total = 0;
+    // each sealed jar opens as its own variant, with its own strength and points
+    var list = h.jars.slice().sort(function (a, b) { return RU.rank(b.id) - RU.rank(a.id); }).map(function (j) {
       var e = bookEntry(j.id);
+      var isNew = !e.n, b4 = e.n;
+      e.n += 1;
+      addPlace(e, j.place);
+      if (!e.first) e.first = { t: j.t || h.start, place: j.place || '' };
+      e.last = now();
       var rec = rollCatch(Object.assign({}, j.w || { t: j.t, how: 'trip', place: j.place }));
+      rec.how = 'trip';
       var sg = rate(j.id, rec);
       if (j.id === 'namedstorm') addStorm(e, rec);
       record(e, rec);
-      if (addVariant(e, rec)) freshV[j.id + '|' + rec.v] = true;
-      if (sg && bestUpdate(e, rec, sg)) r.newBest = true;
-      var pts = Math.round(RU.points(j.id) * (sg ? RU.starBonus(sg.stars) : 1));
-      r.pts += pts;
+      var newV = addVariant(e, rec) && !isNew;
+      var newBest = sg ? bestUpdate(e, rec, sg) && !isNew : false;
+      var again = caughtToday(j.id);
+      var pts = catchPoints(j.id, sg, true, again);
+      rec.pts = pts;
+      countToday(j.id);
       total += pts;
-      if (!r.rec || RU.variantRank(rec.v) >= RU.variantRank(r.v)) { r.v = rec.v; r.seed = rec.seed; r.rec = rec; }
-      if (sg && (!r.sg || sg.stars > r.sg.stars || (sg.stars === r.sg.stars && sg.f > r.sg.f))) r.sg = sg;
+      return {
+        id: j.id, isNew: isNew, n: e.n, count: 1, pts: pts, place: j.place, trip: true, again: again,
+        tier: RU.tierReached(b4, e.n), v: rec.v, seed: rec.seed, rec: rec, sg: sg, newV: newV, newBest: newBest,
+        verify: 'Sealed on your trip' + (j.place ? ' in ' + j.place : '') + (j.t ? ' at ' + hm(j.t) : '') + ', matching the live weather there.'
+      };
     });
     S.points += total;
-    list.forEach(function (r) { r.newV = !r.isNew && !!freshV[r.id + '|' + r.v]; if (r.isNew) r.newBest = false; });
     Object.keys(S.caught).forEach(function (k) { if (S.caught[k] === 2) S.caught[k] = 1; });
-    addLog('Opened ' + h.jars.length + ' ' + plural(h.jars.length, 'jar') + ' from your trip (+' + total + ')');
+    addLog('Opened ' + list.length + ' ' + plural(list.length, 'jar') + ' from your trip (+' + total + ')');
     S.haul = null;
     afterAward(list, before);
   }
+  /* ---------- fairer trips ----------
+     Before 0.9.0 a trip sealed every kind of weather again in each new area it drove through, so one drive could bring
+     23 jars. Trips already opened are recounted once, under the rules trips follow now: each kind of weather once, the
+     5 rarest kinds, at half points. For each kind the trip keeps its rarest copy; the rest come off the shelf, with
+     their points. Shelf rewards already earned stay. */
+  function dropCatch(id, rec) {
+    var e = S.book[id];
+    if (!e) return;
+    e.n -= 1;
+    var x = e.vars && e.vars[rec.v || 'c'];
+    if (x) { x.n -= 1; if (x.n <= 0) delete e.vars[rec.v || 'c']; }
+    if (id === 'namedstorm' && e.storms && RU.okStormName(rec.storm) && e.storms[rec.storm]) {
+      var sx = e.storms[rec.storm];
+      sx.n -= 1;
+      if (sx.n <= 0) delete e.storms[rec.storm];
+      else if (sx.best && sx.best.t === rec.t && sx.best.seed === rec.seed) delete sx.best;
+    }
+    if (e.catches) e.catches = e.catches.filter(function (r) { return r !== rec; });
+  }
+  /* after catches come off a jar: an empty jar is empty again; otherwise its first and last catch, the catch on show
+     for each variant and each storm, and its strongest, come from the catches it still has */
+  function tidyJar(id) {
+    var e = S.book[id];
+    if (!e) return;
+    if (e.n <= 0) { delete S.book[id]; return; }
+    var left = e.catches || [];
+    if (left.length) { e.first = { t: left[0].t, place: left[0].place || '' }; e.last = left[left.length - 1].t; }
+    Object.keys(e.vars || {}).forEach(function (v) {
+      var mine = left.filter(function (r) { return (r.v || 'c') === v; });
+      if (mine.length) { var m = mine[mine.length - 1]; e.vars[v].seed = m.seed; e.vars[v].t = m.t; e.vars[v].place = m.place || ''; }
+    });
+    if (e.storms) Object.keys(e.storms).forEach(function (nm) {
+      var sx = e.storms[nm], mine = left.filter(function (r) { return r.storm === nm; });
+      if (mine.length) { sx.t = mine[0].t; sx.place = mine[0].place || sx.place; }
+      if (!sx.best) mine.forEach(function (r) { if (!sx.best || RU.variantRank(r.v || 'c') >= RU.variantRank(sx.best.v || 'c')) sx.best = Object.assign({}, r); });
+    });
+    if (e.best) {
+      e.best = null;
+      left.forEach(function (r) { var sg = RU.strength(id, r); if (sg) bestUpdate(e, r, sg); });
+      if (!e.best) delete e.best;
+    }
+  }
+  function recountTrips() {
+    if (S.tripFix) return null;
+    S.tripFix = 1;
+    var recs = [];
+    Object.keys(S.book).forEach(function (id) {
+      (S.book[id].catches || []).forEach(function (rec) { if (rec && rec.how === 'trip' && typeof rec.t === 'number' && isFinite(rec.t)) recs.push({ id: id, rec: rec }); });
+    });
+    if (!recs.length) return null;
+    recs.sort(function (a, b) { return a.rec.t - b.rec.t; });
+    // seals more than an hour apart were on different trips
+    var trips = [], cur = null;
+    recs.forEach(function (x) {
+      if (!cur || x.rec.t - cur.last > HOUR) { cur = { list: [], first: x.rec.t, last: x.rec.t }; trips.push(cur); }
+      cur.list.push(x);
+      cur.last = x.rec.t;
+    });
+    var before = RU.levelFor(S.points), out = [], lost = 0, removed = 0, touched = {};
+    trips.forEach(function (tr) {
+      var by = {};
+      tr.list.forEach(function (x) {
+        var b = by[x.id], rv = RU.variantRank(x.rec.v || 'c'), bv = b ? RU.variantRank(b.rec.v || 'c') : -1;
+        if (!b || rv > bv || (rv === bv && (x.rec.stars || 0) > (b.rec.stars || 0))) by[x.id] = x;
+      });
+      var kinds = Object.keys(by).sort(function (a, b) { return RU.rank(b) - RU.rank(a) || RU.variantRank(by[b].rec.v || 'c') - RU.variantRank(by[a].rec.v || 'c'); });
+      var keep = kinds.slice(0, TRIP_MAX).map(function (id) { return by[id]; });
+      var pts = 0, gone = [];
+      tr.list.forEach(function (x) {
+        var was = earned(x.id, x.rec);
+        if (keep.indexOf(x) !== -1) {
+          var half = catchPoints(x.id, x.rec.stars ? { stars: x.rec.stars } : null, true, false);
+          pts += was - half;
+          x.rec.pts = half;
+        } else { pts += was; gone.push(x); }
+      });
+      gone.forEach(function (x) { dropCatch(x.id, x.rec); touched[x.id] = 1; });
+      pts = Math.max(0, pts);
+      S.points = Math.max(0, S.points - pts);
+      lost += pts;
+      removed += gone.length;
+      if (gone.length || pts) out.push({ t: tr.first, kept: keep.map(function (x) { return recName(x.id, x.rec); }), removed: gone.length, pts: pts });
+    });
+    Object.keys(touched).forEach(tidyJar);
+    if (!out.length) return null;
+    addLog('Trips recounted: ' + removed + ' extra ' + plural(removed, 'jar') + ' taken back (−' + lost + ')');
+    return { trips: out, before: before, after: RU.levelFor(S.points), removed: removed, pts: lost };
+  }
+  function showTripNote() {
+    var n = S.tripNote;
+    if (!n || !Array.isArray(n.trips) || !n.trips.length) { S.tripNote = null; return; }
+    S.tripNote = null;
+    save();
+    showInfo({
+      label: 'Drive mode', title: 'Your trips have been recounted',
+      body: '<p>Drive mode is fairer now. A trip keeps each kind of weather once, up to ' + TRIP_MAX + ' jars, and trip jars earn half points. Your trips so far have been recounted the same way.</p>' +
+        n.trips.map(function (tr) {
+          var day = new Date(tr.t).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+          return '<p><strong>' + esc(day) + ' trip:</strong> kept ' + esc(listText(tr.kept)) + '.' +
+            (tr.removed ? ' ' + tr.removed + ' extra ' + plural(tr.removed, 'jar') + ' came off' + (tr.pts ? ', with ' + tr.pts.toLocaleString('en-GB') + ' points' : '') + '.' : tr.pts ? ' ' + tr.pts.toLocaleString('en-GB') + ' points came off.' : '') + '</p>';
+        }).join('') +
+        '<p>' + (n.after < n.before ? 'You’re Level ' + n.after + ' now (you were Level ' + n.before + ').' : 'You’re still Level ' + n.after + '.') + ' Shelf looks you’ve already earned stay yours.</p>',
+      actions: [{ label: 'OK', primary: true, fn: function () { closeSheet(); setTimeout(checkPendingRewards, 300); } }]
+    });
+  }
+  /* keeping the screen on: the Wake Lock where the phone has one, otherwise a tiny silent video playing on a loop,
+     which stops most phones going to sleep */
+  var AWAKE = 'data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAMzbW9vdgAAAGxtdmhkAAAAAAAAAAAAAAAAAAAD6AAAD6AAAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAl10cmFrAAAAXHRraGQAAAADAAAAAAAAAAAAAAABAAAAAAAAD6AAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAACAAAAAgAAAAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAA+gAAAAAAABAAAAAAHVbWRpYQAAACBtZGhkAAAAAAAAAAAAAAAAAABAAAABAABVxAAAAAAALWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABWaWRlb0hhbmRsZXIAAAABgG1pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAAUBzdGJsAAAAuHN0c2QAAAAAAAAAAQAAAKhhdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAACAAIABIAAAASAAAAAAAAAABFUxhdmM2MC4zMS4xMDIgbGlieDI2NAAAAAAAAAAAAAAAGP//AAAALmF2Y0MBQsAe/+EAFmdCwB7aJbARAAADAAEAAAMAAg8WLqABAAVozgGXIAAAABBwYXNwAAAAAQAAAAEAAAAUYnRydAAAAAAAAAVYAAAFWAAAABhzdHRzAAAAAAAAAAEAAAAEAABAAAAAABRzdHNzAAAAAAAAAAEAAAABAAAAHHN0c2MAAAAAAAAAAQAAAAEAAAAEAAAAAQAAACRzdHN6AAAAAAAAAAAAAAAEAAACiwAAAAsAAAALAAAACwAAABRzdGNvAAAAAAAAAAEAAANjAAAAYnVkdGEAAABabWV0YQAAAAAAAAAhaGRscgAAAAAAAAAAbWRpcmFwcGwAAAAAAAAAAAAAAAAtaWxzdAAAACWpdG9vAAAAHWRhdGEAAAABAAAAAExhdmY2MC4xNi4xMDAAAAAIZnJlZQAAArRtZGF0AAACcQYF//9t3EXpvebZSLeWLNgg2SPu73gyNjQgLSBjb3JlIDE2NCByMzEwOCAzMWUxOWY5IC0gSC4yNjQvTVBFRy00IEFWQyBjb2RlYyAtIENvcHlsZWZ0IDIwMDMtMjAyMyAtIGh0dHA6Ly93d3cudmlkZW9sYW4ub3JnL3gyNjQuaHRtbCAtIG9wdGlvbnM6IGNhYmFjPTAgcmVmPTEgZGVibG9jaz0xOi0zOi0zIGFuYWx5c2U9MHgxOjB4MTExIG1lPWhleCBzdWJtZT0yIHBzeT0xIHBzeV9yZD0yLjAwOjAuNzAgbWl4ZWRfcmVmPTAgbWVfcmFuZ2U9MTYgY2hyb21hX21lPTEgdHJlbGxpcz0wIDh4OGRjdD0wIGNxbT0wIGRlYWR6b25lPTIxLDExIGZhc3RfcHNraXA9MSBjaHJvbWFfcXBfb2Zmc2V0PTAgdGhyZWFkcz0xIGxvb2thaGVhZF90aHJlYWRzPTEgc2xpY2VkX3RocmVhZHM9MCBucj0wIGRlY2ltYXRlPTEgaW50ZXJsYWNlZD0wIGJsdXJheV9jb21wYXQ9MCBjb25zdHJhaW5lZF9pbnRyYT0wIGJmcmFtZXM9MCB3ZWlnaHRwPTAga2V5aW50PTI1MCBrZXlpbnRfbWluPTEgc2NlbmVjdXQ9NDAgaW50cmFfcmVmcmVzaD0wIHJjX2xvb2thaGVhZD0xMCByYz1jcmYgbWJ0cmVlPTEgY3JmPTUxLjAgcWNvbXA9MC42MCBxcG1pbj0wIHFwbWF4PTY5IHFwc3RlcD00IGlwX3JhdGlvPTEuNDAgYXE9MToxLjIwAIAAAAASZYiEBrOf//8PRQABAx8mq1XgAAAAB0GaIBrOcsAAAAAHQZpAGc5ywAAAAAdBmmAYznLA';
+  function awakeVideo(on) {
+    var v = R.awakeVid;
+    if (!on) { if (v) try { v.pause(); } catch (e) {} return; }
+    if (!v) {
+      v = R.awakeVid = document.createElement('video');
+      v.setAttribute('playsinline', '');
+      v.setAttribute('muted', '');
+      v.setAttribute('aria-hidden', 'true');
+      v.muted = true;
+      v.loop = true;
+      v.src = AWAKE;
+      v.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;opacity:0.01;pointer-events:none';
+      document.body.appendChild(v);
+    }
+    try { var p = v.play(); if (p && p.catch) p.catch(function () {}); } catch (e) {}
+    R.wakeHow = 'video';
+  }
   function requestWake() {
-    if (!('wakeLock' in navigator)) { R.wakeOk = false; renderDrive(); return; }
+    if (!('wakeLock' in navigator)) { R.wakeOk = false; awakeVideo(true); renderDrive(); return; }
     navigator.wakeLock.request('screen').then(function (l) {
       R.wake = l;
       R.wakeOk = true;
+      R.wakeHow = 'lock';
+      awakeVideo(false);
       l.addEventListener('release', function () { R.wake = null; });
       renderDrive();
-    }).catch(function () { R.wakeOk = false; renderDrive(); });
+    }).catch(function () { R.wakeOk = false; awakeVideo(true); renderDrive(); });
   }
   function releaseWake() {
     if (R.wake) { try { R.wake.release(); } catch (e) {} }
     R.wake = null;
+    R.wakeHow = null;
+    awakeVideo(false);
   }
 
   /* ---------- backup ---------- */
@@ -3073,8 +3512,10 @@
     o.onboarded = true;
     S = o;
     openOldJars();
+    var tn = recountTrips();
     save();
     closeSheet();
+    if (tn) { S.tripNote = tn; save(); whenFree(showTripNote); }
     if (R.area) evaluate();
     render();
     if (R.tab === 'shelf') renderShelf();
@@ -3183,6 +3624,8 @@
     $('i-body').addEventListener('click', function (ev) {
       var b = ev.target.closest ? ev.target.closest('[data-photo]') : null;
       if (b) { takePhoto(b.getAttribute('data-photo')); return; }
+      var del = ev.target.closest ? ev.target.closest('[data-delphoto]') : null;
+      if (del) { confirmDeletePhoto(del.getAttribute('data-delphoto')); return; }
       var sn = ev.target.closest ? ev.target.closest('[data-seen]') : null;
       if (sn && !sn.disabled && R.area) { beginCatch(sn.getAttribute('data-seen'), 'spotted', wKey(R.area.id, sn.getAttribute('data-seen'))); return; }
       var s = ev.target.closest ? ev.target.closest('[data-style]') : null;
@@ -3194,6 +3637,8 @@
       if (b && !b.disabled) pickVariant(b.getAttribute('data-var'));
     });
     $('photo-input').addEventListener('change', function () { closeSheet(); onPhoto(); });
+    if ($('photos-btn')) $('photos-btn').addEventListener('click', function () { openPhotos(); });
+    if ($('c-photo-btn')) $('c-photo-btn').addEventListener('click', function () { if (R.photoJar) openPhotos(R.photoJar); });
     $('drive-btn').addEventListener('click', openDriveIntro);
     $('lock-drive').addEventListener('click', openDriveIntro);
     $('lock-passenger').addEventListener('click', function () { S.passengerUntil = now() + 3 * HOUR; save(); render(); toast('Passenger mode is on for the next 3 hours.'); });
@@ -3330,7 +3775,11 @@
         cancelAnimationFrame(rafId);
         rafId = 0;
         if (!S.drive) stopWatch();
+        R.hiddenAt = now();
       } else {
+        // time spent off screen in Drive mode: the trip can't follow the car then
+        if (S.drive && S.haul && R.hiddenAt) { tripDiag().hidden += Math.max(0, now() - R.hiddenAt); save(); }
+        R.hiddenAt = 0;
         kick();
         checkForUpdate();
         if (S.onboarded && !R.problem) {
@@ -3371,6 +3820,8 @@
     loadStorms();
     fetchStorms(true);
     openOldJars();
+    var tn = recountTrips();
+    if (tn) S.tripNote = tn;
     prune();
     save();
     bind();
@@ -3380,6 +3831,7 @@
     else if (trip) setTimeout(openTrip, 600);
     // old photos are checked before any rewards are given out, in case a catch that doesn't count is taken back
     if (S.onboarded) setTimeout(function () {
+      if (S.tripNote) whenFree(showTripNote);
       if (S.photoNote) whenFree(showPhotoNote);
       var next = function () { if (!S.drive && !trip) checkPendingRewards(); };
       recheckPhotos().then(next, next);

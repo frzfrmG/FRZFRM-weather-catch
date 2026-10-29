@@ -101,6 +101,28 @@
       return !out.some(function (o) { return o !== r && o.n >= r.n && r.x >= o.x - o.w * 0.2 && r.y >= o.y - o.h * 0.2 && r.x + r.w <= o.x + o.w * 1.2 && r.y + r.h <= o.y + o.h * 1.2 && o.w > r.w; });
     });
   }
+  /* a grey image turned by ang (radians) about its middle, with the corners filled in plain grey,
+     so a head tilted to one side stands up straight for the face finder */
+  function turned(gray, w, h, ang) {
+    var out = new Float32Array(w * h), c = Math.cos(ang), s = Math.sin(ang), cx = w / 2, cy = h / 2, mean = 0, i;
+    for (i = 0; i < gray.length; i++) mean += gray[i];
+    mean /= Math.max(1, gray.length);
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        var dx = x - cx, dy = y - cy;
+        var sx = Math.round(cx + c * dx - s * dy), sy = Math.round(cy + s * dx + c * dy);
+        out[y * w + x] = sx >= 0 && sx < w && sy >= 0 && sy < h ? gray[sy * w + sx] : mean;
+      }
+    }
+    return out;
+  }
+  /* faces upright first, then heads tilted about 25 degrees either way. Turning further starts finding faces in starry skies */
+  var TURNS = [0.44, -0.44];
+  function findFaces(gray, w, h) {
+    var faces = detectFaces(gray, w, h);
+    for (var k = 0; k < TURNS.length && !faces.length; k++) faces = detectFaces(turned(gray, w, h, TURNS[k]), w, h);
+    return faces;
+  }
   /* gray: brightness 0 to 255, w x h. Returns the faces found, in the image's own pixels */
   function detectFaces(gray, w, h, opts) {
     opts = opts || {};
@@ -179,9 +201,11 @@
 
   var NIGHT = { aurora: true, moonbow: true };
   var DAY_SKY = { rainbow: true, doublerainbow: true, sunhalo: true, sundog: true };
-  function judge(id, m, faces) {
-    var minSide = Math.min(m.w, m.h);
-    var face = faces.filter(function (f) { return f.w >= minSide * 0.09; })[0];
+  /* side: the short side of the picture the faces were found in. A face about an eighth of it across, or bigger, fails the photo */
+  var FACE = 0.08;
+  function judge(id, m, faces, side) {
+    var minSide = side || Math.min(m.w, m.h);
+    var face = faces.filter(function (f) { return f.w >= minSide * FACE; })[0];
     if (face) return { ok: false, reason: 'face', text: 'There’s a face in this photo. Point your camera at the sky instead, with nobody in the picture.' };
     if (NIGHT[id]) {
       if (m.bright > 0.42 || m.darkTop < 0.2) return { ok: false, reason: 'bright', text: id === 'aurora' ? 'This looks too bright to be the Northern Lights. They only show up in a dark night sky.' : 'This looks too bright for a moonbow. They only show up at night.' };
@@ -206,7 +230,8 @@
       return { ok: true, text: 'Photo checked: sky above and cloud below, and no people in it.' };
     }
     if (id === 'sheetlightning') {
-      if (m.skyTop < 0.2 && m.darkTop < 0.3 && m.busyTop > 0.08) return { ok: false, reason: 'nosky', text: 'We couldn’t see the sky in this photo. Try again pointing at the sky, from indoors.' };
+      // a dark night sky across the top of the picture, or a smooth stormy one
+      if (!(m.darkTop >= 0.45 || (m.skyTop >= 0.4 && m.busyTop <= 0.07))) return { ok: false, reason: 'nosky', text: 'We couldn’t see a stormy sky in this photo. Point the camera at the sky where the flashes are, so the sky fills most of the picture.' };
       return { ok: true, text: 'Photo checked: a stormy sky, and no people in it.' };
     }
     return { ok: true, text: 'Photo checked: no people in it.' };
@@ -214,7 +239,7 @@
   /* img: { data, width, height } of the photo, at most a few hundred pixels across */
   function analyse(img, id) {
     var m = measure(img);
-    var faces = detectFaces(m.gray, m.w, m.h);
+    var faces = findFaces(m.gray, m.w, m.h);
     var v = judge(id, m, faces);
     v.faces = faces;
     v.stats = { bright: m.bright, brightTop: m.brightTop, sat: m.sat, darkTop: m.darkTop, skyTop: m.skyTop, litTop: m.litTop, cloudLow: m.cloudLow, glow: m.glow, busyTop: m.busyTop, bowHues: m.bowHues };
@@ -251,7 +276,7 @@
           if (!v.ok) { resolve(v); return; }
           nativeFaces(cv).then(function (more) {
             var minSide = Math.min(cv.width, cv.height);
-            if (more.some(function (f) { return f.w >= minSide * 0.09; })) {
+            if (more.some(function (f) { return f.w >= minSide * FACE; })) {
               resolve({ ok: false, reason: 'face', faces: more, stats: v.stats, text: 'There’s a face in this photo. Point your camera at the sky instead, with nobody in the picture.' });
             } else resolve(v);
           });
@@ -262,5 +287,5 @@
     });
   }
 
-  WC.photoCheck = { check: check, analyse: analyse, measure: measure, judge: judge, detectFaces: detectFaces };
+  WC.photoCheck = { check: check, analyse: analyse, measure: measure, judge: judge, detectFaces: detectFaces, findFaces: findFaces, VERSION: 2 };
 })(typeof window !== 'undefined' ? window : globalThis);
