@@ -1,7 +1,7 @@
 /* FRZFRM Weather Catch: keeps the app's own files on the phone so it opens without a signal.
    The app's files are fetched fresh when online and fall back to the saved copy when offline.
    Weather and place-name requests always go to the network. */
-var CACHE = 'frzfrm-wc-0.9.0';
+var CACHE = 'frzfrm-wc-0.10.0';
 var FONTS = 'frzfrm-wc-fonts';
 var SHELL = ['./', './index.html', './app.css', './rules.js', './sky.js', './variants.js', './kit.js', './jars-rain.js', './jars-wonders.js', './jars-storm.js', './game.js', './photocheck.js', './minigames.js', './app.js', './manifest.webmanifest', './storms.json',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'];

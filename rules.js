@@ -983,6 +983,48 @@
     return 'c';
   }
 
+  /* ---------- jar glass ----------
+     Every catch is also put in a glass, rolled on its own after the variant: plain glass most of the time, and now and
+     then one of its row's three special glasses. The odds are published and add up to exactly 1: plain 4 in 5, then
+     1 in 8, 1 in 20 and 1 in 40. Glass only tints the jar and touches its edges, so the picture inside stays clear.
+     key: how the glass is drawn (sky.js) */
+  var GLASS_SLOTS = [['p', 32, '4 in 5'], ['a', 5, '1 in 8'], ['b', 2, '1 in 20'], ['c', 1, '1 in 40']];
+  var GRANK = { p: 0, a: 1, b: 2, c: 3 };
+  var GLASSES = {
+    sun: [['amber', 'Amber Glass', 'Warm honey-coloured glass.'], ['sunstone', 'Sunstone Glass', 'Flecks of gold glint round the edges.'], ['burning', 'Burning Glass', 'The jar works like a magnifying glass: it gathers the sun to a point, and the card gets scorched.']],
+    rain: [['seaglass', 'Sea Glass', 'Soft, frosted blue-green, like glass worn smooth by the sea.'], ['ripple', 'Rippled Glass', 'Old wavy glass, rippled at the sides.'], ['raindrop', 'Raindrop Glass', 'Raindrops on the glass, running down now and then.']],
+    frost: [['frosted', 'Frosted Glass', 'Milky frost round the edges.'], ['iceblue', 'Ice Blue Glass', 'Cold blue glass with a crisp white rim.'], ['frozen', 'Frozen Glass', 'Ice creeping up from the bottom, with icicles under the lid.']],
+    wind: [['breezeblue', 'Breeze Glass', 'Pale blue-green glass.'], ['seed', 'Seed Glass', 'Old glass with tiny air bubbles caught in it.'], ['whirl', 'Whirlwind Glass', 'Faint swirls etched in the glass, slowly turning.']],
+    storm: [['smoky', 'Smoky Glass', 'Smoke-grey glass, darker at the edges.'], ['crackle', 'Crackle Glass', 'A fine crackle runs through the glass.'], ['charged', 'Charged Glass', 'Now and then a spark runs round the rim.']],
+    mist: [['misted', 'Misted Glass', 'Misted up round the edges.'], ['moonstone', 'Moonstone Glass', 'A pearly blue sheen drifts across it.'], ['opal', 'Opal Glass', 'Colours play round the edges as it turns.']],
+    wonder: [['twilight', 'Twilight Glass', 'Deep violet, like the sky after sunset.'], ['starlight', 'Starlight Glass', 'Tiny stars twinkle in the glass.'], ['aurora', 'Aurora Glass', 'Green and violet light drifts round the rim.']],
+    change: [['dawn', 'Dawn Glass', 'Warm at the top, cool at the bottom.'], ['dew', 'Dewdrop Glass', 'Dewdrops cling to the glass.'], ['dichroic', 'Dichroic Glass', 'It changes colour as the light moves.']]
+  };
+  /* the four glasses for a row: plain first, then its three special ones */
+  function glasses(el) {
+    var row = GLASSES[el];
+    if (!row) return [];
+    return GLASS_SLOTS.map(function (s, i) {
+      var d = i ? row[i - 1] : ['plain', 'Plain Glass', 'Clear, plain glass.'];
+      return { id: s[0], key: d[0], name: d[1], line: d[2], odds: s[2], chance: s[1] / 40, pct: pctText(s[1] / 40), rank: i };
+    });
+  }
+  /* one glass of a row, plain if it isn't known */
+  function glass(el, g) {
+    var list = glasses(el);
+    for (var i = 0; i < list.length; i++) if (list[i].id === g) return list[i];
+    return list[0] || { id: 'p', key: 'plain', name: 'Plain Glass', line: '', odds: '4 in 5', chance: 0.8, pct: '80%', rank: 0 };
+  }
+  function glassRank(g) { return GRANK[g] || 0; }
+  /* r: a random number from 0 up to 1. The rarest glass takes the lowest numbers */
+  function rollGlass(r) {
+    var k = Math.floor(r * 40), acc = 0;
+    for (var i = GLASS_SLOTS.length - 1; i > 0; i--) { acc += GLASS_SLOTS[i][1]; if (k < acc) return GLASS_SLOTS[i][0]; }
+    return 'p';
+  }
+  /* the best a jar can be: its rarest variant in its rarest glass. The app never says so; the jar just wears a wax seal */
+  function sealed(v, g) { return v === 'p' && g === 'c'; }
+
   /* ---------- strength: how strong a catch was ----------
      Each kind of weather is measured by one reading, and graded from 1 to 5 stars by where it sits in that weather's own range,
      so a 5-star Rain is very nearly a Downpour. Some list a second reading to use when the first is missing.
@@ -1077,6 +1119,7 @@
     WOODS: WOODS, LIGHTS: LIGHTS, JAR_REWARDS: JAR_REWARDS, ROW_LOOKS: ROW_LOOKS, KEEPER: KEEPER,
     reward: reward, shelfProgress: shelfProgress, rewardsEarned: rewardsEarned, nextJarReward: nextJarReward, styleReward: styleReward,
     variants: variants, variant: variant, variantRank: variantRank, pctText: pctText, rollVariant: rollVariant, VARIANT_SLOTS: SLOTS.map(function (x) { return x[0]; }), DECO_NAMES: DECO_NAMES,
+    GLASSES: GLASSES, GLASS_SLOTS: GLASS_SLOTS.map(function (x) { return x[0]; }), glasses: glasses, glass: glass, glassRank: glassRank, rollGlass: rollGlass, sealed: sealed,
     strength: strength, hasStrength: hasStrength, strengthText: strengthText, starBonus: starBonus,
     activeStorm: activeStorm, stormList: stormList, okStormName: okStormName, STORM_AREA: STORM_AREA
   };

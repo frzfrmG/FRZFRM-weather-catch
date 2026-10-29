@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en-GB" data-v="0.9.0">
+<html lang="en-GB" data-v="0.10.0">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -18,7 +18,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap">
 <!-- on every release, bump data-v above and ?v= below to match VERSION in app.js, so a phone never mixes old and new files -->
-<link rel="stylesheet" href="app.css?v=0.9.0">
+<link rel="stylesheet" href="app.css?v=0.10.0">
 </head>
 <body>
 <div class="app" id="app">
@@ -208,6 +208,7 @@
           <li>The weather data can miss a passing shower or a patch of fog. If you can see weather the app hasn&rsquo;t picked up, tap <strong>Spot something</strong>. The app checks the weather around you first.</li>
           <li>Catch the same weather again to level its jar up: <strong>bronze at 2 catches, silver at 5, gold at 15 and rainbow at 30</strong>. Each level gives the jar a new lid. Every catch counts and nothing is used up: every variant you find stays in the jar.</li>
           <li><strong>Mystery variants:</strong> every jar opens as Classic (1 in 2 jars) or one of six surprises picked to fit that jar&rsquo;s weather, from 1 in 6 to 1 in 40, like a kite on a breezy day or a snowman in the snow. Rarest of all is each jar&rsquo;s legendary (1 in 60), like the Green Flash at sunset, Sunbeams through the clouds or a Yeti in a blizzard. Tap any jar, even one you haven&rsquo;t caught yet, to see all eight. Each catch is drawn its own way too, so even when everyone nearby catches the same storm, your jar won&rsquo;t look quite like theirs.</li>
+          <li><strong>Jar glass:</strong> every catch also comes in a glass. Most are plain glass (4 in 5), and now and then you get one of its row's three special glasses: 1 in 8, 1 in 20 or 1 in 40, like Sea Glass for rain, Frozen Glass for frost or Burning Glass for the sun. Glass only tints the jar and touches its edges. Tap a jar to see all four.</li>
           <li><strong>Photo catches</strong> are checked on your phone: the photo has to show the right kind of sky, like a dark night with a green glow for the Northern Lights, and it can&rsquo;t have a face in it. Nothing is sent anywhere. The check can miss a face, so if a photo of a person ever gets into a jar, delete it in <strong>Your photos</strong> below.</li>
           <li><strong>Flying?</strong> Keep the app open on the plane. When the sun sets while you&rsquo;re flying, you can catch <strong>Sunset Over the Clouds</strong>. Your phone&rsquo;s GPS can tell you&rsquo;re flying, even without wifi.</li>
           <li><strong>Levels:</strong> tap your level to see what&rsquo;s ahead: new titles, new powers and new looks for your shelf. The next ones are shown in full, and the rest are only hinted at.</li>
@@ -304,9 +305,11 @@
       <div class="ov-jar" id="c-jar"><canvas id="c-canvas" aria-hidden="true"></canvas><button class="jar-nav prev" type="button" id="c-prev" aria-label="Previous variant" hidden><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg></button><button class="jar-nav next" type="button" id="c-next" aria-label="Next variant" hidden><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></button></div>
       <div class="ov-head">
         <h2 class="ov-name" id="c-title">Overcast</h2>
+        <span class="seal-ic" id="c-seal" role="img" aria-label="A wax seal" hidden></span>
         <span class="pill" id="c-pill">Common</span>
       </div>
       <p class="ov-var" id="c-var" hidden></p>
+      <p class="ov-var ov-glass" id="c-glass" hidden></p>
       <p class="ov-str" id="c-str" hidden></p>
       <p class="ov-points" id="c-points"></p>
       <p class="ov-line" id="c-line"></p>
@@ -350,16 +353,16 @@
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 <input type="file" id="photo-input" accept="image/*" capture="environment" hidden>
 
-<script src="rules.js?v=0.9.0" defer></script>
-<script src="sky.js?v=0.9.0" defer></script>
-<script src="variants.js?v=0.9.0" defer></script>
-<script src="kit.js?v=0.9.0" defer></script>
-<script src="jars-rain.js?v=0.9.0" defer></script>
-<script src="jars-wonders.js?v=0.9.0" defer></script>
-<script src="jars-storm.js?v=0.9.0" defer></script>
-<script src="game.js?v=0.9.0" defer></script>
-<script src="photocheck.js?v=0.9.0" defer></script>
-<script src="minigames.js?v=0.9.0" defer></script>
-<script src="app.js?v=0.9.0" defer></script>
+<script src="rules.js?v=0.10.0" defer></script>
+<script src="sky.js?v=0.10.0" defer></script>
+<script src="variants.js?v=0.10.0" defer></script>
+<script src="kit.js?v=0.10.0" defer></script>
+<script src="jars-rain.js?v=0.10.0" defer></script>
+<script src="jars-wonders.js?v=0.10.0" defer></script>
+<script src="jars-storm.js?v=0.10.0" defer></script>
+<script src="game.js?v=0.10.0" defer></script>
+<script src="photocheck.js?v=0.10.0" defer></script>
+<script src="minigames.js?v=0.10.0" defer></script>
+<script src="app.js?v=0.10.0" defer></script>
 </body>
 </html>

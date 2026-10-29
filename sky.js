@@ -853,9 +853,13 @@
   }
   /* body and neck of a jar inside the box x, y, w, h: the neck opens at y, the base sits at y + h */
   function jarShape(ctx, x, y, w, h) {
+    ctx.beginPath();
+    jarPath(ctx, x, y, w, h);
+  }
+  /* the jar's outline added to the path being drawn */
+  function jarPath(ctx, x, y, w, h) {
     var bx = x + w * 0.04, bw = w * 0.92, by = y + h * 0.16, bh = h * 0.84, r = w * 0.18;
     var nx = x + w * 0.2, nw = w * 0.6;
-    ctx.beginPath();
     ctx.moveTo(nx, y);
     ctx.lineTo(nx + nw, y);
     ctx.lineTo(nx + nw, by);
@@ -932,6 +936,366 @@
       if (a < 0.15) return;
       star4(ctx, x + w * p[0], top + h * p[1], (2.2 + 3.2 * a) * k, i % 2 ? 'rgba(255,255,255,' + 0.95 * a + ')' : 'rgba(255,214,120,' + 0.95 * a + ')');
     });
+  }
+
+  /* ---------- jar glass ----------
+     A catch's glass only tints the jar and touches its edges, so the picture inside stays clear. Each glass has a tint,
+     a band of colour round the inside of the rim, and sometimes something of its own: flecks, bubbles, drops or frost.
+     tint and edge are [r, g, b, alpha]; rim colours the jar's outline. */
+  var GLASS = {
+    amber: { tint: [255, 176, 72, 0.13], edge: [226, 136, 36, 0.32], rim: 'rgba(196,120,40,0.9)' },
+    sunstone: { tint: [255, 206, 130, 0.07], edge: [240, 190, 90, 0.2], rim: 'rgba(206,150,60,0.9)', fx: 'flecks' },
+    burning: { tint: [255, 190, 110, 0.07], edge: [255, 170, 80, 0.24], rim: 'rgba(214,128,44,0.95)', fx: 'lens' },
+    seaglass: { tint: [110, 196, 184, 0.15], edge: [214, 246, 238, 0.42], wide: 1.4, rim: 'rgba(70,160,150,0.9)', fx: 'speckle' },
+    ripple: { tint: [160, 196, 236, 0.05], edge: [190, 215, 245, 0.18], fx: 'ripple' },
+    raindrop: { tint: [170, 202, 240, 0.05], edge: [190, 215, 245, 0.16], fx: 'drops' },
+    frosted: { edge: [255, 255, 255, 0.5], wide: 1.7, fx: 'speckle' },
+    iceblue: { tint: [150, 200, 255, 0.14], edge: [190, 225, 255, 0.3], rim: 'rgba(235,246,255,0.95)', fx: 'crisp' },
+    frozen: { tint: [190, 226, 255, 0.07], edge: [230, 244, 255, 0.34], rim: 'rgba(225,240,255,0.95)', fx: 'frozen' },
+    breezeblue: { tint: [140, 214, 204, 0.13], edge: [90, 186, 176, 0.3], rim: 'rgba(80,160,150,0.9)' },
+    seed: { tint: [200, 230, 220, 0.05], edge: [210, 235, 228, 0.16], fx: 'bubbles' },
+    whirl: { tint: [200, 220, 255, 0.05], edge: [210, 228, 255, 0.16], fx: 'whirl' },
+    smoky: { tint: [66, 58, 60, 0.17], edge: [36, 32, 38, 0.42], rim: 'rgba(70,64,70,0.95)' },
+    crackle: { tint: [220, 232, 255, 0.04], edge: [220, 232, 255, 0.14], fx: 'crackle' },
+    charged: { tint: [120, 170, 255, 0.06], edge: [110, 160, 255, 0.3], rim: 'rgba(130,175,255,0.95)', fx: 'spark' },
+    misted: { edge: [244, 247, 252, 0.42], wide: 1.9, fx: 'mistdrops' },
+    moonstone: { tint: [200, 214, 255, 0.06], edge: [205, 220, 255, 0.2], fx: 'sheen' },
+    opal: { tint: [240, 240, 255, 0.04], fx: 'opal' },
+    twilight: { tint: [92, 62, 172, 0.16], edge: [70, 40, 150, 0.36], rim: 'rgba(110,80,190,0.9)' },
+    starlight: { tint: [40, 50, 110, 0.06], edge: [160, 170, 255, 0.16], fx: 'glints' },
+    aurora: { tint: [120, 255, 200, 0.03], fx: 'aurora' },
+    dawn: { fx: 'dawn', edge: [255, 200, 170, 0.18] },
+    dew: { tint: [210, 236, 220, 0.04], edge: [215, 240, 225, 0.16], fx: 'dew' },
+    dichroic: { fx: 'dichroic' }
+  };
+  function rgbaA(c, a) { return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')'; }
+  /* a soft band of colour round the inside of the jar: the jar's own outline, stroked wide and clipped to the inside */
+  function edgeBand(ctx, x, top, w, h, k, c, wide) {
+    // the shadow of a frame round the jar falls just inside it, as a soft glow along the glass (the frame itself is clipped away)
+    var band = w * 0.08 * (wide || 1);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x - w, top - h, w * 3, h * 3);
+    jarPath(ctx, x, top, w, h);
+    ctx.shadowColor = rgbaA(c, Math.min(1, c[3] * 1.5));
+    ctx.shadowBlur = band;
+    ctx.fillStyle = rgbaA(c, 1);
+    ctx.fill('evenodd');
+    ctx.restore();
+  }
+  /* a point round the outline of the jar's body, f from 0 to 1, starting at the top of the right shoulder */
+  function rimPoint(x, top, w, h, f) {
+    var bx = x + w * 0.04, bw = w * 0.92, by = top + h * 0.16, bh = h * 0.84;
+    var per = 2 * (bw + bh), d = ((f % 1) + 1) % 1 * per;
+    if (d < bh) return [bx + bw, by + d];
+    d -= bh; if (d < bw) return [bx + bw - d, by + bh];
+    d -= bw; if (d < bh) return [bx, by + bh - d];
+    d -= bh; return [bx + d, by];
+  }
+  /* the parts of a glass that stay still (its tint, the glow round the edge, frost, ripples, cracks) are drawn once
+     for each size of jar and kept, because the soft glow is slow to draw on a phone. Only the moving parts are
+     drawn every frame */
+  var GCACHE = {}, GCACHE_N = 0;
+  function glassStill(key, W, H, x, top, w, h, k) {
+    if (typeof document === 'undefined') return null;
+    var id = key + '|' + W + '|' + H, c = GCACHE[id];
+    if (c) return c;
+    if (GCACHE_N >= 120) { GCACHE = {}; GCACHE_N = 0; }
+    c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    var g = c.getContext('2d');
+    if (!g) return null;
+    g.save();
+    jarShape(g, x, top, w, h);
+    g.clip();
+    stillParts(g, key, x, top, w, h, k);
+    g.restore();
+    GCACHE[id] = c; GCACHE_N += 1;
+    return c;
+  }
+  function stillParts(ctx, key, x, top, w, h, k, edgeCol) {
+    var gd = GLASS[key];
+    var r = rng(mix(seedOf(key), 4242));
+    var bx = x + w * 0.04, bw = w * 0.92, by = top + h * 0.16, bh = h * 0.84;
+    var i;
+    if (gd.tint) { ctx.fillStyle = rgbaA(gd.tint, gd.tint[3]); ctx.fillRect(x, top, w, h); }
+    if (gd.fx === 'dawn') {
+      var dg = ctx.createLinearGradient(0, top, 0, top + h);
+      dg.addColorStop(0, 'rgba(255,176,130,0.15)');
+      dg.addColorStop(0.55, 'rgba(255,220,200,0.04)');
+      dg.addColorStop(1, 'rgba(130,184,255,0.14)');
+      ctx.fillStyle = dg; ctx.fillRect(x, top, w, h);
+    }
+    if (edgeCol || gd.edge) edgeBand(ctx, x, top, w, h, k, edgeCol || gd.edge, gd.wide);
+    switch (gd.fx) {
+      case 'lens': {
+        var lg = ctx.createRadialGradient(bx + bw * 0.3, by + bh * 0.25, 0, bx + bw * 0.3, by + bh * 0.25, bw * 0.5);
+        lg.addColorStop(0, 'rgba(255,248,226,0.24)');
+        lg.addColorStop(1, 'rgba(255,248,226,0)');
+        ctx.fillStyle = lg; ctx.fillRect(x, top, w, h);
+        break;
+      }
+      case 'ripple':
+        ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+        ctx.lineWidth = Math.max(1, 0.7 * k);
+        [0.07, 0.13, 0.87, 0.93].forEach(function (f, j) {
+          ctx.beginPath();
+          for (var yy = 0; yy <= 24; yy++) {
+            var fy2 = yy / 24, xx = bx + bw * f + Math.sin(fy2 * 9 + j * 1.7) * 1.4 * k;
+            if (yy) ctx.lineTo(xx, by + bh * fy2); else ctx.moveTo(xx, by + bh * fy2);
+          }
+          ctx.stroke();
+        });
+        break;
+      case 'speckle':
+        ctx.fillStyle = 'rgba(255,255,255,0.4)';
+        for (i = 0; i < 70; i++) {
+          var e1 = r(), sx = e1 < 0.5 ? (r() < 0.5 ? r() * 0.12 : 1 - r() * 0.12) : r(), sy = e1 < 0.5 ? r() : (r() < 0.5 ? r() * 0.1 : 1 - r() * 0.1);
+          ctx.fillRect(bx + bw * sx, by + bh * sy, 0.9 * k, 0.9 * k);
+        }
+        break;
+      case 'crisp':
+        jarShape(ctx, x, top, w, h);
+        ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+        ctx.lineWidth = Math.max(1, 2.6 * k);
+        ctx.stroke();
+        break;
+      case 'frozen': {
+        // ice creeping up from the bottom, with frost ferns at the corners
+        var iy = by + bh * 0.84;
+        var ig = ctx.createLinearGradient(0, iy - bh * 0.05, 0, by + bh);
+        ig.addColorStop(0, 'rgba(225,242,255,0)');
+        ig.addColorStop(0.35, 'rgba(225,242,255,0.5)');
+        ig.addColorStop(1, 'rgba(240,250,255,0.72)');
+        ctx.fillStyle = ig;
+        ctx.beginPath();
+        ctx.moveTo(bx, by + bh);
+        for (i = 0; i <= 18; i++) ctx.lineTo(bx + bw * i / 18, iy - (i % 2 ? r() * bh * 0.05 : 0));
+        ctx.lineTo(bx + bw, by + bh);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+        ctx.lineWidth = Math.max(1, 0.6 * k);
+        [[bx + bw * 0.04, by + bh * 0.98, -1.2], [bx + bw * 0.96, by + bh * 0.98, -1.95]].forEach(function (s) {
+          var a = s[2], L = bh * 0.2;
+          ctx.beginPath(); ctx.moveTo(s[0], s[1]); ctx.lineTo(s[0] + Math.cos(a) * L, s[1] + Math.sin(a) * L); ctx.stroke();
+          for (var b = 1; b <= 4; b++) {
+            var f = b / 5, qx = s[0] + Math.cos(a) * L * f, qy = s[1] + Math.sin(a) * L * f, l2 = L * 0.28 * (1 - f * 0.5);
+            ctx.beginPath(); ctx.moveTo(qx, qy); ctx.lineTo(qx + Math.cos(a - 0.7) * l2, qy + Math.sin(a - 0.7) * l2);
+            ctx.moveTo(qx, qy); ctx.lineTo(qx + Math.cos(a + 0.7) * l2, qy + Math.sin(a + 0.7) * l2); ctx.stroke();
+          }
+        });
+        break;
+      }
+      case 'crackle':
+        ctx.strokeStyle = 'rgba(255,255,255,0.24)';
+        ctx.lineWidth = Math.max(0.6, 0.5 * k);
+        for (i = 0; i < 16; i++) {
+          var cx3 = bx + bw * (r() < 0.5 ? r() * 0.3 : 0.7 + r() * 0.3), cy3 = by + bh * r(), a3 = r() * TAU;
+          ctx.beginPath(); ctx.moveTo(cx3, cy3);
+          for (var s3 = 0; s3 < 4; s3++) {
+            a3 += (r() - 0.5) * 1.4;
+            cx3 += Math.cos(a3) * bw * 0.06; cy3 += Math.sin(a3) * bw * 0.06;
+            ctx.lineTo(cx3, cy3);
+          }
+          ctx.stroke();
+        }
+        break;
+      case 'dew':
+      case 'mistdrops':
+        drops(ctx, r, gd.fx, bx, by, bw, bh, k, 0);
+        break;
+    }
+  }
+  /* beads of water on the glass. Raindrops run down now and then, leaving a trail */
+  function drops(ctx, r, kind, bx, by, bw, bh, k, t) {
+    var nd = kind === 'drops' ? 14 : kind === 'dew' ? 9 : 10;
+    for (var i = 0; i < nd; i++) {
+      var dx0 = bx + bw * (0.06 + r() * 0.88), dy0 = by + bh * (kind === 'dew' ? 0.35 + r() * 0.6 : 0.05 + r() * 0.9);
+      var rr = (kind === 'dew' ? 1.6 + r() * 1.6 : kind === 'drops' ? 1.1 + r() * 1.5 : 0.8 + r() * 1) * k;
+      var cyc = kind === 'drops' ? ((t * 0.12 + r()) % 1) : 1;
+      if (cyc < 0.25) {
+        var run = cyc / 0.25;
+        ctx.strokeStyle = 'rgba(225,238,255,0.22)';
+        ctx.lineWidth = rr * 0.7;
+        ctx.beginPath(); ctx.moveTo(dx0, dy0); ctx.lineTo(dx0, dy0 + run * bh * 0.3); ctx.stroke();
+        dy0 += run * bh * 0.3;
+      }
+      ctx.fillStyle = 'rgba(210,228,250,0.22)';
+      ctx.beginPath(); ctx.arc(dx0, dy0, rr, 0, TAU); ctx.fill();
+      ctx.strokeStyle = 'rgba(40,60,90,0.18)';
+      ctx.lineWidth = Math.max(0.6, rr * 0.25);
+      ctx.beginPath(); ctx.arc(dx0, dy0, rr, 0.2 * Math.PI, 0.8 * Math.PI); ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.75)';
+      ctx.beginPath(); ctx.arc(dx0 - rr * 0.35, dy0 - rr * 0.35, rr * 0.3, 0, TAU); ctx.fill();
+    }
+  }
+  /* a soft spot of colour, without filling the whole jar */
+  function spot(ctx, px, py, rad, c, a) {
+    var gg = ctx.createRadialGradient(px, py, 0, px, py, rad);
+    gg.addColorStop(0, rgbaA(c, a));
+    gg.addColorStop(1, rgbaA(c, 0));
+    ctx.fillStyle = gg;
+    ctx.beginPath(); ctx.arc(px, py, rad, 0, TAU); ctx.fill();
+  }
+  /* the glass of one catch, over what's inside the jar (the jar is the clip) */
+  function glassIn(ctx, W, H, x, top, w, h, k, t, key, seed) {
+    var gd = GLASS[key];
+    if (!gd) return;
+    var r = rng(mix(seed || 1, 4242));
+    var bx = x + w * 0.04, bw = w * 0.92, by = top + h * 0.16, bh = h * 0.84;
+    var i, px, py;
+    ctx.save();
+    if (gd.fx === 'dichroic') {
+      // two colours that take turns as the light moves: each one's glow is kept, and they cross-fade
+      var ph = (Math.sin(t * 0.7) + 1) / 2;
+      var ca = dichroicLayer(W, H, x, top, w, h, k, 0), cb = dichroicLayer(W, H, x, top, w, h, k, 1);
+      if (ca && cb) {
+        ctx.globalAlpha = 1 - ph; ctx.drawImage(ca, 0, 0);
+        ctx.globalAlpha = ph; ctx.drawImage(cb, 0, 0);
+        ctx.globalAlpha = 1;
+      }
+    } else {
+      var still = glassStill(key, W, H, x, top, w, h, k);
+      if (still) ctx.drawImage(still, 0, 0);
+      else stillParts(ctx, key, x, top, w, h, k);
+    }
+    switch (gd.fx) {
+      case 'flecks':
+        for (i = 0; i < 26; i++) {
+          var side = r() < 0.5, fx = side ? (r() < 0.5 ? r() * 0.16 : 1 - r() * 0.16) : r(), fy = side ? r() : (r() < 0.5 ? r() * 0.12 : 1 - r() * 0.1);
+          px = bx + bw * fx; py = by + bh * fy;
+          var tw = 0.4 + 0.6 * Math.max(0, Math.sin(t * (1.2 + r() * 1.8) + r() * 6));
+          ctx.fillStyle = 'rgba(255,214,120,' + (0.45 + 0.5 * tw) + ')';
+          ctx.beginPath(); ctx.arc(px, py, (0.5 + r() * 0.9) * k, 0, TAU); ctx.fill();
+          if (tw > 0.9) star4(ctx, px, py, 2.6 * k, 'rgba(255,240,190,0.85)');
+        }
+        break;
+      case 'lens': {
+        // the sun gathered to a burning point
+        var fpx = bx + bw * (0.56 + r() * 0.14), fpy = by + bh * 0.86, pulse = 0.75 + 0.25 * Math.sin(t * 3.1);
+        spot(ctx, fpx, fpy, w * 0.16, [255, 200, 110], 0.62 * pulse);
+        spot(ctx, fpx, fpy, w * 0.035, [255, 255, 236], 0.95 * pulse);
+        ctx.strokeStyle = 'rgba(255,226,170,0.16)';
+        ctx.lineWidth = Math.max(1, 0.8 * k);
+        for (i = 1; i <= 3; i++) { ctx.beginPath(); ctx.ellipse(fpx, fpy, w * 0.07 * i * (0.9 + 0.1 * pulse), w * 0.03 * i, 0, 0, TAU); ctx.stroke(); }
+        break;
+      }
+      case 'drops':
+        drops(ctx, r, 'drops', bx, by, bw, bh, k, t);
+        break;
+      case 'bubbles':
+        ctx.strokeStyle = 'rgba(255,255,255,0.42)';
+        ctx.lineWidth = Math.max(0.6, 0.45 * k);
+        ctx.beginPath();
+        for (i = 0; i < 46; i++) {
+          var u0 = r(), v0 = r(), br = (0.5 + r() * 1.3) * k, sp2 = 0.004 + r() * 0.01;
+          px = bx + bw * ((u0 + t * sp2) % 1); py = by + bh * v0 + Math.sin(t * 0.6 + i) * k * 0.6;
+          ctx.moveTo(px + br, py); ctx.arc(px, py, br, 0, TAU);
+        }
+        ctx.stroke();
+        break;
+      case 'whirl': {
+        var cx2 = bx + bw / 2, cy2 = by + bh * 0.52;
+        ctx.strokeStyle = 'rgba(255,255,255,0.17)';
+        ctx.lineWidth = Math.max(1, 0.9 * k);
+        for (i = 0; i < 3; i++) {
+          ctx.beginPath();
+          for (var a2 = 0; a2 < 4.6; a2 += 0.15) {
+            var ang = a2 + t * 0.35 + i * TAU / 3, rad = bw * (0.08 + a2 * 0.085);
+            var qx2 = cx2 + Math.cos(ang) * rad, qy2 = cy2 + Math.sin(ang) * rad * 0.8;
+            if (a2) ctx.lineTo(qx2, qy2); else ctx.moveTo(qx2, qy2);
+          }
+          ctx.stroke();
+        }
+        break;
+      }
+      case 'sheen':
+        spot(ctx, bx + bw * (0.5 + 0.38 * Math.sin(t * 0.32)), by + bh * (0.45 + 0.2 * Math.cos(t * 0.27)), bw * 0.45, [190, 215, 255], 0.26);
+        break;
+      case 'opal':
+      case 'aurora': {
+        var cols = gd.fx === 'opal' ? [[255, 140, 200], [120, 240, 190], [130, 170, 255], [255, 220, 120]] : [[80, 255, 170], [190, 120, 255], [110, 220, 255]];
+        for (i = 0; i < 9; i++) {
+          var p2 = rimPoint(x, top, w, h, i / 9 + t * (gd.fx === 'opal' ? 0.03 : 0.045));
+          spot(ctx, p2[0], p2[1], bw * 0.32, cols[i % cols.length], gd.fx === 'opal' ? 0.24 : 0.26);
+        }
+        break;
+      }
+      case 'glints':
+        for (i = 0; i < 16; i++) {
+          px = bx + bw * (0.05 + r() * 0.9); py = by + bh * (0.04 + r() * 0.92);
+          var tw2 = Math.max(0, Math.sin(t * (1.4 + r() * 2.2) + r() * 6));
+          if (tw2 > 0.15) star4(ctx, px, py, (1 + 2.4 * tw2) * k, 'rgba(255,255,255,' + (0.85 * tw2) + ')');
+        }
+        break;
+    }
+    ctx.restore();
+  }
+  /* Dichroic Glass's two colours, magenta and teal, each kept with its glow */
+  function dichroicLayer(W, H, x, top, w, h, k, which) {
+    if (typeof document === 'undefined') return null;
+    var id = 'dichroic' + which + '|' + W + '|' + H, c = GCACHE[id];
+    if (c) return c;
+    c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    var g = c.getContext('2d');
+    if (!g) return null;
+    var col = which ? [60, 220, 190] : [230, 70, 200];
+    g.save();
+    jarShape(g, x, top, w, h);
+    g.clip();
+    g.fillStyle = rgbaA(col, 0.07); g.fillRect(x, top, w, h);
+    edgeBand(g, x, top, w, h, k, [col[0], col[1], col[2], 0.34]);
+    g.restore();
+    GCACHE[id] = c; GCACHE_N += 1;
+    return c;
+  }
+  /* what a glass puts outside the jar: icicles under the lid, a spark running round the rim */
+  function glassOut(ctx, W, H, x, top, w, h, k, t, key) {
+    var gd = GLASS[key];
+    if (!gd) return;
+    if (gd.fx === 'frozen') {
+      ctx.fillStyle = 'rgba(230,244,255,0.95)';
+      [[0.3, 7], [0.42, 11], [0.55, 6], [0.68, 9]].forEach(function (p, i) {
+        var ix = x + w * p[0], iy = top + 1, L = p[1] * k * (1 + 0.04 * Math.sin(t + i));
+        ctx.beginPath(); ctx.moveTo(ix - 2 * k, iy); ctx.lineTo(ix + 2 * k, iy); ctx.lineTo(ix, iy + L); ctx.closePath(); ctx.fill();
+      });
+    } else if (gd.fx === 'spark') {
+      var cyc = t % 3.6;
+      if (cyc < 0.7) {
+        var f = cyc / 0.7;
+        for (var i = 0; i < 6; i++) {
+          var p = rimPoint(x, top, w, h, f * 0.9 - i * 0.012);
+          var a = (1 - i / 6) * Math.sin(f * Math.PI);
+          ctx.fillStyle = 'rgba(200,225,255,' + a + ')';
+          ctx.beginPath(); ctx.arc(p[0], p[1], (2.2 - i * 0.25) * k, 0, TAU); ctx.fill();
+        }
+        var p0 = rimPoint(x, top, w, h, f * 0.9);
+        star4(ctx, p0[0], p0[1], 5 * k * Math.sin(f * Math.PI), 'rgba(255,255,255,0.95)');
+      }
+    }
+  }
+  /* a wax seal pressed onto the jar, just under the lid. Nothing says what it means */
+  function waxSeal(ctx, cx, cy, s, t) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(40,10,10,0.25)';
+    ctx.beginPath(); ctx.arc(cx + s * 0.08, cy + s * 0.12, s, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#B3262E';
+    ctx.beginPath();
+    for (var i = 0; i <= 16; i++) {
+      var a = i / 16 * TAU, rr = s * (i % 2 ? 0.92 : 1.02);
+      if (i) ctx.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr); else ctx.moveTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(80,8,14,0.55)';
+    ctx.lineWidth = Math.max(1, s * 0.12);
+    ctx.beginPath(); ctx.arc(cx, cy, s * 0.66, 0, TAU); ctx.stroke();
+    star4(ctx, cx, cy, s * 0.42, 'rgba(90,10,16,0.65)');
+    ctx.fillStyle = 'rgba(255,200,200,' + (0.25 + 0.1 * Math.sin(t * 1.5)) + ')';
+    ctx.beginPath(); ctx.ellipse(cx - s * 0.35, cy - s * 0.4, s * 0.28, s * 0.14, -0.6, 0, TAU); ctx.fill();
+    ctx.restore();
   }
 
   /* a jar still to catch: empty glass with dust settled in the bottom, and a cobweb on some */
@@ -1035,6 +1399,7 @@
     } else {
       paint(ctx, W, H, st.id, t, !!st.night, null, mk);
     }
+    if (mk && mk.glass && GLASS[mk.glass]) glassIn(ctx, W, H, x, top, w, h, k, t, mk.glass, mk.seed);
     if (st.preview) { ctx.fillStyle = 'rgba(150,160,182,0.3)'; ctx.fillRect(x, top, w, h); }
     var sh = ctx.createLinearGradient(x, 0, x + w, 0);
     sh.addColorStop(0, 'rgba(0,0,0,0.12)');
@@ -1045,7 +1410,8 @@
     ctx.restore();
     ctx.save();
     jarShape(ctx, x, top, w, h);
-    ctx.strokeStyle = lg ? 'rgba(214,160,60,0.95)' : look.glass;
+    var gl = mk && mk.glass ? GLASS[mk.glass] : null;
+    ctx.strokeStyle = lg ? 'rgba(214,160,60,0.95)' : gl && gl.rim ? gl.rim : look.glass;
     ctx.lineWidth = Math.max(1, (lg ? 2 : 1.5) * k);
     if (st.locked && !st.ghost) ctx.setLineDash([5 * k, 3.5 * k]);
     ctx.stroke();
@@ -1055,7 +1421,9 @@
     ctx.fillStyle = 'rgba(255,255,255,0.3)';
     roundRect(ctx, x + w * 0.12, top + h * 0.3, w * 0.07, h * 0.42, w * 0.035);
     ctx.fill();
+    if (gl) glassOut(ctx, W, H, x, top, w, h, k, t, mk.glass);
     lid(ctx, cx, top + 1 - (st.lift || 0) * h * 0.3, w * 0.66, h * 0.11, k, st.lidTone);
+    if (mk && mk.seal && !st.preview) waxSeal(ctx, x + w * 0.78, top + h * 0.2, 7.5 * k, t);
     if (st.hat) {
       var hy = top + 1 - h * 0.11;
       ctx.fillStyle = '#FFFFFF';
@@ -1099,7 +1467,7 @@
   }
 
   WC.sky = {
-    SCENES: SCENES, paint: paint, jar: jar, jarShape: jarShape, lid: lid, roundRect: roundRect,
+    SCENES: SCENES, paint: paint, jar: jar, jarShape: jarShape, lid: lid, roundRect: roundRect, GLASS: GLASS, waxSeal: waxSeal,
     boltPath: boltPath, fit: fit, rng: rng, has: function (id) { return !!SCENES[id]; }
   };
 })(typeof window !== 'undefined' ? window : globalThis);

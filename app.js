@@ -5,7 +5,7 @@
   'use strict';
   var WC = window.WC;
   var RU = WC.rules, SKY = WC.sky;
-  var VERSION = '0.9.0';
+  var VERSION = '0.10.0';
   var TEST = /[?&]test=1(&|$)/.test(location.search);
   var KEY = 'frzfrm-wc-state-1';
   var WX_KEY = 'frzfrm-wc-weather-1';
@@ -18,6 +18,7 @@
   var CUR = 'temperature_2m,relative_humidity_2m,is_day,precipitation,rain,showers,snowfall,weather_code,cloud_cover,cloud_cover_low,cloud_cover_high,wind_speed_10m,wind_gusts_10m,visibility';
   var HRLY = 'temperature_2m,relative_humidity_2m,is_day,rain,showers,snowfall,weather_code,cloud_cover,wind_speed_10m,wind_gusts_10m,visibility';
   var VARS = RU.VARIANT_SLOTS; // mystery variants, commonest first: Classic, the row's six surprises, its legendary
+  var GL = RU.GLASS_SLOTS;     // jar glass, commonest first: plain, then the row's three special glasses
 
   /* ---------- small helpers ---------- */
 
@@ -45,7 +46,7 @@
   function freshState() {
     return {
       v: 1, created: Date.now(), points: 0, book: {}, caught: {}, cool: {}, recent: {}, names: {}, log: [], haul: null, drive: false, passengerUntil: 0, onboarded: false,
-      rewards: {}, style: { wood: 'pine', lights: 'off' }, oldJars: null, vmap: 2, games: freshGames()
+      rewards: {}, style: { wood: 'pine', lights: 'off' }, oldJars: null, vmap: 2, glassDone: 1, games: freshGames()
     };
   }
   /* the Games tab keeps its own XP and best scores, separate from catching */
@@ -73,6 +74,10 @@
         t: typeof x.t === 'number' && isFinite(x.t) ? x.t : 0, place: typeof x.place === 'string' ? x.place : ''
       };
       if (typeof x.power === 'number' && isFinite(x.power)) out[v].power = Math.max(0, Math.min(1, x.power));
+      if (GL.indexOf(x.g) > 0) out[v].g = x.g;
+      out[v].gs = typeof x.gs === 'string' ? x.gs.replace(/[^pabc]/g, '').slice(0, 4) : '';
+      if (out[v].g && out[v].gs.indexOf(out[v].g) === -1) out[v].gs += out[v].g;
+      if (!out[v].gs) out[v].gs = 'p';
       sum += out[v].n;
     });
     if (e.n > sum) {
@@ -80,6 +85,10 @@
       c.n += e.n - sum;
     }
     e.vars = out;
+    // how many of each special glass this jar has had
+    var gc = e.glass && typeof e.glass === 'object' && !Array.isArray(e.glass) ? e.glass : {};
+    e.glass = {};
+    ['a', 'b', 'c'].forEach(function (g) { if (typeof gc[g] === 'number' && gc[g] >= 1) e.glass[g] = Math.floor(gc[g]); });
   }
   /* 0.4 moved Ball Lightning from a storm's first surprise to its legendary */
   function moveStormVariants(id, e) {
@@ -106,8 +115,11 @@
   function cleanState(o) {
     if (!o || o.v !== 1 || typeof o.points !== 'number' || !isFinite(o.points) || !o.book || typeof o.book !== 'object') return null;
     var oldMap = !(o.vmap >= 2);
+    // jars saved before glass existed get their one-time roll for it
+    var hadGlass = !!o.glassDone;
     var f = freshState();
     Object.keys(f).forEach(function (k) { if (!(k in o)) o[k] = f[k]; });
+    o.glassDone = hadGlass ? 1 : 0;
     ['caught', 'cool', 'recent', 'names', 'rewards'].forEach(function (k) { if (!o[k] || typeof o[k] !== 'object' || Array.isArray(o[k])) o[k] = {}; });
     if (!Array.isArray(o.log)) o.log = [];
     Object.keys(o.book).forEach(function (id) {
@@ -143,6 +155,7 @@
     if (!known(RU.LIGHTS, o.style.lights)) o.style.lights = 'off';
     if (o.haul && !Array.isArray(o.haul.jars)) o.haul = null;
     if (o.oldJars && (typeof o.oldJars !== 'object' || !Array.isArray(o.oldJars.found) || typeof o.oldJars.n !== 'number')) o.oldJars = null;
+    if (o.glassNote && (typeof o.glassNote !== 'object' || !Array.isArray(o.glassNote.found) || typeof o.glassNote.n !== 'number')) o.glassNote = null;
     o.games = cleanGames(o.games);
     if (o.photoNote && !Array.isArray(o.photoNote)) o.photoNote = null;
     if (o.day && (typeof o.day !== 'object' || typeof o.day.d !== 'string' || !o.day.n || typeof o.day.n !== 'object')) o.day = null;
@@ -272,7 +285,8 @@
     reading: null, ctx: null, cls: null, wonders: [], spots: [], seen: [], near: {}, coming: [], warning: null,
     watchId: null, game: null, view: null, queue: [], cardState: null, lastFocus: null,
     installEvt: null, wake: null, wakeOk: null, photos: {}, pendingSpot: null, shelfJars: [], previewJars: null, share: null,
-    cardId: null, cardV: null, forceV: TEST ? ((location.search.match(/[?&]force=([cabdefgp])(?:&|$)/) || [])[1] || null) : null,
+    cardId: null, cardV: null, cardG: null, forceV: TEST ? ((location.search.match(/[?&]force=([cabdefgp])(?:&|$)/) || [])[1] || null) : null,
+    forceG: TEST ? ((location.search.match(/[?&]glass=([pabc])(?:&|$)/) || [])[1] || null) : null,
     depth: undefined, depthArea: null, depthAt: 0,
     storms: null, stormsAt: 0, storm: null, spin: null, rewardToken: null,
     flyReads: [], flyingNow: false, flyAt: 0, flightPos: null
@@ -313,9 +327,11 @@
     var x = e.storms[rec.storm];
     if (!x) x = e.storms[rec.storm] = { n: 0, t: rec.t || 0, place: rec.place || '' };
     x.n += 1;
-    if (!x.best || RU.variantRank(rec.v || 'c') >= RU.variantRank(x.best.v || 'c')) x.best = Object.assign({}, rec);
+    if (!x.best || catchRank(rec) >= catchRank(x.best)) x.best = Object.assign({}, rec);
     return x.n === 1;
   }
+  /* how special one catch is: its variant first, then its glass */
+  function catchRank(rec) { return rec ? RU.variantRank(rec.v || 'c') * 4 + RU.glassRank(rec.g || 'p') : -1; }
   function stormNames(e) {
     if (!e || !e.storms) return [];
     return Object.keys(e.storms).filter(RU.okStormName).sort(function (a, b) { return (e.storms[a].t || 0) - (e.storms[b].t || 0); });
@@ -326,12 +342,12 @@
     if (!x) return null;
     if (x.best && typeof x.best === 'object') return x.best;
     var best = null;
-    (e.catches || []).forEach(function (r) { if (r && r.storm === name && (!best || RU.variantRank(r.v || 'c') >= RU.variantRank(best.v || 'c'))) best = r; });
+    (e.catches || []).forEach(function (r) { if (r && r.storm === name && (!best || catchRank(r) >= catchRank(best))) best = r; });
     return best || { t: x.t, place: x.place, storm: name };
   }
   function stormState(name) {
     var st = jarState('namedstorm'), rec = stormRec(S.book.namedstorm, name);
-    if (rec && !st.locked) st.mark = markOf('namedstorm', rec.v, rec.seed, rec.power);
+    if (rec && !st.locked) st.mark = markOf('namedstorm', rec.v, rec.seed, rec.power, rec.g);
     return st;
   }
   /* the season so far on the Named Storm jar card: caught, here now, or got away */
@@ -1239,11 +1255,11 @@
       var e = S.book[t.id];
       if (!e || !e.n || !RU.catchable(t)) return;
       var cands = [];
-      if (t.id === 'namedstorm' && stormNames(e).length) stormNames(e).forEach(function (nm) { var rec = stormRec(e, nm); cands.push({ storm: nm, v: (rec && rec.v) || 'c', n: e.storms[nm].n }); });
-      else cands.push({ v: bestVariant(e), n: e.n });
+      if (t.id === 'namedstorm' && stormNames(e).length) stormNames(e).forEach(function (nm) { var rec = stormRec(e, nm); cands.push({ storm: nm, v: (rec && rec.v) || 'c', g: (rec && rec.g) || 'p', n: e.storms[nm].n }); });
+      else { var bv = bestVariant(e); cands.push({ v: bv, g: (e.vars && e.vars[bv] && e.vars[bv].g) || 'p', n: e.n }); }
       cands.forEach(function (c) {
-        var score = RU.variantRank(c.v) * 1000 + RU.rank(t.id) * 100 + Math.min(99, c.n);
-        if (!best || score > best.score) best = { id: t.id, v: c.v, storm: c.storm || null, score: score };
+        var score = (RU.variantRank(c.v) * 4 + RU.glassRank(c.g)) * 1000 + RU.rank(t.id) * 100 + Math.min(99, c.n);
+        if (!best || score > best.score) best = { id: t.id, v: c.v, g: c.g, storm: c.storm || null, score: score };
       });
     });
     return best;
@@ -1276,7 +1292,9 @@
     var t = b ? T(b.id) : null, vr = b ? RU.variant(b.id, b.v) : null, e = b ? S.book[b.id] : null;
     var name = b ? (b.storm ? 'Storm ' + b.storm : t.name) : 'Your best jar goes here';
     $('case-name').textContent = name;
-    $('case-var').innerHTML = b ? '<span class="' + (vr.legend ? 'legend-text' : '') + '">' + esc(vr.name) + '</span><span class="case-odds">' + esc(vr.odds) + ' · ' + esc(vr.pct) + '</span>' : 'Catch your first weather to start your shelf.';
+    var gd = b && b.g && b.g !== 'p' ? glassOf(b.id, b.g) : null;
+    $('case-var').innerHTML = b ? '<span class="' + (vr.legend ? 'legend-text' : '') + '">' + esc(vr.name) + '</span><span class="case-odds">' + esc(vr.odds) + ' · ' + esc(vr.pct) + '</span>' +
+      (gd ? '<span class="case-glass">' + esc(gd.name) + ' · ' + esc(gd.odds) + '</span>' : '') : 'Catch your first weather to start your shelf.';
     $('case-meta').innerHTML = b ? '<span class="pill rc-' + t.r + '">' + esc(rlabel(b.id)) + '</span>' + (e && RU.tierFor(e.n) ? '<span class="case-tier">' + medal(e.n) + esc(RU.tierFor(e.n).name) + '</span>' : '') : '';
     var jb = $('case-jar');
     jb.setAttribute('aria-label', b ? 'Your best jar: ' + name + ', ' + vr.name + '. Open it' : 'No jars yet');
@@ -1370,16 +1388,23 @@
   function drawPreview(t) {
     var look = glassLook();
     R.previewJars.forEach(function (cv) {
-      var id = cv.getAttribute('data-id'), v = cv.getAttribute('data-var');
-      drawJarOn(cv, v ? variantState(id, v) : jarState(id), t, lookFor(cv, look));
+      var id = cv.getAttribute('data-id'), v = cv.getAttribute('data-var'), g = cv.getAttribute('data-glass');
+      drawJarOn(cv, v ? variantState(id, v, g || undefined) : jarState(id), t, lookFor(cv, look));
     });
   }
-  /* one variant of a jar: the one found, or a frosted preview of one still to find, even in a jar not caught yet */
-  function variantState(id, v) {
+  /* has this jar had this variant in this glass? */
+  function comboFound(id, v, g) {
+    var e = S.book[id], x = e && e.vars && e.vars[v];
+    return !!x && (x.gs || 'p').indexOf(g || 'p') !== -1;
+  }
+  /* one variant of a jar, in a glass (its best one if none is given): the one found, or a frosted preview of one
+     still to find, even in a jar not caught yet */
+  function variantState(id, v, g) {
     var e = S.book[id], x = e && e.vars && e.vars[v];
     var st = e && e.n ? jarState(id) : { id: id };
-    st.mark = markOf(id, v, x ? x.seed : PREVIEW_SEED, x ? x.power : undefined);
-    st.preview = !x;
+    if (g === undefined || g === null) g = x && x.g ? x.g : 'p';
+    st.mark = markOf(id, v, x ? x.seed : PREVIEW_SEED, x ? x.power : undefined, g);
+    st.preview = !comboFound(id, v, g);
     st.glow = null;
     st.hat = st.drip = false;
     return st;
@@ -1411,6 +1436,7 @@
     if (S.drive || !$('overlay').hidden) return;
     var before = RU.levelFor(S.points);
     var cards = claimRewards();
+    if (S.glassNote) { cards.unshift({ glassNote: S.glassNote }); S.glassNote = null; }
     if (S.oldJars) { cards.unshift({ oldJars: S.oldJars }); S.oldJars = null; }
     if (!cards.length) return;
     var after = RU.levelFor(S.points);
@@ -1582,6 +1608,36 @@
       [{ label: 'Keep catching', fn: closeSheet }, { label: 'See your shelf', primary: true, fn: function () { closeSheet(); selectTab('shelf'); } }]);
     openSheet();
     if (n) confetti(o.found.some(function (f) { return f.v === 'p'; }) ? 60 : 24);
+  }
+  /* after jars already caught get their glass: what turned up, with the best of them on a little shelf */
+  function showGlassNote(r) {
+    var o = r.glassNote;
+    var best = {};
+    o.found.forEach(function (f) { if (T(f.id) && (!best[f.id] || RU.glassRank(f.g) > RU.glassRank(best[f.id]))) best[f.id] = f.g; });
+    var ids = Object.keys(best).sort(function (a, b) { return RU.glassRank(best[b]) - RU.glassRank(best[a]) || RU.rank(b) - RU.rank(a); });
+    var n = o.found.length;
+    if (!$('reward-view')) { toast('Your jars have their glass: ' + n + ' special.'); nextReveal(); return; }
+    showView('reward');
+    R.cardState = null;
+    var v = $('reward-view');
+    v.classList.remove('pop');
+    void v.offsetWidth;
+    v.classList.add('pop');
+    $('r-label').textContent = 'Jar glass';
+    $('r-label').className = 'ov-label rc-epic';
+    $('r-title').textContent = 'Your jars have their glass';
+    $('r-points').textContent = n ? n + ' special ' + plural(n, 'glass', 'glasses') + ' in ' + o.n + ' ' + plural(o.n, 'catch', 'catches') : 'All ' + o.n + ' came out in plain glass';
+    $('r-line').textContent = 'Every catch now comes in a glass, and every jar you’d already caught just had its own roll for one.';
+    $('r-stats').textContent = n ? ids.slice(0, 4).map(function (id) { return T(id).name + ': ' + glassOf(id, best[id]).name; }).join(' · ') +
+      (ids.length > 4 ? ' · and ' + (ids.length - 4) + ' more' : '') : 'Plain glass turns up 4 times in 5. Every new catch is a fresh chance.';
+    var show = ids.slice(0, 3);
+    bestJars(shelfIds(), 6).forEach(function (id) { if (show.length < 3 && show.indexOf(id) === -1 && S.book[id] && S.book[id].n) show.push(id); });
+    $('r-preview').innerHTML = miniShelf(show);
+    collectPreview($('r-preview'));
+    setActions('r-actions', R.queue.length ? [{ label: 'Next', primary: true, fn: nextReveal }] :
+      [{ label: 'Keep catching', fn: closeSheet }, { label: 'See your shelf', primary: true, fn: function () { closeSheet(); selectTab('shelf'); } }]);
+    openSheet();
+    if (n) confetti(o.found.some(function (f) { return f.g === 'c'; }) ? 50 : 20);
   }
   function seeShelf(rw) {
     closeSheet();
@@ -1906,7 +1962,7 @@
       jc.height = jh;
       var st = jarState(id);
       st.img = res[1] || null;
-      st.mark = markOf(id, rec && rec.v, rec && rec.seed, rec && rec.power);
+      st.mark = markOf(id, rec && rec.v, rec && rec.seed, rec && rec.power, rec && rec.g);
       SKY.jar(jc.getContext('2d'), jw, jh, st, stillTime(id), DARK_LOOK);
       ctx.drawImage(jc, (SHARE_W - jw) / 2, 150);
       // the label
@@ -1927,8 +1983,10 @@
       ctx.fillText(title, lx + pad, y);
       y += 52;
       var vr = RU.variant(id, (rec && rec.v) || 'c');
+      var sgl = rec && rec.g && rec.g !== 'p' ? glassOf(id, rec.g) : null;
       var kind = rlabel(id).toUpperCase() + (t.el === 'wonder' ? ' · SKY WONDER' : t.el === 'change' ? ' · CHANGE MOMENT' : '') +
-        (vr.id !== 'c' ? ' · ' + vr.name.toUpperCase() + ', ' + vr.odds.toUpperCase() + ' (' + vr.pct + ')' : e.n > 1 ? ' · ×' + e.n : '');
+        (vr.id !== 'c' ? ' · ' + vr.name.toUpperCase() + ', ' + vr.odds.toUpperCase() + ' (' + vr.pct + ')' : e.n > 1 ? ' · ×' + e.n : '') +
+        (sgl ? ' · ' + sgl.name.toUpperCase() : '');
       ctx.fillStyle = INK_R[t.r];
       fitText(ctx, kind, '600', 26, MONO, maxW);
       ctx.fillText(kind, lx + pad, y);
@@ -1955,7 +2013,8 @@
   function shareText(id, rec) {
     var vr = RU.variant(id, (rec && rec.v) || 'c');
     var sg = rec ? RU.strength(id, rec) : null;
-    return 'Look what I caught' + (rec && rec.place ? ' in ' + rec.place : '') + ': ' + recName(id, rec) + ' (' + rlabel(id) + (vr.id !== 'c' ? ', ' + vr.name + ', ' + vr.odds + ', ' + vr.pct : '') + ')' +
+    var sgl = rec && rec.g && rec.g !== 'p' ? glassOf(id, rec.g) : null;
+    return 'Look what I caught' + (rec && rec.place ? ' in ' + rec.place : '') + ': ' + recName(id, rec) + ' (' + rlabel(id) + (vr.id !== 'c' ? ', ' + vr.name + ', ' + vr.odds + ', ' + vr.pct : '') + (sgl ? ', ' + sgl.name + ', ' + sgl.odds : '') + ')' +
       (sg ? ', ' + sg.stars + ' ' + plural(sg.stars, 'star') + ': ' + RU.strengthText(sg) : '') + '. Catch the weather where you are: ' + appUrl();
   }
   /* rec: the catch to share. Without one, the newest */
@@ -2029,6 +2088,7 @@
     stopSpin();
     R.view = name;
     R.previewJars = null;
+    $('sheet').classList.remove('scorched');
     $('sheet').scrollTop = 0;
     $('game-view').hidden = name !== 'game';
     if ($('mini-view')) $('mini-view').hidden = name !== 'mini';
@@ -2065,6 +2125,7 @@
   function closeSheet() {
     stopSpin();
     freeThumbs();
+    $('sheet').classList.remove('scorched');
     if (WC.mini) WC.mini.stop();
     $('overlay').hidden = true;
     R.game = null;
@@ -2247,6 +2308,7 @@
   }
   function rollCatch(rec) {
     rec.v = TEST && R.forceV ? R.forceV : RU.rollVariant(rand32() / 4294967296);
+    rec.g = TEST && R.forceG ? R.forceG : RU.rollGlass(rand32() / 4294967296);
     rec.seed = rand32() || 1;
     return rec;
   }
@@ -2255,14 +2317,30 @@
     if (!e.vars) e.vars = {};
     var x = e.vars[rec.v];
     var fresh = !x;
-    if (!x) x = e.vars[rec.v] = { n: 0, seed: 0, t: 0, place: '' };
+    if (!x) x = e.vars[rec.v] = { n: 0, seed: 0, t: 0, place: '', gs: '' };
     x.n += 1;
-    x.seed = rec.seed;
-    x.t = rec.t;
-    x.place = rec.place || '';
-    if (typeof rec.power === 'number') x.power = rec.power; else delete x.power;
+    var g = rec.g || 'p';
+    if ((x.gs || '').indexOf(g) === -1) x.gs = (x.gs || '') + g;
+    // the catch on show is the one in the best glass, the newest of those
+    if (fresh || RU.glassRank(g) >= RU.glassRank(x.g || 'p')) {
+      x.seed = rec.seed;
+      x.t = rec.t;
+      x.place = rec.place || '';
+      if (g !== 'p') x.g = g; else delete x.g;
+      if (typeof rec.power === 'number') x.power = rec.power; else delete x.power;
+    }
     return fresh;
   }
+  /* a special glass found: true the first time this jar has had it */
+  function addGlass(e, rec) {
+    var g = rec.g || 'p';
+    if (g === 'p') return false;
+    if (!e.glass || typeof e.glass !== 'object') e.glass = {};
+    e.glass[g] = (e.glass[g] || 0) + 1;
+    return e.glass[g] === 1;
+  }
+  function glassOf(id, g) { return RU.glass(T(id).el, g || 'p'); }
+  function glassFound(e, g) { return g === 'p' ? !!(e && e.n) : !!(e && e.glass && e.glass[g]); }
   /* the shelf shows the rarest variant found */
   function bestVariant(e) {
     var best = 'c';
@@ -2271,18 +2349,21 @@
   }
   function varsFound(e) { return VARS.filter(function (v) { return e && e.vars && e.vars[v]; }).length; }
   /* what the jar needs to draw one particular catch */
-  function markOf(id, v, seed, power) {
+  function markOf(id, v, seed, power, g) {
     var vr = RU.variant(id, v || 'c');
     seed = seed >>> 0;
     var pw = typeof power === 'number' && isFinite(power) ? power : undefined;
-    if (!vr || (!seed && !vr.deco && !vr.legend && pw === undefined)) return null;
+    var gk = g && g !== 'p' ? glassOf(id, g).key : null;
+    if (!vr || (!seed && !vr.deco && !vr.legend && pw === undefined && !gk)) return null;
     var mk = { seed: seed, deco: vr.deco, legend: vr.legend };
     if (pw !== undefined) mk.power = pw;
+    if (gk && gk !== 'plain') { mk.glass = gk; mk.g = g; }
+    if (RU.sealed(vr.id, g)) mk.seal = true;
     return mk;
   }
   function shelfMark(id, e) {
     var v = bestVariant(e), x = e.vars && e.vars[v];
-    return markOf(id, v, x ? x.seed : 0, x ? x.power : undefined);
+    return markOf(id, v, x ? x.seed : 0, x ? x.power : undefined, x ? x.g : null);
   }
   /* the catch to show for a variant: the record of the one on show, or what the jar remembers of it */
   function recFor(e, v) {
@@ -2290,9 +2371,14 @@
     var seed = x ? x.seed : 0;
     var list = e.catches || [];
     for (var i = list.length - 1; i >= 0; i--) if ((list[i].v || 'c') === v && (list[i].seed >>> 0) === seed) return list[i];
-    return x ? { t: x.t, place: x.place, v: v, seed: seed } : lastCatch(e);
+    return x ? { t: x.t, place: x.place, v: v, seed: seed, g: x.g || 'p' } : lastCatch(e);
   }
-  function variantNote(id, v) { var vr = RU.variant(id, v); return vr && vr.id !== 'c' ? ' (' + vr.name + ')' : ''; }
+  function variantNote(id, v, g) {
+    var vr = RU.variant(id, v), bits = [];
+    if (vr && vr.id !== 'c') bits.push(vr.name);
+    if (g && g !== 'p') bits.push(glassOf(id, g).name);
+    return bits.length ? ' (' + bits.join(', ') + ')' : '';
+  }
   /* jars caught before variants existed: each of those catches gets one mystery roll, once, at the usual odds.
      They're the Classic ones with no seed. A card then shows what turned up. */
   function openOldJars() {
@@ -2308,7 +2394,8 @@
       for (var i = old.length; i < n; i++) recs.push({ t: (e.first && e.first.t) || 0, place: x.place });
       recs.concat(old).forEach(function (rec) {
         rollCatch(rec);
-        var y = e.vars[rec.v] || (e.vars[rec.v] = { n: 0, seed: 0, t: -1, place: '' });
+        delete rec.g;
+        var y = e.vars[rec.v] || (e.vars[rec.v] = { n: 0, seed: 0, t: -1, place: '', gs: 'p' });
         y.n += 1;
         if ((rec.t || 0) >= y.t) {
           y.seed = rec.seed; y.t = rec.t || 0; y.place = rec.place || '';
@@ -2321,6 +2408,57 @@
     if (total) {
       S.oldJars = { n: total, found: found };
       addLog('Opened ' + total + ' old ' + plural(total, 'jar') + ': ' + found.length + ' ' + plural(found.length, 'surprise'));
+    }
+    return total;
+  }
+
+  /* jars caught before glass existed: every catch on the shelf gets one roll for its glass, once, at the usual odds.
+     The newest catches of each variant take the rolls; each variant then shows its catch in the best glass it got.
+     A card shows what turned up */
+  function giveGlass() {
+    if (S.glassDone) return 0;
+    S.glassDone = 1;
+    var total = 0, found = [];
+    Object.keys(S.book).forEach(function (id) {
+      var e = S.book[id];
+      if (!e || !e.n || !e.vars || !T(id)) return;
+      if (!e.glass || typeof e.glass !== 'object') e.glass = {};
+      VARS.forEach(function (v) {
+        var x = e.vars[v];
+        if (!x || !x.n) return;
+        var recs = (e.catches || []).filter(function (r) { return r && (r.v || 'c') === v && !r.g; });
+        var best = 'p', bestRec = null, gs = '';
+        for (var i = 0; i < x.n; i++) {
+          var g = TEST && R.forceG ? R.forceG : RU.rollGlass(rand32() / 4294967296);
+          var rec = recs[recs.length - 1 - i] || null;
+          if (rec) rec.g = g;
+          if (gs.indexOf(g) === -1) gs += g;
+          if (g !== 'p') { e.glass[g] = (e.glass[g] || 0) + 1; found.push({ id: id, v: v, g: g }); }
+          if (RU.glassRank(g) > RU.glassRank(best)) { best = g; bestRec = rec; }
+          total += 1;
+        }
+        x.gs = gs;
+        if (best !== 'p') {
+          x.g = best;
+          if (bestRec) {
+            if (bestRec.seed) x.seed = bestRec.seed >>> 0;
+            if (bestRec.t) x.t = bestRec.t;
+            if (bestRec.place) x.place = bestRec.place;
+            if (typeof bestRec.power === 'number') x.power = bestRec.power;
+          }
+        }
+      });
+      // each named storm's own jar shows its catch in that catch's glass
+      if (e.storms) Object.keys(e.storms).forEach(function (nm) {
+        var b = e.storms[nm].best;
+        if (!b || b.g) return;
+        var m = (e.catches || []).filter(function (r) { return r && r.t === b.t && r.seed === b.seed; })[0];
+        if (m && m.g) b.g = m.g;
+      });
+    });
+    if (total) {
+      S.glassNote = { n: total, found: found };
+      addLog('Glass for ' + total + ' ' + plural(total, 'catch', 'catches') + ' already caught: ' + found.length + ' special');
     }
     return total;
   }
@@ -2361,6 +2499,7 @@
     if (id === 'namedstorm') addStorm(e, rec);
     record(e, rec);
     var newV = addVariant(e, rec) && !isNew;
+    var newG = addGlass(e, rec);
     var newBest = sg ? bestUpdate(e, rec, sg) : false;
     var spotted = how === 'spotted';
     var again = caughtToday(id);
@@ -2369,11 +2508,11 @@
     countToday(id);
     S.points += pts;
     var tier = RU.tierReached(before, e.n);
-    var r = { id: id, isNew: isNew, n: e.n, newPlace: newPlace && !isNew, place: place, pts: pts, tier: tier, verify: verify || '', spotted: spotted, v: rec.v, seed: rec.seed, newV: newV, rec: rec,
+    var r = { id: id, isNew: isNew, n: e.n, newPlace: newPlace && !isNew, place: place, pts: pts, tier: tier, verify: verify || '', spotted: spotted, v: rec.v, g: rec.g || 'p', seed: rec.seed, newV: newV, newG: newG, rec: rec,
       sg: sg, newBest: newBest, again: again };
     var t = T(id);
     var lead = spotted ? (isNew ? 'Spotted a new jar: ' : 'Spotted: ') : isNew ? (t.el === 'change' ? 'Change moment: ' : t.el === 'wonder' ? 'Sky Wonder: ' : 'New jar: ') : '';
-    addLog(lead + recName(id, rec) + variantNote(id, rec.v) + (isNew ? '' : ' again') + (place ? ' in ' + place : '') + (isNew ? ' (+' + pts + ')' : ' (×' + e.n + ', +' + pts + ')'));
+    addLog(lead + recName(id, rec) + variantNote(id, rec.v, rec.g) + (isNew ? '' : ' again') + (place ? ' in ' + place : '') + (isNew ? ' (+' + pts + ')' : ' (×' + e.n + ', +' + pts + ')'));
     return r;
   }
   function finishCatch() {
@@ -2410,6 +2549,7 @@
   function afterAward(list, before) {
     var cards = list.concat(claimRewards());
     if (S.oldJars) { cards.push({ oldJars: S.oldJars }); S.oldJars = null; }
+    if (S.glassNote) { cards.push({ glassNote: S.glassNote }); S.glassNote = null; }
     var after = RU.levelFor(S.points);
     if (after > before && cards.length) {
       cards[cards.length - 1].lvUp = after;
@@ -2433,6 +2573,7 @@
     if (!r) { closeSheet(); return; }
     if (r.reward) { showReward(r); return; }
     if (r.oldJars) { showOldJars(r); return; }
+    if (r.glassNote) { showGlassNote(r); return; }
     var t = T(r.id);
     var e = S.book[r.id];
     showView('card');
@@ -2459,26 +2600,39 @@
     setVerify(r.verify);
     R.cardState = jarState(r.id);
     if (r.img) R.cardState.img = r.img;
-    var v = r.v || bestVariant(e);
-    if (r.v) R.cardState.mark = markOf(r.id, r.v, r.seed, r.rec && r.rec.power);
+    var v = r.v || bestVariant(e), g = r.g || 'p', crown = RU.sealed(v, g);
+    R.cardV = v;
+    R.cardG = g;
+    if (r.v) R.cardState.mark = markOf(r.id, r.v, r.seed, r.rec && r.rec.power, g);
     setVariant(r.id, v, r.newV);
+    setGlass(r.id, g, r.newG && g !== 'p', false);
+    setSeal(false);
     setStrength(r.sg, r.newBest ? 'Strongest yet' : '');
     renderVars(null);
     var next = { label: R.queue.length ? 'Next' : 'Put it on the shelf', primary: true, fn: nextReveal };
     R.share = null;
-    if (RU.rank(r.id) >= 3 || RU.variantRank(v) >= 3 || (r.sg && r.sg.stars >= 4)) {
+    if (RU.rank(r.id) >= 3 || RU.variantRank(v) >= 3 || RU.glassRank(g) >= 2 || (r.sg && r.sg.stars >= 4)) {
       prepareShare(r.id, r.rec);
       setActions('c-actions', [{ label: 'Share', fn: function () { doShare(nextReveal); } }, next]);
     } else setActions('c-actions', [next]);
     openSheet();
     var land = function () {
-      if (r.v && R.cardState) R.cardState.mark = markOf(r.id, r.v, r.seed, r.rec && r.rec.power);
+      if (r.v && R.cardState) R.cardState.mark = markOf(r.id, r.v, r.seed, r.rec && r.rec.power, g);
       setVariant(r.id, v, r.newV);
-      if (v === 'p') {
+      setGlass(r.id, g, r.newG && g !== 'p', false);
+      setSeal(crown);
+      updateScorch();
+      if (crown) {
+        // the best a jar can be: no words, just a seal, a long buzz and a lot of gold
+        confetti(90);
+        try { if (navigator.vibrate) navigator.vibrate([60, 80, 60, 80, 60, 120, 200]); } catch (err) {}
+        var sl = $('c-seal');
+        if (sl) { sl.classList.remove('stamp'); void sl.offsetWidth; sl.classList.add('stamp'); }
+      } else if (v === 'p') {
         confetti(60);
         try { if (navigator.vibrate) navigator.vibrate([40, 60, 40, 60, 80]); } catch (err) {}
-      } else if ((RU.variantRank(v) >= 5 && (r.newV || r.isNew)) || (r.newBest && r.sg.stars === 5)) confetti(18);
-      else if (RU.variantRank(v) >= 1) { try { if (navigator.vibrate) navigator.vibrate(30); } catch (err) {} }
+      } else if ((RU.variantRank(v) >= 5 && (r.newV || r.isNew)) || (r.newBest && r.sg.stars === 5) || (RU.glassRank(g) >= 2 && r.newG)) confetti(18);
+      else if (RU.variantRank(v) >= 1 || g !== 'p') { try { if (navigator.vibrate) navigator.vibrate(30); } catch (err) {} }
     };
     if (r.v && spinOn()) spinReveal(r, land); else land();
     if (r.lvUp) toast('Level ' + r.lvUp + '! ' + unlockText(r.lvUp));
@@ -2527,6 +2681,27 @@
       (vr.legend ? '<span class="v-legend">Legendary</span>' : '') +
       (fresh ? '<span class="v-new">New variant</span>' : locked ? '<span class="v-lock">' + icon('lock', 13) + 'Not found yet</span>' : '');
   }
+  /* the glass line under the variant: which glass, its odds, and whether it's new to this jar or not found yet.
+     always: show plain glass too (on a jar's own card, where every glass can be looked at) */
+  function setGlass(id, g, fresh, locked, always) {
+    var el = $('c-glass');
+    if (!el) return;
+    if (!id || g === null || (g === 'p' && !always && !fresh)) { el.hidden = true; el.innerHTML = ''; return; }
+    var gd = glassOf(id, g);
+    el.hidden = false;
+    el.innerHTML = '<span class="v-name g-name">' + esc(gd.name) + '</span><span class="v-odds">' + esc(gd.odds) + ' · ' + esc(gd.pct) + '</span>' +
+      (fresh ? '<span class="v-new">New glass</span>' : locked ? '<span class="v-lock">' + icon('lock', 13) + 'Not found yet</span>' : '');
+    el.title = gd.line;
+  }
+  /* a wax seal by the jar's name: nothing says what it means */
+  function setSeal(on) { if ($('c-seal')) $('c-seal').hidden = !on; }
+  /* Burning Glass gathers the sun and scorches the card it's on */
+  function updateScorch() {
+    var sh = $('sheet');
+    if (!sh) return;
+    var mk = R.view === 'card' && R.cardState && !R.spin ? R.cardState.mark : null;
+    sh.classList.toggle('scorched', !!(mk && mk.glass === 'burning'));
+  }
   /* on a jar's card: a strip of all its variants. Tap one to see it big, even one not found yet */
   var PREVIEW_SEED = 1;
   function renderVars(id) {
@@ -2548,8 +2723,45 @@
           '<canvas data-id="' + id + '" data-var="' + vr.id + '" aria-hidden="true"></canvas><span class="vjar-n">' + (x ? '×' + x.n : esc(vr.odds)) + '</span></button>';
       }).join('') + '</div>' +
       (!have ? '<p class="small var-note">Swipe the jar to see all eight. You find out which one you get when you catch it. <span class="legend-text">' + esc(lv.name) + '</span> is its legendary, about 1 in every 60 catches.</p>' :
-        e.vars && e.vars.p ? '' : '<p class="small var-note"><span class="legend-text">' + esc(lv.name) + '</span> is this jar’s legendary, the rarest find of all: about 1 in every 60 catches.</p>');
+        e.vars && e.vars.p ? '' : '<p class="small var-note"><span class="legend-text">' + esc(lv.name) + '</span> is this jar’s legendary, the rarest find of all: about 1 in every 60 catches.</p>') +
+      glassStrip(id, e);
     R.previewJars = Array.prototype.slice.call(box.querySelectorAll('canvas[data-var]'));
+  }
+  /* the jar's four glasses: plain, then its row's three special ones, each shown on the variant on show */
+  function glassStrip(id, e) {
+    var list = RU.glasses(T(id).el);
+    if (!list.length) return '';
+    var have = list.filter(function (gd) { return gd.id !== 'p' && glassFound(e, gd.id); }).length;
+    return '<div class="var-h glass-h"><span class="h2">Glass</span><span class="var-n">' + have + ' of 3 special found</span></div>' +
+      '<div class="var-strip glass-strip" role="group" aria-label="Glass for this jar">' + list.map(function (gd) {
+        var found = glassFound(e, gd.id), on = (R.cardG || 'p') === gd.id;
+        var n = gd.id === 'p' ? 0 : found ? e.glass[gd.id] : 0;
+        return '<button type="button" class="vjar gjar' + (on ? ' on' : '') + (found ? '' : ' locked') + '" data-glass="' + gd.id + '" aria-pressed="' + on + '"' +
+          ' aria-label="' + esc(gd.name + (found ? (n ? ', found ' + n + ' ' + plural(n, 'time') : ', found') : ', not found yet') + ', ' + gd.odds + ' jars') + '">' +
+          '<canvas data-id="' + id + '" data-var="' + esc(R.cardV || 'c') + '" data-glass="' + gd.id + '" aria-hidden="true"></canvas><span class="vjar-n">' + (gd.id === 'p' ? 'Plain' : found ? '×' + n : esc(gd.odds)) + '</span></button>';
+      }).join('') + '</div>' +
+      '<p class="small var-note">Every catch comes in a glass: plain 4 in 5, then ' + esc(list[1].name) + ' 1 in 8, ' + esc(list[2].name) + ' 1 in 20 and ' + esc(list[3].name) + ' 1 in 40.</p>';
+  }
+  function markGlass(g) {
+    Array.prototype.forEach.call($('c-vars').querySelectorAll('button[data-glass]'), function (b) {
+      var on = b.getAttribute('data-glass') === g;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  }
+  /* look at the variant on show in another glass */
+  function pickGlass(g) {
+    var id = R.cardId, e = id && S.book[id];
+    if (!id || R.view !== 'card' || GL.indexOf(g) === -1) return;
+    var x = e && e.vars && e.vars[R.cardV];
+    R.cardG = g;
+    if (!e || !e.n) R.cardState = variantState(id, R.cardV, g);
+    R.cardState.mark = markOf(id, R.cardV, x ? x.seed : PREVIEW_SEED, x ? x.power : undefined, g);
+    R.cardState.preview = !comboFound(id, R.cardV, g);
+    setGlass(id, g, false, !glassFound(e, g), true);
+    setSeal(!R.cardState.preview && RU.sealed(R.cardV, g));
+    markGlass(g);
+    updateScorch();
   }
   /* scroll the strip sideways so the variant on show is in the middle, without moving the card */
   function centerStrip(smooth) {
@@ -2597,11 +2809,11 @@
   }
   var TILE_W = 78, TILE_GAP = 8, REEL_N = 34, REEL_AT = 28, REEL_MS = 3400;
   /* a still picture of one variant, for the reel */
-  function variantPicture(id, v, seed, power, w, h) {
+  function variantPicture(id, v, seed, power, w, h, g) {
     var cv = document.createElement('canvas');
     cv.width = w; cv.height = h;
     var st = jarState(id);
-    st.mark = markOf(id, v, seed, power);
+    st.mark = markOf(id, v, seed, power, g);
     st.glow = null;
     st.hat = st.drip = false;
     SKY.jar(cv.getContext('2d'), w, h, st, stillTime(id), glassLook());
@@ -2612,21 +2824,25 @@
     if (!list.length) { land(); return; }
     var dpr = Math.min(2, window.devicePixelRatio || 1), pw = Math.round(64 * dpr), ph = Math.round(85 * dpr);
     var pics = {};
-    var pic = function (v) { return pics[v] || (pics[v] = variantPicture(r.id, v, r.seed, r.rec && r.rec.power, pw, ph)); };
+    var pic = function (vg) { var p = vg.split(':'); return pics[vg] || (pics[vg] = variantPicture(r.id, p[0], r.seed, r.rec && r.rec.power, pw, ph, p[1])); };
+    // every jar on the reel turns up at the real odds, glass and all
     var seq = [];
-    for (var i = 0; i < REEL_N; i++) seq.push(i === REEL_AT ? r.v : RU.rollVariant(rand32() / 4294967296));
+    for (var i = 0; i < REEL_N; i++) seq.push(i === REEL_AT ? r.v + ':' + (r.g || 'p') : RU.rollVariant(rand32() / 4294967296) + ':' + RU.rollGlass(rand32() / 4294967296));
+    // the best a jar can be: the reel takes its time
+    var crown = RU.sealed(r.v, r.g || 'p'), ms = crown ? REEL_MS * 1.6 : REEL_MS;
     var reel = document.createElement('div');
     reel.className = 'reel';
     reel.setAttribute('aria-hidden', 'true');
     var track = document.createElement('div');
     track.className = 'reel-track';
-    seq.forEach(function (v) {
+    seq.forEach(function (vg) {
+      var v = vg.split(':')[0];
       var vr = RU.variant(r.id, v);
       var tile = document.createElement('div');
       tile.className = 'reel-tile r-' + (vr.legend ? 'legend' : RU.variantRank(v) >= 5 ? 'epic' : RU.variantRank(v) >= 3 ? 'rare' : RU.variantRank(v) >= 1 ? 'uncommon' : 'classic');
       var c = document.createElement('canvas');
       c.width = pw; c.height = ph;
-      c.getContext('2d').drawImage(pic(v), 0, 0);
+      c.getContext('2d').drawImage(pic(vg), 0, 0);
       tile.appendChild(c);
       var lab = document.createElement('span');
       lab.className = 'reel-odds';
@@ -2645,6 +2861,9 @@
     R.spin = sp;
     $('c-var').classList.add('spinning');
     setVariant(r.id, null);
+    setGlass(null);
+    setSeal(false);
+    updateScorch();
     var width = reel.clientWidth || 320;
     // land somewhere inside the caught tile, not always dead centre
     var jitter = (Math.random() - 0.5) * TILE_W * 0.6;
@@ -2665,12 +2884,12 @@
         cv.classList.remove('pop');
         void cv.offsetWidth;
         cv.classList.add('pop');
-      }, 520);
+      }, crown ? 1200 : 520);
     };
     var step = function (ts) {
       if (R.spin !== sp) return;
       if (!t0) t0 = ts;
-      var f = Math.min(1, (ts - t0) / REEL_MS);
+      var f = Math.min(1, (ts - t0) / ms);
       // fast at first, then a long slow-down
       var e = 1 - Math.pow(1 - f, 4);
       var x = to * e;
@@ -2698,11 +2917,17 @@
     if (!vr || vr.id !== v || R.view !== 'card') return;
     var x = e && e.vars && e.vars[v];
     R.cardV = v;
-    if (!e || !e.n) R.cardState = variantState(id, v);
-    R.cardState.mark = markOf(id, v, x ? x.seed : PREVIEW_SEED, x ? x.power : undefined);
+    R.cardG = x && x.g ? x.g : 'p';
+    if (!e || !e.n) R.cardState = variantState(id, v, R.cardG);
+    R.cardState.mark = markOf(id, v, x ? x.seed : PREVIEW_SEED, x ? x.power : undefined, R.cardG);
     R.cardState.preview = !x;
     setVariant(id, v, false, !x);
+    setGlass(id, R.cardG, false, !glassFound(e, R.cardG), true);
+    setSeal(!!x && RU.sealed(v, R.cardG));
     markStrip(v);
+    Array.prototype.forEach.call($('c-vars').querySelectorAll('canvas[data-glass]'), function (c) { c.setAttribute('data-var', v); });
+    markGlass(R.cardG);
+    updateScorch();
     if (x) {
       prepareShare(id, recFor(e, v));
       setActions('c-actions', [{ label: 'Share', fn: function () { doShare(closeSheet); } }, { label: 'Close', primary: true, fn: closeSheet }]);
@@ -2726,6 +2951,8 @@
     $('c-stats').textContent = have ? 'It changes with the weather wherever you go.' : jarCount() + ' of ' + RU.SHELF_TOTAL + ' jars so far.';
     setVerify('');
     setVariant(null);
+    setGlass(null);
+    setSeal(false);
     setStrength(null);
     setTier(0);
     setPhotoLine(null);
@@ -2753,13 +2980,17 @@
     R.cardState = stormState(name);
     R.cardId = id;
     R.cardV = (rec && rec.v) || 'c';
+    R.cardG = (rec && rec.g) || 'p';
     setVariant(id, R.cardV, false);
+    setGlass(id, R.cardG, false, false);
+    setSeal(RU.sealed(R.cardV, R.cardG));
     setStrength(rec ? RU.strength(id, rec) : null);
     renderVars(null);
     R.share = null;
     prepareShare(id, rec);
     setActions('c-actions', [{ label: 'Share', fn: function () { doShare(closeSheet); } }, { label: 'Close', primary: true, fn: closeSheet }]);
     openSheet();
+    updateScorch();
   }
   function openDetail(id, storm) {
     if (id === 'sky') { openSkyDetail(); return; }
@@ -2789,8 +3020,11 @@
     // a jar not caught yet shows a frosted preview of its Classic, and every variant can be looked at
     var open = !n && RU.catchable(t);
     R.cardV = n ? bestVariant(e) : open ? 'c' : null;
-    R.cardState = open ? variantState(id, 'c') : jarState(id);
+    R.cardG = n && e.vars && e.vars[R.cardV] && e.vars[R.cardV].g ? e.vars[R.cardV].g : 'p';
+    R.cardState = open ? variantState(id, 'c', 'p') : jarState(id);
     setVariant(n || open ? id : null, R.cardV, false, open);
+    setGlass(n || open ? id : null, R.cardG, false, open, true);
+    setSeal(!!n && RU.sealed(R.cardV, R.cardG));
     setStrength(n && e.best ? e.best : null, '', 'Strongest');
     renderVars(id);
     R.share = null;
@@ -2800,6 +3034,7 @@
     } else setActions('c-actions', [{ label: 'Close', primary: true, fn: closeSheet }]);
     openSheet();
     centerStrip();
+    updateScorch();
   }
 
   /* ---------- photo catches ---------- */
@@ -3313,6 +3548,7 @@
       if (j.id === 'namedstorm') addStorm(e, rec);
       record(e, rec);
       var newV = addVariant(e, rec) && !isNew;
+      var newG = addGlass(e, rec);
       var newBest = sg ? bestUpdate(e, rec, sg) && !isNew : false;
       var again = caughtToday(j.id);
       var pts = catchPoints(j.id, sg, true, again);
@@ -3321,7 +3557,7 @@
       total += pts;
       return {
         id: j.id, isNew: isNew, n: e.n, count: 1, pts: pts, place: j.place, trip: true, again: again,
-        tier: RU.tierReached(b4, e.n), v: rec.v, seed: rec.seed, rec: rec, sg: sg, newV: newV, newBest: newBest,
+        tier: RU.tierReached(b4, e.n), v: rec.v, g: rec.g || 'p', seed: rec.seed, rec: rec, sg: sg, newV: newV, newG: newG, newBest: newBest,
         verify: 'Sealed on your trip' + (j.place ? ' in ' + j.place : '') + (j.t ? ' at ' + hm(j.t) : '') + ', matching the live weather there.'
       };
     });
@@ -3365,7 +3601,7 @@
     if (e.storms) Object.keys(e.storms).forEach(function (nm) {
       var sx = e.storms[nm], mine = left.filter(function (r) { return r.storm === nm; });
       if (mine.length) { sx.t = mine[0].t; sx.place = mine[0].place || sx.place; }
-      if (!sx.best) mine.forEach(function (r) { if (!sx.best || RU.variantRank(r.v || 'c') >= RU.variantRank(sx.best.v || 'c')) sx.best = Object.assign({}, r); });
+      if (!sx.best) mine.forEach(function (r) { if (!sx.best || catchRank(r) >= catchRank(sx.best)) sx.best = Object.assign({}, r); });
     });
     if (e.best) {
       e.best = null;
@@ -3512,6 +3748,7 @@
     o.onboarded = true;
     S = o;
     openOldJars();
+    giveGlass();
     var tn = recountTrips();
     save();
     closeSheet();
@@ -3538,7 +3775,7 @@
 
   var reduce = false;
   try { reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) {}
-  var rafId = 0, lastTs = 0, lastShelf = 0;
+  var rafId = 0, lastTs = 0, lastShelf = 0, lastPrev = 0;
   function frame(ts) {
     var dt = lastTs ? Math.min(0.05, (ts - lastTs) / 1000) : 0.016;
     lastTs = ts;
@@ -3567,7 +3804,8 @@
       } else if (R.cardState && R.view === 'card') {
         drawJarOn($('c-canvas'), R.cardState, t, glassLook());
       }
-      if (R.previewJars && R.view !== 'game') drawPreview(t);
+      // the little jars on a card move a little less often, to spare the phone
+      if (R.previewJars && R.view !== 'game' && (ts - lastPrev > 90 || ts < lastPrev)) { lastPrev = ts; drawPreview(t); }
     }
     if (R.tab === 'shelf' && !reduce && ts - lastShelf > 110) {
       lastShelf = ts;
@@ -3633,6 +3871,8 @@
     });
     if ($('style-btn')) $('style-btn').addEventListener('click', openStyle);
     if ($('c-vars')) $('c-vars').addEventListener('click', function (ev) {
+      var gb = ev.target.closest ? ev.target.closest('button[data-glass]') : null;
+      if (gb && !gb.disabled) { pickGlass(gb.getAttribute('data-glass')); return; }
       var b = ev.target.closest ? ev.target.closest('button[data-var]') : null;
       if (b && !b.disabled) pickVariant(b.getAttribute('data-var'));
     });
@@ -3820,6 +4060,7 @@
     loadStorms();
     fetchStorms(true);
     openOldJars();
+    giveGlass();
     var tn = recountTrips();
     if (tn) S.tripNote = tn;
     prune();
@@ -3867,6 +4108,7 @@
       pending: function () { checkPendingRewards(); },
       shelf: function () { renderShelf(); },
       variant: function (v) { R.forceV = v || null; },
+      glass: function (g) { R.forceG = g || null; },
       jarState: function (id) { return jarState(id); },
       checkUpdate: function () { checkForUpdate(true); },
       fetchStorms: function () { return fetchStorms(true); },
