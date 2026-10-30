@@ -451,6 +451,44 @@
   /* ---------- the animals' shapes ----------
      Measured once from each drawing: its outline box in its own units, and its main colours */
   var SHAPES = {};
+  /* measured once and written down, so every phone draws exactly the same pictures (the levels depend on it):
+     outline box x0, x1, y0, y1 and the main colours. An animal missing here, or redrawn, is measured on the phone */
+  var MEASURED = {
+    bee: [-11.25, 14.75, -22.75, -6, ['#181818', '#282828', '#f8c838', '#281818']],
+    bluetit: [-15, 12.25, -23.5, 0.25, ['#f8d838', '#4878d8', '#2878d8', '#f8f8f8']],
+    budgie: [-12.5, 7.75, -24.25, 1.25, ['#98d858', '#f8e848', '#d8d868', '#2858a8']],
+    butterfly: [-15.25, 15.25, -33.25, -8.25, ['#a82828', '#882828', '#382828', '#b83828']],
+    cat: [-10.25, 13.5, -28.25, 2, ['#e89838', '#f8e8c8', '#b86818', '#d88838']],
+    cow: [-17.5, 21.5, -33, 0, ['#f8f8f8', '#282828', '#d8d8c8', '#e8e8d8']],
+    crab: [-16.75, 16.75, -27.5, 0.5, ['#d85828', '#c85828', '#b84818', '#d86838']],
+    deer: [-13.5, 20, -52, 0.75, ['#986848', '#885838', '#784828', '#b88868']],
+    dog: [-20.5, 20.5, -29.5, 0.5, ['#986838', '#e8c898', '#684828', '#885838']],
+    duck: [-13.25, 17, -22.5, 0.5, ['#b8b8b8', '#888888', '#783828', '#186848']],
+    elephant: [-18.5, 27.5, -40.5, 0, ['#888898', '#888888', '#989898', '#787878']],
+    flamingo: [-12.25, 9.25, -52, 0.25, ['#f888a8', '#e85888', '#e87898', '#f8a8c8']],
+    fox: [-13, 15, -38.25, 3, ['#d86828', '#f8e8e8', '#c85828', '#282828']],
+    giraffe: [-12.75, 12.5, -52, 0, ['#a86828', '#c89848', '#e8b868', '#e8c878']],
+    goldfish: [-16.25, 8.75, -22.5, -7, ['#f8b878', '#f88828', '#e87818', '#f87818']],
+    guineapig: [-12, 13, -13.5, 0.25, ['#d8d8c8', '#c88838', '#c87838', '#d88848']],
+    hamster: [-9, 11, -14.5, 0.25, ['#f8e8d8', '#e8a858', '#c89858', '#f8b8b8']],
+    hedgehog: [-15.5, 16.5, -15.25, 0.25, ['#b89868', '#584838', '#483828', '#c8a878']],
+    jellyfish: [-11.5, 11.5, -33, -9.25, ['#b888e8', '#f8f8f8', '#e8c8f8', '#e8d8f8']],
+    ladybird: [-13.5, 16.75, -16.75, 0.5, ['#181818', '#d82818', '#e83828', '#e82828']],
+    lion: [-26, 21, -28.5, 0, ['#784828', '#d8a858', '#985828', '#d8a868']],
+    meerkat: [-12.5, 6.75, -31.5, 0.25, ['#c8a878', '#e8c8a8', '#b89868', '#382828']],
+    penguin: [-7, 12.25, -34.75, 0.75, ['#282828', '#f8f8f8', '#181828', '#282838']],
+    puffin: [-7.5, 13.5, -31, 0.25, ['#181828', '#f8f8f8', '#181818', '#e8e8e8']],
+    rabbit: [-14, 13, -34, 0.25, ['#988868', '#b8a888', '#887858', '#f8f8f8']],
+    robin: [-15, 13.5, -23, 0.25, ['#785848', '#e86828', '#886848', '#f8e8d8']],
+    seagull: [-18.75, 18.25, -27.25, 0.5, ['#f8f8f8', '#a8a8b8', '#d8e8e8', '#282828']],
+    seal: [-21.5, 18.5, -20, 0.75, ['#788898', '#a8b8b8', '#586878', '#8898a8']],
+    sheep: [-15.5, 17.75, -25.25, 0.5, ['#f8f8e8', '#e8e8d8', '#f8f8f8', '#282828']],
+    squirrel: [-20, 12, -36.5, 1.25, ['#b8b8a8', '#a8a898', '#888888', '#e8e8d8']],
+    starfish: [-12.75, 12.75, -25, -0.5, ['#f89848', '#f88838', '#f8a858', '#e87838']],
+    swan: [-15.75, 16.5, -32, -0.5, ['#f8f8f8', '#e8f8f8', '#d8e8e8', '#e8e8e8']],
+    tiger: [-21.5, 21.75, -28.75, 0.25, ['#e87828', '#181818', '#f8f8e8', '#c86818']],
+    tortoise: [-15.75, 19.75, -16, 1.25, ['#685838', '#c8a858', '#483828', '#989868']]
+  };
   function makeCanvas(w, h) {
     if (typeof OffscreenCanvas !== 'undefined') { try { return new OffscreenCanvas(w, h); } catch (e) {} }
     var c = document.createElement('canvas'); c.width = w; c.height = h; return c;
@@ -458,6 +496,8 @@
   var POSE_T = 0.6;
   function shape(id) {
     if (SHAPES[id]) return SHAPES[id];
+    var mz = MEASURED[id];
+    if (mz && ZA.A[id]) { SHAPES[id] = { x0: mz[0], x1: mz[1], y0: mz[2], y1: mz[3], w: mz[1] - mz[0], h: mz[3] - mz[2], cols: mz[4].slice() }; return SHAPES[id]; }
     var a = ZA.A[id];
     if (!a) return null;
     var S = 260, k = 4, ox = S / 2, oy = S * 0.8;
@@ -622,6 +662,6 @@
   }
   function places() { var n = 0; Object.keys(WHERE).forEach(function (id) { n += WHERE[id].in.length * LAYOUTS; }); return n; }
 
-  WC.seek = { HU: HU, SCENES: SCENES, WHERE: WHERE, I: I, LAYOUTS: LAYOUTS, shape: shape, photo: photo, hide: hide, draw: draw, drawMask: drawMask, drawHidden: drawHidden,
+  WC.seek = { HU: HU, SCENES: SCENES, WHERE: WHERE, I: I, LAYOUTS: LAYOUTS, shape: shape, photo: photo, hide: hide, draw: draw, drawMask: drawMask, drawHidden: drawHidden, drawItem: drawItem,
     pick: pick, portrait: portrait, centre: centre, sceneName: sceneName, places: places, rnd: rnd };
 })(typeof window !== 'undefined' ? window : globalThis);

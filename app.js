@@ -4,8 +4,8 @@
 (function () {
   'use strict';
   var WC = window.WC;
-  var RU = WC.rules, SKY = WC.sky, AN = WC.animals, SP = WC.spotter, SK = WC.seek;
-  var VERSION = '0.14.1';
+  var RU = WC.rules, SKY = WC.sky, AN = WC.animals, SP = WC.spotter, SK = WC.seek, LV = WC.seekLevels || [];
+  var VERSION = '0.15.0';
   var TEST = /[?&]test=1(&|$)/.test(location.search);
   var KEY = 'frzfrm-wc-state-1';
   var WX_KEY = 'frzfrm-wc-weather-1';
@@ -762,7 +762,9 @@
     tree: '<path d="M12 21v-6M12 15c-4.4 0-7-2.2-7-5.4C5 6.4 8 3.5 12 3.5s7 2.9 7 6.1c0 3.2-2.6 5.4-7 5.4z"></path><path d="M8.5 21h7"></path>',
     bone: '<g transform="rotate(-38 12 12)"><path d="M7.2 10.5H16.8A2.1 2.1 0 1 1 20.2 10.8V13.2A2.1 2.1 0 1 1 16.8 13.5H7.2A2.1 2.1 0 1 1 3.8 13.2V10.8A2.1 2.1 0 1 1 7.2 10.5Z"></path></g>',
     paw: '<path d="M12 12.6c-2.6 0-5 2.6-5 4.8 0 1.6 1.2 2.4 2.6 2.4 1 0 1.6-.5 2.4-.5s1.4.5 2.4.5c1.4 0 2.6-.8 2.6-2.4 0-2.2-2.4-4.8-5-4.8z"></path><ellipse cx="5.6" cy="10.6" rx="1.7" ry="2.1"></ellipse><ellipse cx="9.3" cy="6.4" rx="1.8" ry="2.3"></ellipse><ellipse cx="14.7" cy="6.4" rx="1.8" ry="2.3"></ellipse><ellipse cx="18.4" cy="10.6" rx="1.7" ry="2.1"></ellipse>',
-    check: '<path d="M5 12.5l4.5 4.5L19 7.5"></path>'
+    check: '<path d="M5 12.5l4.5 4.5L19 7.5"></path>',
+    crown: '<path d="M4 18.5h16M4.6 15.5L3.4 7.5l4.8 3.6L12 4.5l3.8 6.6 4.8-3.6-1.2 8z"></path>',
+    heart: '<path d="M12 20.2s-7.6-4.6-7.6-10.2A4.2 4.2 0 0 1 12 7.4a4.2 4.2 0 0 1 7.6 2.6c0 5.6-7.6 10.2-7.6 10.2z"></path>'
   };
   var ICON = {
     clear: ['sun'], hotday: ['sun'], heatwave: ['sun'], scorcher: ['sun'], sunrise: ['rise'], goldenhour: ['rise'],
@@ -1786,14 +1788,24 @@
   function freshAnimals() { return { book: {}, day: null, rows: {} }; }
   /* Hide & seek: finds that earned points today (d is the day), every find ever, each animal's quickest find in ms, and
      how hard the pictures are now (skill, 0 to 1: it goes up with quick finds and down with hints) */
-  function freshSeek() { return { d: '', n: 0, total: 0, best: {}, skill: 0.5 }; }
+  function freshSeek() { return { d: '', n: 0, total: 0, best: {}, lv: 1, top: 1, plays: {}, boss: {}, t: {}, bossOn: 0, left: 0 }; }
   function cleanSeek(k) {
     var out = freshSeek();
     if (!k || typeof k !== 'object' || Array.isArray(k)) return out;
     if (typeof k.d === 'string') out.d = k.d;
     if (typeof k.n === 'number' && isFinite(k.n)) out.n = Math.max(0, Math.floor(k.n));
     if (typeof k.total === 'number' && isFinite(k.total)) out.total = Math.max(0, Math.floor(k.total));
-    if (typeof k.skill === 'number' && isFinite(k.skill)) out.skill = Math.max(0, Math.min(1, k.skill));
+    var whole = function (v, lo, hi) { return typeof v === 'number' && isFinite(v) ? Math.max(lo, Math.min(hi, Math.floor(v))) : lo; };
+    out.lv = whole(k.lv, 1, LV.length + 1);
+    out.top = Math.max(out.lv, whole(k.top, 1, LV.length + 1));
+    ['plays', 'boss', 't'].forEach(function (key) {
+      var o = k[key];
+      if (o && typeof o === 'object' && !Array.isArray(o)) Object.keys(o).forEach(function (n) { var i = +n, v = o[n]; if (i >= 1 && i <= LV.length && typeof v === 'number' && isFinite(v) && v > 0) out[key][i] = Math.floor(v); });
+    });
+    // a boss level that was under way when the app closed counts as a loss
+    var on = whole(k.bossOn, 0, LV.length);
+    if (on && isBoss(on)) { out.lv = blockStart(on); out.left = on; }
+    else out.left = whole(k.left, 0, LV.length);
     if (k.best && typeof k.best === 'object') Object.keys(k.best).forEach(function (id) { if (AN && AN.type(id) && typeof k.best[id] === 'number' && k.best[id] > 0) out.best[id] = k.best[id]; });
     return out;
   }
@@ -1934,7 +1946,7 @@
 
   /* ---------- taking back a wrong catch ----------
      The spotter can get an animal wrong (a hamster taken for a dog). For a day afterwards, the latest catch of an animal
-     can be taken back: off the shelf, with its points. Catches from before 0.14.1 can only be taken back when they were
+     can be taken back: off the shelf, with its points. Catches from before 0.15.0 can only be taken back when they were
      the animal's only one */
   function canTakeBack(id) {
     var e = S.animals.book[id];
@@ -2350,65 +2362,117 @@
   }
 
   /* ---------- Hide & seek ----------
-     One animal hides in a busy picture, among things its own colours; tap it to find it. The quicker the find, the more
-     points, for the first SEEK_DAY finds each day. seek.js makes and draws the pictures; this runs the game */
-  var SEEK_DAY = 10;
+     Levels: a picture each, with an animal hiding in it; tap it to find it. Every level was measured for how hard its
+     animal is to find (seek-levels.js has how), so its label means what it says: Easy, Medium, Hard or Very challenging.
+     Every 10th level is a boss: find it within the time, with no hints and at most BOSS_LIVES wrong taps, or go back to
+     the first level after the last boss and make it back. Each level has a few hiding spots and takes the next one each
+     time it's played, so a level played again has the animal somewhere new. The first SEEK_DAY finds each day earn
+     points, more for harder levels */
+  var SEEK_DAY = 10, SEEK_PTS = [3, 5, 7, 10], BOSS_PTS = 25, BOSS_LIVES = 3;
+  var SEEK_WORDS = ['Easy', 'Medium', 'Hard', 'Very challenging'];
   function seekToday() { if (S.seek.d !== today()) { S.seek.d = today(); S.seek.n = 0; } return S.seek; }
   function seekLeft() { return Math.max(0, SEEK_DAY - seekToday().n); }
+  function isBoss(lv) { return lv % 10 === 0; }
+  function blockStart(lv) { return Math.floor((lv - 1) / 10) * 10 + 1; }
+  function nextBoss(lv) { return Math.ceil(lv / 10) * 10; }
   function seekNote() {
     var el = $('seek-note');
     if (!el) return;
-    var left = seekLeft();
-    el.textContent = left === SEEK_DAY ? 'Find the animal hiding in a busy picture. The first ' + SEEK_DAY + ' finds each day earn points.' :
-      left ? 'Find the animal hiding in a busy picture. ' + left + ' more ' + plural(left, 'find') + ' earn points today.' : 'Today’s points are all found. You can keep playing for fun.';
-  }
-  function seekPoints(ms, hint) { var p = ms <= 20000 ? 6 : ms <= 60000 ? 4 : 2; return hint ? Math.max(1, Math.round(p / 2)) : p; }
-  var SEEK_WORDS = ['Easy', 'Medium', 'Tricky', 'Hard', 'Very hard'];
-  function seekWord() { return SEEK_WORDS[Math.min(4, Math.floor(S.seek.skill * 5))]; }
-  /* quick finds make the next picture harder; slow ones, hints and Show me make it a little easier */
-  function seekLearn(ms, hint, shown) {
-    var k = S.seek.skill;
-    if (shown) k -= 0.12;
-    else if (hint) k -= 0.06;
-    else if (ms <= 12000) k += 0.1;
-    else if (ms <= 25000) k += 0.05;
-    else if (ms > 60000) k -= 0.06;
-    S.seek.skill = Math.round(Math.max(0, Math.min(1, k)) * 100) / 100;
+    var lv = S.seek.lv;
+    if (!LV.length) el.textContent = 'Find the animal hiding in a busy picture.';
+    else if (lv > LV.length) el.textContent = 'All ' + LV.length + ' levels beaten! More are on the way. Until then, play bonus pictures.';
+    else if (isBoss(lv)) el.textContent = 'Boss level ' + lv + ' · ' + SEEK_WORDS[LV[lv - 1][3]] + '. Find it in time to move on.';
+    else el.textContent = 'Level ' + lv + ' · ' + SEEK_WORDS[LV[lv - 1][3]] + '. Boss at level ' + Math.min(nextBoss(lv), LV.length) + '.';
   }
   function clock(ms) { var s = Math.floor(ms / 1000); return Math.floor(s / 60) + ':' + pad(s % 60); }
   function secs1(ms) { return (Math.round(ms / 100) / 10).toFixed(1) + ' seconds'; }
+  function timeWords(ms) { var s = Math.round(ms / 1000), m = Math.floor(s / 60); s %= 60; return (m ? m + ' ' + plural(m, 'minute') : '') + (m && s ? ' ' : '') + (s ? s + ' ' + plural(s, 'second') : ''); }
   function openSeek() {
     if (!SK) return;
     showView('seek');
     openSheet();
+    if (S.seek.left) {
+      // a boss level left half-way last time (the app was closed, say) counted as a loss
+      toast('Boss level ' + S.seek.left + ' was left before the end, so it counted as a loss. Back to level ' + blockStart(S.seek.left) + '.');
+      S.seek.left = 0;
+      save();
+    }
     seekRound();
   }
+  /* the next level, or after the last one a bonus picture: any level, played for fun */
   function seekRound() {
-    var old = R.seek || {}, recent = (old.recent || []).slice(-8), rand = Math.random, round = null;
     stopSeek();
-    for (var i = 0; i < 6 && !round; i++) {
-      var p = SK.pick(rand, recent), ph = SK.photo(p.id, p.scene, p.layout), sp = ph && SK.hide(ph, rand, S.seek.skill);
-      if (sp) round = { ph: ph, sp: sp };
-    }
-    if (!round) {
-      $('k-msg').textContent = 'That picture didn’t work out. Try another.';
-      setActions('k-actions', [{ label: 'Try another', primary: true, fn: seekRound }]);
+    var bonus = S.seek.lv > LV.length, lv = bonus ? 1 + Math.floor(Math.random() * LV.length) : S.seek.lv, def = LV[lv - 1];
+    ['k-canvas', 'k-fx'].forEach(function (id) { var c = $(id); c.getContext('2d').clearRect(0, 0, c.width, c.height); });
+    if (!def) {
+      $('k-msg').textContent = 'The levels didn’t load. Close this and try again in a moment.';
+      setActions('k-actions', [{ label: 'Close', primary: true, fn: closeSheet }]);
       return;
     }
-    recent.push(round.ph.id);
-    var t = AN.type(round.ph.id), best = S.seek.best[t.id];
-    R.seek = { ph: round.ph, sp: round.sp, start: now(), found: false, hint: null, misses: [], recent: recent, timer: null, fx: null };
+    var spots = def[4], plays = S.seek.plays[lv] || 0, s = spots[plays % spots.length];
+    S.seek.plays[lv] = plays + 1;
+    save();
+    var boss = !bonus && isBoss(lv), t = AN.type(def[0]);
+    R.seek = { lv: lv, bonus: bonus, boss: boss, diff: def[3], limit: boss ? (def[5] || 90) * 1000 : 0, lives: BOSS_LIVES,
+      ph: SK.photo(def[0], def[1], def[2]), sp: { id: def[0], x: s[0], y: s[1], d: s[2], dir: s[3], rot: s[4] },
+      start: 0, live: false, over: false, found: false, hint: null, misses: [], timer: null, fx: null };
     $('k-title').textContent = 'Find the ' + t.name;
-    $('k-where').textContent = SK.sceneName(round.ph.scene) + ' · ' + seekWord() + (best ? ' · best ' + secs1(best).replace(' seconds', ' s') : '');
-    $('k-msg').textContent = '';
+    $('k-where').innerHTML = esc(bonus ? 'Bonus picture' : boss ? 'Boss · level ' + lv : 'Level ' + lv) + ' <span class="kd d' + def[3] + '">' + SEEK_WORDS[def[3]] + '</span>';
     var who = $('k-who'), wctx = who.getContext('2d');
     wctx.clearRect(0, 0, who.width, who.height);
     SK.portrait(wctx, who.width, who.height, t.id);
-    $('k-stage').setAttribute('aria-label', 'A busy picture: ' + SK.sceneName(round.ph.scene) + '. Somewhere in it is ' + aName(t) + '. Tap it when you find it.');
+    $('k-stage').setAttribute('aria-label', 'A busy picture: ' + SK.sceneName(def[1]) + '. Somewhere in it is ' + aName(t) + '. Tap it when you find it.');
+    $('k-msg').textContent = '';
+    $('k-time').classList.remove('low');
+    seekPath();
+    seekLives();
+    if (boss) seekBossIntro();
+    else seekGo();
+  }
+  /* a boss level waits behind a cover until Start, so the clock is fair */
+  function seekBossIntro() {
+    var K1 = R.seek, t = AN.type(K1.ph.id);
+    $('k-cover').hidden = false;
+    $('k-cover-t').textContent = 'Boss level ' + K1.lv;
+    $('k-time').textContent = clock(K1.limit);
+    $('k-msg').textContent = 'Find the ' + t.name.toLowerCase() + ' within ' + timeWords(K1.limit) + '. No hints, and ' + BOSS_LIVES + ' wrong taps ends it. If it gets away, you go back to level ' + blockStart(K1.lv) + '.';
+    setActions('k-actions', [{ label: 'Not now', fn: closeSheet }, { label: 'Start', primary: true, fn: seekGo }]);
+  }
+  function seekGo() {
+    var K1 = R.seek;
+    if (!K1 || K1.live || K1.over) return;
+    K1.start = now(); K1.live = true;
+    if (K1.boss) { S.seek.bossOn = K1.lv; save(); }
+    $('k-cover').hidden = true;
+    $('k-msg').textContent = '';
     seekPaint();
     seekActions();
-    R.seek.timer = setInterval(seekTick, 250);
+    K1.timer = setInterval(seekTick, 250);
     seekTick();
+  }
+  /* the ten levels up to the next boss: done, this one, still to come */
+  function seekPath() {
+    var el = $('k-path'), K1 = R.seek;
+    if (!el) return;
+    if (!K1 || K1.bonus) { el.hidden = true; return; }
+    var b0 = blockStart(K1.lv), html = '';
+    for (var n = b0; n < b0 + 10 && n <= LV.length; n++) {
+      var cls = 'kp' + (n < K1.lv ? ' done' : n === K1.lv ? ' now' : '') + (isBoss(n) ? ' boss' : '');
+      html += '<span class="' + cls + '">' + (isBoss(n) ? icon('crown', 14) : '') + '</span>';
+    }
+    el.innerHTML = html;
+    el.hidden = false;
+    el.setAttribute('aria-label', 'Level ' + K1.lv + '. The boss is level ' + Math.min(nextBoss(K1.lv), LV.length) + '.');
+  }
+  function seekLives() {
+    var el = $('k-lives'), K1 = R.seek;
+    if (!el) return;
+    if (!K1 || !K1.boss) { el.hidden = true; return; }
+    var html = '';
+    for (var i = 0; i < BOSS_LIVES; i++) html += '<span class="kl' + (i < K1.lives ? '' : ' gone') + '">' + icon('heart', 15) + '</span>';
+    el.innerHTML = html;
+    el.hidden = false;
+    el.setAttribute('aria-label', K1.lives + ' wrong ' + plural(K1.lives, 'tap') + ' left');
   }
   /* the picture, drawn once at the phone's sharpness, and the animal on its own in a hidden canvas for taps */
   function seekPaint() {
@@ -2416,7 +2480,8 @@
     if (!K1 || !K1.ph) return;
     var st = $('k-stage'), w = st.clientWidth || 320, dpr = Math.min(2.5, window.devicePixelRatio || 1);
     var W = Math.round(w * dpr), H = Math.round(w * SK.HU / 100 * dpr);
-    [$('k-canvas'), $('k-fx')].forEach(function (c) { c.width = W; c.height = H; });
+    // resize only when needed, and always wipe: some browsers keep the old picture when a canvas is set to its own size
+    [$('k-canvas'), $('k-fx')].forEach(function (c) { if (c.width !== W || c.height !== H) { c.width = W; c.height = H; } var x = c.getContext('2d'); x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, W, H); });
     SK.draw($('k-canvas').getContext('2d'), W, K1.ph, K1.sp);
     var mw = Math.max(1, Math.round(w)), mh = Math.max(1, Math.round(w * SK.HU / 100));
     var mk = document.createElement('canvas');
@@ -2426,19 +2491,30 @@
     K1.mdata = mctx.getImageData(0, 0, mw, mh).data; K1.mw = mw; K1.mh = mh;
     seekFx();
   }
+  /* the clock: counting up, or on a boss level counting down */
   function seekTick() {
     var K1 = R.seek;
     if (!K1 || !K1.start) return;
-    $('k-time').textContent = clock(K1.found ? K1.ms : now() - K1.start);
+    var el = K1.over ? K1.ms : now() - K1.start;
+    if (!K1.boss) { $('k-time').textContent = clock(el); return; }
+    var left = Math.max(0, K1.limit - el);
+    $('k-time').textContent = clock(Math.ceil(left / 1000) * 1000);
+    $('k-time').classList.toggle('low', K1.live && left < 10000);
+    if (K1.live && left <= 0) bossLost(K1.lv, 'time');
   }
   function seekActions() {
     var K1 = R.seek;
-    if (K1.found) setActions('k-actions', [{ label: 'Done', fn: seekDone }, { label: 'Next picture', primary: true, fn: seekRound }]);
-    else setActions('k-actions', [{ label: K1.hint ? 'Show me' : 'Hint', fn: K1.hint ? function () { seekFound(true); } : seekHint }, { label: 'New picture', fn: seekRound }]);
+    if (!K1) return;
+    if (K1.over) {
+      var next = K1.lost ? { label: 'Level ' + S.seek.lv, primary: true, fn: seekRound } : K1.shown ? { label: 'Try again', primary: true, fn: seekRound } :
+        { label: K1.bonus || S.seek.lv > LV.length ? 'Bonus picture' : isBoss(S.seek.lv) ? 'Boss level' : 'Next level', primary: true, fn: seekRound };
+      setActions('k-actions', [{ label: 'Done', fn: seekDone }, next]);
+    } else if (K1.boss) setActions('k-actions', []);
+    else setActions('k-actions', [{ label: K1.hint ? 'Show me' : 'Hint', fn: K1.hint ? seekShow : seekHint }]);
   }
   function seekTap(ev) {
     var K1 = R.seek;
-    if (!K1 || !K1.mdata || K1.found) return;
+    if (!K1 || !K1.mdata || !K1.live || K1.over) return;
     var rc = $('k-stage').getBoundingClientRect();
     if (!rc.width) return;
     var x = (ev.clientX - rc.left) / rc.width * K1.mw, y = (ev.clientY - rc.top) / rc.height * K1.mh;
@@ -2448,57 +2524,100 @@
       var px = Math.round(x + Math.cos(a * Math.PI / 8) * d), py = Math.round(y + Math.sin(a * Math.PI / 8) * d);
       if (px >= 0 && py >= 0 && px < K1.mw && py < K1.mh && K1.mdata[(py * K1.mw + px) * 4 + 3] > 60) hit = true;
     }
-    if (hit) { seekFound(false); return; }
+    if (hit) { seekFound(); return; }
     K1.misses.push({ x: x / K1.mw, y: y / K1.mh, t: performance.now() });
     try { if (navigator.vibrate) navigator.vibrate(15); } catch (e) {}
+    if (K1.boss) {
+      K1.lives -= 1;
+      seekLives();
+      if (K1.lives <= 0) { bossLost(K1.lv, 'taps'); return; }
+      $('k-msg').textContent = K1.lives === 1 ? 'Careful: one more wrong tap and it gets away.' : K1.lives + ' wrong taps left.';
+    }
     seekFx();
   }
   function seekHint() {
     var K1 = R.seek;
-    if (!K1 || K1.found) return;
+    if (!K1 || !K1.live || K1.boss) return;
     var c = SK.centre(K1.sp), r = Math.max(15, c.r * 2.4), a = Math.random() * Math.PI * 2, off = Math.random() * r * 0.45;
     K1.hint = { x: c.x + Math.cos(a) * off, y: c.y + Math.sin(a) * off, r: r };
     $('k-msg').textContent = 'It’s somewhere in the circle. A hint halves the points.';
     seekActions();
     seekFx();
   }
-  /* shown: true when Show me gave the game away, which earns nothing */
-  function seekFound(shown) {
+  function seekStop(K1) { K1.over = true; K1.live = false; K1.ms = now() - K1.start; K1.foundAt = performance.now(); clearInterval(K1.timer); K1.timer = null; seekTick(); }
+  function seekFound() {
     var K1 = R.seek;
-    if (!K1 || K1.found) return;
-    K1.found = true; K1.ms = now() - K1.start;
-    clearInterval(K1.timer); K1.timer = null;
-    seekTick();
-    var t = AN.type(K1.ph.id), day = seekToday(), pts = 0, before = RU.levelFor(S.points), best = S.seek.best[t.id], quickest = false;
-    seekLearn(K1.ms, !!K1.hint, shown);
-    if (!shown) {
-      S.seek.total += 1;
-      if (!best || K1.ms < best) { S.seek.best[t.id] = K1.ms; quickest = !!best; }
-      if (day.n < SEEK_DAY) { pts = seekPoints(K1.ms, !!K1.hint); day.n += 1; S.points += pts; }
+    if (!K1 || K1.over) return;
+    seekStop(K1);
+    K1.found = true;
+    var t = AN.type(K1.ph.id), day = seekToday(), pts = 0, extra = 0, before = RU.levelFor(S.points), best = S.seek.best[t.id], quickest = false;
+    S.seek.total += 1;
+    if (!best || K1.ms < best) { S.seek.best[t.id] = K1.ms; quickest = !!best; }
+    if (!K1.bonus && (!S.seek.t[K1.lv] || K1.ms < S.seek.t[K1.lv])) S.seek.t[K1.lv] = K1.ms;
+    if (day.n < SEEK_DAY) { pts = SEEK_PTS[K1.diff] || 3; if (K1.hint) pts = Math.max(1, Math.round(pts / 2)); day.n += 1; S.points += pts; }
+    if (K1.boss) {
+      S.seek.bossOn = 0;
+      if (!S.seek.boss[K1.lv]) { S.seek.boss[K1.lv] = now(); extra = BOSS_PTS; S.points += extra; addLog('Beat Hide & seek boss level ' + K1.lv + ' (+' + extra + ')'); }
     }
+    if (!K1.bonus) { S.seek.lv = K1.lv + 1; S.seek.top = Math.max(S.seek.top, S.seek.lv); }
     save();
-    var left = seekLeft(), msg;
-    if (shown) msg = 'There it is! Try another picture.';
-    else {
-      msg = 'Found it in ' + secs1(K1.ms) + '!' + (quickest ? ' Your quickest ' + t.name.toLowerCase() + ' yet.' : '');
-      msg += pts ? ' +' + pts + ' ' + plural(pts, 'point') + (K1.hint ? ' (half, for the hint)' : '') + '. ' + (left ? left + ' more ' + plural(left, 'find') + ' earn points today.' : 'That’s today’s points all found.') : ' Today’s points are all found, so this one’s for fun.';
-    }
+    var left = seekLeft(), all = pts + extra, msg = K1.boss ? 'You beat the boss in ' + secs1(K1.ms) + '!' : 'Found it in ' + secs1(K1.ms) + '!' + (quickest ? ' Your quickest ' + t.name.toLowerCase() + ' yet.' : '');
+    if (all) msg += ' +' + all + ' ' + plural(all, 'point') + (K1.hint ? ' (half, for the hint)' : '') + '.';
+    if (pts) msg += ' ' + (left ? left + ' more ' + plural(left, 'find') + ' earn points today.' : 'That’s today’s points all found.');
+    else if (!extra) msg += ' Today’s points are all found, so this one’s for fun.';
+    if (!K1.bonus && S.seek.lv > LV.length) msg += ' That’s all ' + LV.length + ' levels beaten! More are on the way.';
+    else if (!K1.bonus && isBoss(S.seek.lv)) msg += ' Next up: the boss!';
     $('k-msg').textContent = msg;
     var after = RU.levelFor(S.points);
     if (after > before) { addLog('Level ' + after + '!'); toast('Level ' + after + '! ' + unlockText(after)); }
-    K1.foundAt = performance.now();
+    seekPath();
     seekActions();
     seekFx();
-    if (!shown) confetti(12);
-    try { if (navigator.vibrate) navigator.vibrate(shown ? 20 : [30, 40, 30]); } catch (e) {}
+    confetti(K1.boss ? 50 : 12);
+    try { if (navigator.vibrate) navigator.vibrate(K1.boss ? [40, 50, 40, 50, 90] : [30, 40, 30]); } catch (e) {}
     render();
   }
+  /* Show me, on an ordinary level: the animal lit up, and the level to try again with it hiding somewhere new */
+  function seekShow() {
+    var K1 = R.seek;
+    if (!K1 || K1.over || K1.boss) return;
+    seekStop(K1);
+    K1.shown = true;
+    $('k-msg').textContent = 'There it is! Try again and it’ll hide somewhere new.';
+    seekActions();
+    seekFx();
+    try { if (navigator.vibrate) navigator.vibrate(20); } catch (e) {}
+  }
+  /* a boss level lost: out of time, out of taps, or left half-way. Back to the first level after the last boss */
+  function bossLost(lv, why) {
+    var back = blockStart(lv), K1 = R.seek;
+    S.seek.bossOn = 0;
+    S.seek.lv = back;
+    save();
+    if (!K1 || K1.lv !== lv || K1.over) { seekNote(); render(); return; }
+    seekStop(K1);
+    K1.lost = true;
+    var t = AN.type(K1.ph.id);
+    $('k-msg').textContent = (why === 'time' ? 'Time’s up!' : BOSS_LIVES + ' wrong taps!') + ' The ' + t.name.toLowerCase() + ' got away, so it’s back to level ' + back + '. Make it back here to try the boss again.';
+    seekPath();
+    seekActions();
+    seekFx();
+    try { if (navigator.vibrate) navigator.vibrate([60, 40, 60]); } catch (e) {}
+    render();
+  }
+  /* the X during a boss level: leaving counts as a loss, so check first */
+  function seekLeaveAsk() {
+    var K1 = R.seek;
+    $('k-msg').textContent = 'Leave the boss level? It counts as a loss, and you’ll go back to level ' + blockStart(K1.lv) + '.';
+    setActions('k-actions', [{ label: 'Leave', fn: closeSheet }, { label: 'Keep looking', primary: true, fn: function () { if (R.seek === K1 && !K1.over) { $('k-msg').textContent = ''; seekActions(); } } }]);
+  }
+  function seekBusy() { var K1 = R.seek; return !!(K1 && K1.boss && K1.live && !K1.over && R.view === 'seek'); }
   /* rewards earned by levelling up here are shown when you're done */
   function seekDone() {
     var cards = claimRewards();
     if (cards.length) { save(); openReveal(cards); } else closeSheet();
   }
-  /* on top of the picture: the hint's circle, a cross where a tap missed, and the animal lit up once it's found */
+  /* on top of the picture: the hint's circle, a cross where a tap missed, and the animal lit up once it's found (or shown) */
   function seekFx() {
     var K1 = R.seek, fx = $('k-fx');
     if (!K1 || !fx || !K1.ph) return;
@@ -2509,11 +2628,11 @@
       ctx.fillStyle = 'rgba(10,14,30,' + a + ')';
       ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, TWO, true); ctx.fill('evenodd');
     };
-    if (K1.found) {
+    if (K1.over) {
       var c = SK.centre(K1.sp), p = Math.min(1, (tn - K1.foundAt) / 450), r = Math.max(9, c.r * 1.45) * k, g = 1 + 0.14 * p;
       hole(c.x * k, c.y * k, r, 0.5 * p);
       ctx.save(); ctx.translate(c.x * k, c.y * k); ctx.scale(g, g); ctx.translate(-c.x * k, -c.y * k); SK.drawHidden(ctx, K1.sp, k); ctx.restore();
-      ctx.strokeStyle = '#FFD24A'; ctx.lineWidth = Math.max(2, 0.8 * k); ctx.beginPath(); ctx.arc(c.x * k, c.y * k, r, 0, TWO); ctx.stroke();
+      ctx.strokeStyle = K1.found ? '#FFD24A' : '#FFFFFF'; ctx.lineWidth = Math.max(2, 0.8 * k); ctx.beginPath(); ctx.arc(c.x * k, c.y * k, r, 0, TWO); ctx.stroke();
       if (p < 1) more = true;
     } else if (K1.hint) {
       var h = K1.hint;
@@ -2530,12 +2649,18 @@
     });
     if (more) K1.fx = requestAnimationFrame(seekFx);
   }
+  /* leaving a boss level that's under way counts as a loss */
   function stopSeek() {
     var K1 = R.seek;
     if (!K1) return;
     if (K1.timer) clearInterval(K1.timer);
     if (K1.fx) cancelAnimationFrame(K1.fx);
-    R.seek = { recent: K1.recent || [] };
+    R.seek = null;
+    if ($('k-cover')) $('k-cover').hidden = true;
+    if (K1.boss && K1.live && !K1.over) {
+      bossLost(K1.lv, 'left');
+      toast('You left boss level ' + K1.lv + ', so it counts as a loss. Back to level ' + blockStart(K1.lv) + '.');
+    }
     seekNote();
   }
 
@@ -4466,7 +4591,7 @@
     stage.addEventListener('keydown', function (e) { if (R.game && R.game.g.key('down', e.key, e.repeat)) e.preventDefault(); });
     stage.addEventListener('keyup', function (e) { if (R.game && R.game.g.key('up', e.key, false)) e.preventDefault(); });
     $('overlay').addEventListener('click', function (ev) { if (ev.target === $('overlay') && !(R.game && R.game.g.state === 'won')) closeSheet(); });
-    if ($('sheet-x')) $('sheet-x').addEventListener('click', function () { if (!(R.game && R.game.g.state === 'won')) closeSheet(); });
+    if ($('sheet-x')) $('sheet-x').addEventListener('click', function () { if (seekBusy()) { seekLeaveAsk(); return; } if (!(R.game && R.game.g.state === 'won')) closeSheet(); });
     document.addEventListener('keydown', function (ev) {
       if (ev.key === 'Escape' && !$('overlay').hidden && !(R.game && R.game.g.state === 'won')) closeSheet();
       else if ((ev.key === 'ArrowLeft' || ev.key === 'ArrowRight') && !$('overlay').hidden && canSwipe()) { ev.preventDefault(); stepVariant(ev.key === 'ArrowRight' ? 1 : -1); }
