@@ -5,7 +5,7 @@
   'use strict';
   var WC = window.WC;
   var RU = WC.rules, SKY = WC.sky, AN = WC.animals, SP = WC.spotter, SK = WC.seek;
-  var VERSION = '0.14.0';
+  var VERSION = '0.14.1';
   var TEST = /[?&]test=1(&|$)/.test(location.search);
   var KEY = 'frzfrm-wc-state-1';
   var WX_KEY = 'frzfrm-wc-weather-1';
@@ -1811,6 +1811,9 @@
         x.homes[h] = { n: Math.floor(hh.n), seed: num0(hh.seed) >>> 0, t: num0(hh.t) };
       });
       if (!Object.keys(x.homes).length) x.homes.h1 = { n: x.n, seed: 0, t: x.first.t };
+      var u = e.undo;
+      if (u && typeof u === 'object' && typeof u.t === 'number' && AN.HOME_SLOTS.indexOf(u.h) !== -1) x.undo = { t: u.t, h: u.h, pts: num0(u.pts), isNew: !!u.isNew, newH: !!u.newH, prevLast: num0(u.prevLast),
+        prevHome: u.prevHome && typeof u.prevHome === 'object' ? { seed: num0(u.prevHome.seed) >>> 0, t: num0(u.prevHome.t) } : null, rowDone: typeof u.rowDone === 'string' ? u.rowDone : null, day: typeof u.day === 'string' ? u.day : '', print: !!u.print };
       if (Array.isArray(e.prints)) x.prints = e.prints.filter(function (p) { return typeof p === 'string' && /^[0-9.]+:[A-Za-z0-9+/=]+$/.test(p) && p.length < 900; }).slice(-PET_PRINTS);
       out.book[id] = x;
     });
@@ -1901,12 +1904,12 @@
   function awardAnimal(id) {
     var A = S.animals, t = AN.type(id), e = A.book[id], isNew = !e;
     if (!e) e = A.book[id] = { n: 0, first: { t: now() }, last: 0, homes: {} };
-    var before = e.n;
+    var before = e.n, prevLast = e.last;
     e.n += 1;
     e.last = now();
     var seed = rand32() || 1;
     var h = isNew ? 'h1' : R.forceH || AN.rollHome(rand32() / 4294967296);
-    var x = e.homes[h], newH = !x;
+    var x = e.homes[h], newH = !x, prevHome = x ? { seed: x.seed, t: x.t } : null;
     if (!x) x = e.homes[h] = { n: 0, seed: seed, t: now() };
     x.n += 1;
     // each home shows its newest catch
@@ -1922,9 +1925,69 @@
       var row = AN.progress(A.book).rows.filter(function (rw) { return rw.row === t.row; })[0];
       if (row && row.complete) { A.rows[t.row] = now(); S.points += AN.ROW_BONUS; rowDone = t.row; }
     }
+    // enough to take this catch back if the scan got the animal wrong
+    e.undo = { t: now(), h: h, pts: pts, isNew: isNew, newH: newH, prevLast: prevLast, prevHome: prevHome, rowDone: rowDone, day: today(), print: false };
     addLog((isNew ? 'New animal: ' + t.name : t.name + ' · ' + AN.home(id, h).name) + (isNew ? ' (+' + pts + ')' : ' (×' + e.n + ', +' + pts + ')'));
     if (rowDone) addLog('Animal row complete: ' + AN.rowName(rowDone) + ' (+' + AN.ROW_BONUS + ')');
     return { animal: id, isNew: isNew, n: e.n, h: h, seed: seed, pts: pts, again: again, newH: newH && !isNew, tier: RU.tierReached(before, e.n), rowDone: rowDone };
+  }
+
+  /* ---------- taking back a wrong catch ----------
+     The spotter can get an animal wrong (a hamster taken for a dog). For a day afterwards, the latest catch of an animal
+     can be taken back: off the shelf, with its points. Catches from before 0.14.1 can only be taken back when they were
+     the animal's only one */
+  function canTakeBack(id) {
+    var e = S.animals.book[id];
+    if (!e) return false;
+    if (e.undo) return now() - e.undo.t < 24 * HOUR;
+    return e.n === 1 && !!e.first && now() - e.first.t < 24 * HOUR;
+  }
+  function takeBackAnimal(id) {
+    var A = S.animals, e = A.book[id], t = AN.type(id);
+    if (!e || !t || !canTakeBack(id)) return false;
+    var u = e.undo || { isNew: true, pts: AN.points(id), day: RU.dayKey(e.first.t) };
+    S.points = Math.max(0, S.points - (u.pts || 0));
+    if (u.rowDone && A.rows[u.rowDone]) { delete A.rows[u.rowDone]; S.points = Math.max(0, S.points - AN.ROW_BONUS); }
+    if (A.day && A.day.d === u.day && A.day.n[id]) A.day.n[id] -= 1;
+    if (u.isNew) delete A.book[id];
+    else {
+      e.n -= 1;
+      e.last = u.prevLast || 0;
+      var x = e.homes[u.h];
+      if (x) {
+        if (u.newH || x.n <= 1) delete e.homes[u.h];
+        else { x.n -= 1; if (u.prevHome) { x.seed = u.prevHome.seed; x.t = u.prevHome.t; } }
+      }
+      if (u.print && e.prints && e.prints.length) e.prints.pop();
+      delete e.undo;
+    }
+    addLog('Took back ' + aName(t) + ': the scan got the animal wrong');
+    save();
+    return true;
+  }
+  function askTakeBack(id, fromReveal) {
+    var t = AN.type(id), e = S.animals.book[id], u = e && e.undo, pts = u ? u.pts : AN.points(id);
+    if (u && u.rowDone && S.animals.rows[u.rowDone]) pts += AN.ROW_BONUS;
+    // after a fresh catch, carry on to anything else it earned; from the shelf, go back to the jar
+    var after = function () { if (fromReveal && R.queue.length) nextReveal(); else closeSheet(); };
+    stopSpin();
+    showInfo({
+      label: 'Wrong animal?', title: 'Take back this ' + t.name.toLowerCase() + '?',
+      body: '<p>If the scan got the animal wrong, this takes the catch back off your shelf, with its ' + pts + ' ' + plural(pts, 'point') + '. Then you can scan it again.</p>',
+      actions: [{ label: 'Keep it', fn: function () { if (fromReveal) after(); else openAnimal(id); } }, { label: 'Take it back', primary: true, fn: function () {
+        var ok = takeBackAnimal(id);
+        render();
+        after();
+        toast(ok ? 'Taken back. Scan it again whenever you’re ready.' : 'That catch can’t be taken back now.');
+      } }]
+    });
+  }
+  function showUndo(id, text, fromReveal) {
+    var p = $('c-undo');
+    if (!p) return;
+    p.hidden = !canTakeBack(id);
+    $('c-undo-btn').textContent = text;
+    R.undo = { id: id, reveal: !!fromReveal };
   }
 
   /* the Animals tab: a button to scan, then a shelf with a row for each place you'd find them */
@@ -2078,6 +2141,7 @@
     showHome(id, n ? bestHome(e) : 'h1');
     renderHomes(id);
     R.share = null;
+    showUndo(id, 'Was the last ' + t.name.toLowerCase() + ' the wrong animal? Take it back');
     setActions('c-actions', [{ label: 'Scan an animal', fn: function () { openScan(); } }, { label: 'Close', primary: true, fn: closeSheet }]);
     openSheet();
     centerStrip();
@@ -2107,6 +2171,7 @@
     R.cardState.mark.seed = r.seed;
     R.cardState.preview = false;
     renderHomes(null);
+    showUndo(id, 'Not ' + aName(t) + '? Take it back', true);
     setActions('c-actions', [{ label: R.queue.length ? 'Next' : 'Put it on the shelf', primary: true, fn: nextReveal }]);
     openSheet();
     var land = function () {
@@ -2276,7 +2341,7 @@
       }
       var before = RU.levelFor(S.points);
       var r = awardAnimal(res.id);
-      if (isPet(res.id)) addPrint(res.id, emb);
+      if (isPet(res.id) && emb) { addPrint(res.id, emb); S.animals.book[res.id].undo.print = true; }
       stopCamera();
       afterAward([r], before);
       return;
@@ -2685,6 +2750,7 @@
     if ($('seek-view')) $('seek-view').hidden = name !== 'seek';
     if (name !== 'seek') stopSeek();
     $('card-view').hidden = name !== 'card';
+    if ($('c-undo')) $('c-undo').hidden = true;
     if ($('reward-view')) $('reward-view').hidden = name !== 'reward';
     $('info-view').hidden = name !== 'info';
     $('sheet').setAttribute('aria-labelledby', name === 'game' ? 'g-title' : name === 'scan' ? 's-title' : name === 'seek' ? 'k-title' : name === 'card' ? 'c-title' : name === 'reward' ? 'r-title' : 'i-title');
@@ -4348,6 +4414,7 @@
     $('photo-input').addEventListener('change', function () { closeSheet(); onPhoto(); });
     if ($('photos-btn')) $('photos-btn').addEventListener('click', function () { openPhotos(); });
     if ($('c-photo-btn')) $('c-photo-btn').addEventListener('click', function () { if (R.photoJar) openPhotos(R.photoJar); });
+    if ($('c-undo-btn')) $('c-undo-btn').addEventListener('click', function () { if (R.undo) askTakeBack(R.undo.id, R.undo.reveal); });
     $('drive-btn').addEventListener('click', openDriveIntro);
     $('lock-drive').addEventListener('click', openDriveIntro);
     $('lock-passenger').addEventListener('click', function () { S.passengerUntil = now() + 3 * HOUR; save(); render(); toast('Passenger mode is on for the next 3 hours.'); });

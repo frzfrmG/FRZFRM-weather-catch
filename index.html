@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en-GB" data-v="0.14.0">
+<html lang="en-GB" data-v="0.14.1">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -18,7 +18,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap">
 <!-- on every release, bump data-v above and ?v= below to match VERSION in app.js, so a phone never mixes old and new files -->
-<link rel="stylesheet" href="app.css?v=0.14.0">
+<link rel="stylesheet" href="app.css?v=0.14.1">
 </head>
 <body>
 <div class="app" id="app">
@@ -210,7 +210,7 @@
           <li><strong>Photo catches</strong> are checked on your phone: the photo has to show the right kind of sky, like a dark night with a green glow for the Northern Lights, and it can&rsquo;t have a face in it. Nothing is sent anywhere. The check can miss a face, so if a photo of a person ever gets into a jar, delete it in <strong>Your photos</strong> below.</li>
           <li><strong>Flying?</strong> Keep the app open on the plane. When the sun sets while you&rsquo;re flying, you can catch <strong>Sunset Over the Clouds</strong>. Your phone&rsquo;s GPS can tell you&rsquo;re flying, even without wifi.</li>
           <li><strong>Levels:</strong> tap your level to see what&rsquo;s ahead: new titles, new powers and new looks for your shelf. The next ones are shown in full, and the rest are only hinted at.</li>
-          <li><strong>Animals:</strong> scan a real animal with your camera and it goes in its jar. There are garden animals, pets, and beach, countryside and zoo animals. The photo is looked at on your phone and thrown away. Each animal can be caught once every 30 minutes, and it earns points by how rare it is: 5 for a seagull, up to 100 for a zoo animal, and a fifth of that for the same animal again that day. Its first catch moves into its everyday home. After that, each catch turns up in one of its five homes (1 in 2 up to 1 in 24 for its favourite). <strong>Each pet counts once:</strong> scanning your own dog again won&rsquo;t level up the Dog jar, so find different dogs, cats and so on. To tell pets apart, the app keeps a short list of numbers about each pet you catch, on your phone only, never the photo. Two pets that look almost the same might be taken for one.</li>
+          <li><strong>Animals:</strong> scan a real animal with your camera and it goes in its jar. There are garden animals, pets, and beach, countryside and zoo animals. The photo is looked at on your phone and thrown away. Each animal can be caught once every 30 minutes, and it earns points by how rare it is: 5 for a seagull, up to 100 for a zoo animal, and a fifth of that for the same animal again that day. Its first catch moves into its everyday home. After that, each catch turns up in one of its five homes (1 in 2 up to 1 in 24 for its favourite). <strong>Each pet counts once:</strong> scanning your own dog again won&rsquo;t level up the Dog jar, so find different dogs, cats and so on. To tell pets apart, the app keeps a short list of numbers about each pet you catch, on your phone only, never the photo. Two pets that look almost the same might be taken for one. <strong>Wrong animal?</strong> If a scan gets it wrong, tap &ldquo;Take it back&rdquo; under the jar, up to a day afterwards. The catch and its points come off your shelf.</li>
           <li><strong>Hide &amp; seek:</strong> in the Animals tab, find the animal hiding in a busy picture, among things its own colours, like a brown dog among shoes. There are hundreds of pictures, and when one comes round again the animal is somewhere new. The pictures get harder the quicker you find the animals, and a little easier if you need a hint. The first 10 finds each day earn points: 6 for a find within 20 seconds, 4 within a minute, then 2. A hint halves them.</li>
           <li><strong>Strength:</strong> each catch gets 1 to 5 stars for how strong the weather really was, like how hard it rained, how hot it got, how deep the snow was or how thick the fog. 4 stars are worth half as many points again, and 5 stars double. Each jar remembers its strongest catch.</li>
           <li><strong>Shelf rewards:</strong> every 10 jars unlocks a new wood or lights for your shelf, with bonus points. Finish a row and that shelf changes for good. Get every jar in a row to gold and the shelf turns gold. Fill the whole shelf to earn the Sky Jar.</li>
@@ -324,6 +324,7 @@
       <div class="ov-tier" id="c-tier" hidden><p class="tier-t" id="c-tier-t"></p><span class="bar tier-bar" aria-hidden="true"><span id="c-tier-fill"></span></span></div>
       <p class="ov-verify" id="c-verify" hidden></p>
       <p class="ov-photo" id="c-photo" hidden><span id="c-photo-t"></span> <button class="link-btn" type="button" id="c-photo-btn">See or delete photos</button></p>
+      <p class="ov-undo" id="c-undo" hidden><button class="link-btn" type="button" id="c-undo-btn">Take it back</button></p>
       <div class="var-box" id="c-vars" hidden></div>
       <div class="actions" id="c-actions"></div>
     </div>
@@ -360,20 +361,20 @@
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 <input type="file" id="photo-input" accept="image/*" capture="environment" hidden>
 
-<script src="rules.js?v=0.14.0" defer></script>
-<script src="sky.js?v=0.14.0" defer></script>
-<script src="variants.js?v=0.14.0" defer></script>
-<script src="kit.js?v=0.14.0" defer></script>
-<script src="jars-rain.js?v=0.14.0" defer></script>
-<script src="jars-wonders.js?v=0.14.0" defer></script>
-<script src="jars-storm.js?v=0.14.0" defer></script>
-<script src="animals.js?v=0.14.0" defer></script>
-<script src="zoo.js?v=0.14.0" defer></script>
-<script src="zoo-art.js?v=0.14.0" defer></script>
-<script src="seek.js?v=0.14.0" defer></script>
-<script src="spotter.js?v=0.14.0" defer></script>
-<script src="game.js?v=0.14.0" defer></script>
-<script src="photocheck.js?v=0.14.0" defer></script>
-<script src="app.js?v=0.14.0" defer></script>
+<script src="rules.js?v=0.14.1" defer></script>
+<script src="sky.js?v=0.14.1" defer></script>
+<script src="variants.js?v=0.14.1" defer></script>
+<script src="kit.js?v=0.14.1" defer></script>
+<script src="jars-rain.js?v=0.14.1" defer></script>
+<script src="jars-wonders.js?v=0.14.1" defer></script>
+<script src="jars-storm.js?v=0.14.1" defer></script>
+<script src="animals.js?v=0.14.1" defer></script>
+<script src="zoo.js?v=0.14.1" defer></script>
+<script src="zoo-art.js?v=0.14.1" defer></script>
+<script src="seek.js?v=0.14.1" defer></script>
+<script src="spotter.js?v=0.14.1" defer></script>
+<script src="game.js?v=0.14.1" defer></script>
+<script src="photocheck.js?v=0.14.1" defer></script>
+<script src="app.js?v=0.14.1" defer></script>
 </body>
 </html>
