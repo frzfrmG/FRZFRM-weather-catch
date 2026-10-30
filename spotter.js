@@ -28,7 +28,8 @@
   /* ---------- getting the model onto the phone ----------
      The model, its labels and the list of its files are each fetched once and kept in their own cache, which outlives
      app updates, so it works with no signal once it's on the phone. onProgress(done, total) in bytes */
-  var MAN_URL = BASE + 'spotter.json';
+  // the list of files. From 0.12.0 it's spotter-2.json, with the pets in its labels; the model itself didn't change
+  var MAN_URL = BASE + 'spotter-2.json', OLD_MAN_URL = BASE + 'spotter.json';
   function cacheOpen() { return root.caches && root.caches.open ? root.caches.open(CACHE).catch(function () { return null; }) : Promise.resolve(null); }
   function chunkUrl(ch) { return BASE + ch.f + '?h=' + ch.sha; }
   function labelsPart(man) { return { f: man.labels.f, n: man.labels.n, sha: man.labels.sha || 'n' + man.labels.n }; }
@@ -40,7 +41,7 @@
       return r.json().then(function (man) { if (cache) cache.put(MAN_URL, copy).catch(function () {}); return man; });
     }).catch(function (err) {
       if (!cache) throw err;
-      return cache.match(MAN_URL).then(function (hit) { if (!hit) throw err; return hit.json(); });
+      return cache.match(MAN_URL).then(function (hit) { return hit || cache.match(OLD_MAN_URL); }).then(function (hit) { if (!hit) throw err; return hit.json(); });
     });
   }
   function fetchChunk(cache, ch, onBytes) {
@@ -95,7 +96,7 @@
           // throw away files kept from older models
           if (cache) cache.keys().then(function (ks) {
             var keep = man.chunks.map(chunkUrl).concat([chunkUrl(lp), MAN_URL]);
-            ks.forEach(function (k) { if (!keep.some(function (u) { return k.url.indexOf(u) !== -1 && (u !== MAN_URL || /spotter\.json$/.test(k.url)); })) cache.delete(k); });
+            ks.forEach(function (k) { if (!keep.some(function (u) { return u.indexOf('?') !== -1 ? k.url.indexOf(u) !== -1 : k.url.slice(-u.length) === u; })) cache.delete(k); });
           }).catch(function () {});
         });
       });
@@ -109,7 +110,8 @@
     return cacheOpen().then(function (cache) {
       if (!cache) return false;
       return manifest(cache).then(function (man) {
-        var urls = man.chunks.map(chunkUrl).concat([chunkUrl(labelsPart(man))]);
+        // the model's files: when only the labels are new (a small file), it still counts as on the phone
+        var urls = man.chunks.map(chunkUrl);
         return Promise.all(urls.map(function (u) { return cache.match(u); })).then(function (hits) { return hits.every(Boolean); });
       });
     }).catch(function () { return false; });
@@ -550,15 +552,21 @@
     }
     var sum = 0, p = new Float32Array(NL);
     for (i = 0; i < NL; i++) { p[i] = Math.exp(logit[i] - mx); sum += p[i]; }
-    var order = [];
-    for (i = 0; i < NL; i++) { p[i] /= sum; order.push(i); }
-    order.sort(function (a, b) { return p[b] - p[a]; });
-    var top = order[0], k = kinds[top], gap = p[top] - p[order[1]];
-    var res = { kind: k, id: k === 'catch' ? ids[top] : null, p: p[top], gap: gap, label: ids[top], top: order.slice(0, 5).map(function (x) { return [ids[x], Math.round(p[x] * 1000) / 1000]; }) };
-    if (k === 'catch' && (p[top] < dc.pMin || gap < dc.margin)) { res.kind = 'unsure'; res.id = null; }
-    else if (k !== 'catch' && p[top] < dc.rejectMin) res.kind = 'unsure';
+    // labels named like 'dog~poodle' are kinds of one animal, so their chances are added together
+    var gp = {}, gkind = {}, order = [];
+    for (i = 0; i < NL; i++) {
+      p[i] /= sum;
+      var g = ids[i].split('~')[0];
+      if (!(g in gp)) { gp[g] = 0; gkind[g] = kinds[i]; order.push(g); }
+      gp[g] += p[i];
+    }
+    order.sort(function (a, b) { return gp[b] - gp[a]; });
+    var top = order[0], k = gkind[top], gap = gp[top] - gp[order[1]];
+    var res = { kind: k, id: k === 'catch' ? top : null, p: gp[top], gap: gap, label: top, top: order.slice(0, 5).map(function (x) { return [x, Math.round(gp[x] * 1000) / 1000]; }) };
+    if (k === 'catch' && (gp[top] < dc.pMin || gap < dc.margin)) { res.kind = 'unsure'; res.id = null; }
+    else if (k !== 'catch' && gp[top] < dc.rejectMin) res.kind = 'unsure';
     // how sure it was of the animal it's best at, even when it's not sure enough to say
-    res.guess = ids[top];
+    res.guess = top;
     return res;
   }
 

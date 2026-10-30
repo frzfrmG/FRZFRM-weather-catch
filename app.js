@@ -5,7 +5,7 @@
   'use strict';
   var WC = window.WC;
   var RU = WC.rules, SKY = WC.sky, AN = WC.animals, SP = WC.spotter;
-  var VERSION = '0.11.0';
+  var VERSION = '0.12.0';
   var TEST = /[?&]test=1(&|$)/.test(location.search);
   var KEY = 'frzfrm-wc-state-1';
   var WX_KEY = 'frzfrm-wc-weather-1';
@@ -759,6 +759,7 @@
     flower: '<circle cx="12" cy="9" r="2.2"></circle><path d="M12 6.8a2.6 2.6 0 1 1 2.2-3.9M14.2 9a2.6 2.6 0 1 1 1.6 4.4M9.8 9a2.6 2.6 0 1 0-1.6 4.4M12 6.8a2.6 2.6 0 1 0-2.2-3.9M12 11.2V21M12 17c-2-2.6-4.6-2.6-6-1.6M12 15.5c1.8-2 4.2-2.2 5.6-1.2"></path>',
     wave: '<path d="M3 9c2-2 4-2 6 0s4 2 6 0 4-2 6 0M3 14c2-2 4-2 6 0s4 2 6 0 4-2 6 0M3 19c2-2 4-2 6 0s4 2 6 0 4-2 6 0"></path>',
     tree: '<path d="M12 21v-6M12 15c-4.4 0-7-2.2-7-5.4C5 6.4 8 3.5 12 3.5s7 2.9 7 6.1c0 3.2-2.6 5.4-7 5.4z"></path><path d="M8.5 21h7"></path>',
+    bone: '<g transform="rotate(-38 12 12)"><path d="M7.2 10.5H16.8A2.1 2.1 0 1 1 20.2 10.8V13.2A2.1 2.1 0 1 1 16.8 13.5H7.2A2.1 2.1 0 1 1 3.8 13.2V10.8A2.1 2.1 0 1 1 7.2 10.5Z"></path></g>',
     paw: '<path d="M12 12.6c-2.6 0-5 2.6-5 4.8 0 1.6 1.2 2.4 2.6 2.4 1 0 1.6-.5 2.4-.5s1.4.5 2.4.5c1.4 0 2.6-.8 2.6-2.4 0-2.2-2.4-4.8-5-4.8z"></path><ellipse cx="5.6" cy="10.6" rx="1.7" ry="2.1"></ellipse><ellipse cx="9.3" cy="6.4" rx="1.8" ry="2.3"></ellipse><ellipse cx="14.7" cy="6.4" rx="1.8" ry="2.3"></ellipse><ellipse cx="18.4" cy="10.6" rx="1.7" ry="2.1"></ellipse>',
     check: '<path d="M5 12.5l4.5 4.5L19 7.5"></path>'
   };
@@ -1290,7 +1291,7 @@
     box.classList.toggle('case-empty', !b);
     box.classList.toggle('case-legend', !!(vr && vr.legend));
   }
-  var ROW_ICON = { sun: 'clear', rain: 'rain', frost: 'snow', wind: 'windy', storm: 'thunderstorm', mist: 'fog', wonder: 'starry', change: 'sunbreak', garden: 'flower', coast: 'wave', country: 'tree', zoo: 'paw' };
+  var ROW_ICON = { sun: 'clear', rain: 'rain', frost: 'snow', wind: 'windy', storm: 'thunderstorm', mist: 'fog', wonder: 'starry', change: 'sunbreak', garden: 'flower', pets: 'bone', coast: 'wave', country: 'tree', zoo: 'paw' };
   function secIcon(sec, size) { return icon(ROW_ICON[sec] || 'cloud', size); }
   function rowChips(prog) {
     return RU.ELEMENTS.map(function (el, i) {
@@ -4135,6 +4136,7 @@
     stage.addEventListener('keydown', function (e) { if (R.game && R.game.g.key('down', e.key, e.repeat)) e.preventDefault(); });
     stage.addEventListener('keyup', function (e) { if (R.game && R.game.g.key('up', e.key, false)) e.preventDefault(); });
     $('overlay').addEventListener('click', function (ev) { if (ev.target === $('overlay') && !(R.game && R.game.g.state === 'won')) closeSheet(); });
+    if ($('sheet-x')) $('sheet-x').addEventListener('click', function () { if (!(R.game && R.game.g.state === 'won')) closeSheet(); });
     document.addEventListener('keydown', function (ev) {
       if (ev.key === 'Escape' && !$('overlay').hidden && !(R.game && R.game.g.state === 'won')) closeSheet();
       else if ((ev.key === 'ArrowLeft' || ev.key === 'ArrowRight') && !$('overlay').hidden && canSwipe()) { ev.preventDefault(); stepVariant(ev.key === 'ArrowRight' ? 1 : -1); }

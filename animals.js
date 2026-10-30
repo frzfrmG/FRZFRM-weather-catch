@@ -8,6 +8,7 @@
 
   var ROWS = [
     { id: 'garden', name: 'Garden', noun: 'garden animal' },
+    { id: 'pets', name: 'Pets', noun: 'pet' },
     { id: 'coast', name: 'Beach & Coast', noun: 'beach animal' },
     { id: 'country', name: 'Countryside', noun: 'countryside animal' },
     { id: 'zoo', name: 'Zoo', noun: 'zoo animal' }
@@ -23,10 +24,18 @@
     ['ladybird', 'Ladybird', 'garden', 'uncommon', 'Lucky if it lands on you.', ['Leaf Bed', 'Thimble Tea Room', 'Button Sofa', 'Dolls’ House Kitchen', 'Fairy-light Treehouse']],
     ['bee', 'Bee', 'garden', 'common', 'Busy, busy, busy.', ['Flower Shop', 'Honeycomb Kitchen', 'Garden Tea Party', 'Sweet Shop', 'Honey Palace']],
     ['butterfly', 'Butterfly', 'garden', 'common', 'Never sits still for a photo.', ['Window Seat', 'Greenhouse', 'Art Studio', 'Dance Studio', 'Butterfly Ballroom']],
-    ['robin', 'Robin', 'garden', 'uncommon', 'Follows the gardener for worms.', ['Garden Shed', 'Kitchen Table', 'Reading Nook', 'Little Post Office', 'Christmas Fireside']],
+    ['robin', 'Robin', 'garden', 'uncommon', 'Follows the gardener for worms.', ['Garden Shed', 'Veg Patch', 'Reading Nook', 'Little Post Office', 'Christmas Fireside']],
     ['bluetit', 'Blue Tit', 'garden', 'uncommon', 'First to the bird feeder, every time.', ['Nest-box Bedroom', 'Breakfast Table', 'Bubble Bath', 'Music Room', 'Peanut Café']],
     ['squirrel', 'Squirrel', 'garden', 'uncommon', 'Forgets where it buried half its nuts.', ['Tree Den', 'Pantry', 'Bakery', 'Library', 'Acorn Treehouse']],
-    ['hedgehog', 'Hedgehog', 'garden', 'rare', 'Out after dark, snuffling in the hedge.', ['Garden Shed', 'Cosy Kitchen', 'Reading Nook', 'Cottage Bedroom', 'Fireside Armchair']],
+    ['hedgehog', 'Hedgehog', 'garden', 'rare', 'Out after dark, snuffling in the hedge.', ['Garden Shed', 'Toadstool Cottage', 'Reading Nook', 'Cottage Bedroom', 'Fireside Armchair']],
+
+    ['dog', 'Dog', 'pets', 'common', 'Can smell about 10,000 times better than you.', ['Boot Room', 'Back Garden', 'Cosy Sofa', 'Dog Show', 'Big Comfy Bed']],
+    ['cat', 'Cat', 'pets', 'common', 'Sleeps up to 16 hours a day, then wants feeding at 5am.', ['Sunny Windowsill', 'Airing Cupboard', 'Bookshop', 'Conservatory', 'Cardboard Box Castle']],
+    ['hamster', 'Hamster', 'pets', 'uncommon', 'Cheeks full of snacks for later.', ['Sock Drawer', 'Playroom', 'Wheel Gym', 'Popcorn Cinema', 'Seed Vault']],
+    ['guineapig', 'Guinea Pig', 'pets', 'uncommon', 'Jumps for joy when it’s happy. It’s called popcorning.', ['Straw Cottage', 'Veg Market', 'Soft Play', 'Hair Salon', 'Birthday Party']],
+    ['goldfish', 'Goldfish', 'pets', 'uncommon', 'Remembers things for months, not three seconds.', ['Garden Pond', 'Bathtub', 'Aquarium Castle', 'Treasure Grotto', 'Underwater Palace']],
+    ['budgie', 'Budgie', 'pets', 'rare', 'Chats away to itself in the mirror.', ['Window Perch', 'Dressing Table', 'Music Room', 'Swing Park', 'Tropical Treehouse']],
+    ['tortoise', 'Tortoise', 'pets', 'rare', 'In no hurry at all. Some live for over 100 years.', ['Rockery', 'Greenhouse', 'Sunny Lounge', 'Race Track', 'Strawberry Picnic']],
 
     ['seagull', 'Seagull', 'coast', 'common', 'Keep an eye on your chips.', ['Rooftop Loft', 'Beach Hut', 'Pier Arcade', 'Lighthouse Room', 'Fish and Chip Shop']],
     ['crab', 'Crab', 'coast', 'uncommon', 'Walks sideways, and proud of it.', ['Rock Pool Room', 'Bucket House', 'Sandcastle Hall', 'Shell Shop', 'Shipwreck Cabin']],
@@ -35,20 +44,20 @@
     ['seal', 'Seal', 'coast', 'rare', 'Bobbing up to see who’s there.', ['Beach Hut', 'Seaside Bathroom', 'Boathouse', 'Ice Rink', 'Swimming Pool']],
     ['puffin', 'Puffin', 'coast', 'epic', 'A beak full of fish and a face full of colour.', ['Cliff-top Burrow', 'Lighthouse Room', 'Fishing Hut', 'Seaside Café', 'Captain’s Cabin']],
 
-    ['fox', 'Fox', 'country', 'rare', 'Trots through at dusk like it owns the place.', ['Hedge Den', 'Farmhouse Kitchen', 'Woodland Cabin', 'Library', 'Fairy-light Den']],
+    ['fox', 'Fox', 'country', 'rare', 'Trots through at dusk like it owns the place.', ['Hedge Den', 'Hen House', 'Woodland Cabin', 'Library', 'Fairy-light Den']],
     ['rabbit', 'Rabbit', 'country', 'uncommon', 'One moment it’s there, the next it’s not.', ['Burrow Bedroom', 'Allotment Shed', 'Carrot Kitchen', 'Magic Show', 'Wonderland Tea Party']],
     ['deer', 'Deer', 'country', 'rare', 'Stand very still and it might not run.', ['Forest Cabin', 'Stately Hall', 'Mossy Library', 'Snowy Lodge', 'Christmas Grotto']],
     ['cow', 'Cow', 'country', 'common', 'Chewing. Always chewing.', ['Barn', 'Farmhouse Kitchen', 'Milk Bar', 'Cosy Sofa', 'Ice Cream Parlour']],
     ['sheep', 'Sheep', 'country', 'common', 'Counting them is meant to help you sleep.', ['Barn', 'Knitting Room', 'Bedroom', 'Woolly Jumper Shop', 'Cloud Bedroom']],
     ['swan', 'Swan', 'country', 'uncommon', 'Calm on top, paddling hard underneath.', ['Boathouse', 'Lakeside Cottage', 'Ballet Studio', 'Grand Ballroom', 'Royal Palace']],
-    ['duck', 'Duck', 'country', 'common', 'Will do anything for a bit of bread. Peas are better for it.', ['Pond Cabin', 'Kitchen', 'Laundry Room', 'Boathouse', 'Bubble Bath']],
+    ['duck', 'Duck', 'country', 'common', 'Will do anything for a bit of bread. Peas are better for it.', ['Pond Cabin', 'Umbrella Shop', 'Laundry Room', 'Boathouse', 'Bubble Bath']],
 
     ['lion', 'Lion', 'zoo', 'epic', 'Sleeps about 20 hours a day.', ['Safari Tent', 'Sunny Lounge', 'Library', 'Castle Hall', 'Throne Room']],
     ['tiger', 'Tiger', 'zoo', 'epic', 'No two have the same stripes.', ['Jungle Lodge', 'Bamboo Kitchen', 'Yoga Studio', 'Treehouse', 'Palace Garden']],
-    ['elephant', 'Elephant', 'zoo', 'epic', 'Never forgets.', ['Living Room', 'Big Kitchen', 'Library', 'Music Room', 'Bubble Bathhouse']],
-    ['giraffe', 'Giraffe', 'zoo', 'epic', 'Ducks under every door.', ['High Loft', 'Treetop Kitchen', 'Tall Library', 'Lighthouse Room', 'Stargazing Tower']],
+    ['elephant', 'Elephant', 'zoo', 'epic', 'Never forgets.', ['Living Room', 'Mud Spa', 'Library', 'Music Room', 'Bubble Bathhouse']],
+    ['giraffe', 'Giraffe', 'zoo', 'epic', 'Ducks under every door.', ['High Loft', 'Rooftop Garden', 'Tall Library', 'Lighthouse Room', 'Stargazing Tower']],
     ['penguin', 'Penguin', 'zoo', 'epic', 'Dressed for dinner, every day.', ['Igloo', 'Fish Kitchen', 'Ice Rink', 'Snowy Lodge', 'Ice Palace']],
-    ['meerkat', 'Meerkat', 'zoo', 'epic', 'Always on the lookout.', ['Burrow Den', 'Sandy Kitchen', 'Lookout Post', 'Safari Tent', 'Observatory']],
+    ['meerkat', 'Meerkat', 'zoo', 'epic', 'Always on the lookout.', ['Burrow Den', 'Sun Terrace', 'Lookout Post', 'Safari Tent', 'Observatory']],
     ['flamingo', 'Flamingo', 'zoo', 'epic', 'Pink from the shrimp it eats.', ['Lagoon Lounge', 'Pink Kitchen', 'Ballet Studio', 'Pool Party', 'Grand Ballroom']]
   ];
   var TYPES = {}, ORDERED = [];
@@ -57,6 +66,10 @@
     TYPES[t.id] = t;
     ORDERED.push(t);
   });
+  /* each row runs from its commonest animal to its rarest, like the weather shelves */
+  var ROW_I = {};
+  ROWS.forEach(function (r, i) { ROW_I[r.id] = i; });
+  ORDERED.sort(function (a, b) { return (ROW_I[a.row] - ROW_I[b.row]) || (RU.RARITY[a.r].rank - RU.RARITY[b.r].rank) || (a.order - b.order); });
   function type(id) { return TYPES[id] || null; }
   function points(id) { var t = TYPES[id]; return t ? POINTS[t.r] : 0; }
   function rank(id) { var t = TYPES[id]; return t ? RU.RARITY[t.r].rank : 0; }

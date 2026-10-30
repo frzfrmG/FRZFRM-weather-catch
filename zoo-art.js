@@ -220,6 +220,213 @@
     eye(ctx, 10, -6.8, 0.95);
   } };
 
+  /* ---------- pets ---------- */
+
+  /* a brown dog, standing, tail up and wagging */
+  A.dog = { w: 36, s: 1.2, draw: function (ctx, t) {
+    floorShadow(ctx, 14);
+    var wag = Math.sin(t * 7) * 0.22;
+    var C = '#9A6436', D = '#6E4526', L = '#E2C29A';
+    // the far legs, in shadow
+    ln(ctx, D, 2.6); sg(ctx, -9.6, -10, -10.4, -0.8); sg(ctx, 6.4, -10, 6.8, -0.8);
+    // the tail, wagging
+    ctx.save(); ctx.translate(-12, -15); ctx.rotate(wag);
+    ln(ctx, C, 2.6); ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(-5, -3, -5.6, -10); ctx.stroke();
+    ln(ctx, L, 1.6); sg(ctx, -5.4, -8.6, -5.6, -10.2);
+    ctx.restore();
+    // the body, with a pale chest
+    ctx.fillStyle = C; ell(ctx, -1.6, -14, 12.4, 6.2, -0.04); ctx.fill();
+    ctx.fillStyle = shade(C, -0.12); ell(ctx, -3, -17.4, 8.6, 2.4, -0.04); ctx.fill();
+    ctx.fillStyle = L; ell(ctx, 7.4, -12.6, 4.2, 4.4, 0.3); ctx.fill();
+    // the near legs, with pale paws
+    [[-7.2, -7.8], [8.2, 8.8]].forEach(function (l) {
+      ln(ctx, C, 3); sg(ctx, l[0], -11, l[1], -1.2);
+      ctx.fillStyle = L; ell(ctx, l[1] + 0.8, -0.8, 2, 1); ctx.fill();
+    });
+    // the neck and head
+    ctx.fillStyle = C; ell(ctx, 8.4, -19.4, 4, 5.6, 0.45); ctx.fill();
+    circ(ctx, 11.4, -24.4, 5.2); ctx.fill();
+    // a red collar with a gold tag
+    ctx.fillStyle = '#D8432F'; ell(ctx, 8.2, -18.6, 1.3, 4.6, 0.42); ctx.fill();
+    ctx.fillStyle = '#E8B33A'; circ(ctx, 9.6, -15, 1.1); ctx.fill();
+    // the muzzle and nose
+    ctx.fillStyle = L; ell(ctx, 15.8, -22.4, 3.8, 2.7, 0.08); ctx.fill();
+    ctx.fillStyle = '#1E1618'; ell(ctx, 19.2, -23.4, 1.3, 1.05); ctx.fill();
+    ln(ctx, '#5A3A26', 0.45); ctx.beginPath(); ctx.moveTo(19, -22.2); ctx.quadraticCurveTo(18, -20.4, 15.6, -20.8); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.18)'; ell(ctx, 10.6, -27.2, 2.4, 1.2, -0.3); ctx.fill();
+    eye(ctx, 13.2, -25.8, 1.05);
+    // a floppy ear
+    ctx.fillStyle = D; ell(ctx, 8.6, -24, 2.3, 4.8, 0.3); ctx.fill();
+  } };
+
+  /* a ginger tabby cat, sitting, tail curled round its feet */
+  A.cat = { w: 26, s: 1.35, draw: function (ctx, t) {
+    floorShadow(ctx, 10);
+    var C = '#E2903C', D = '#B8641E', L = '#F6E6CC', flick = Math.sin(t * 1.8) * 0.8;
+    // the haunch and body
+    ctx.fillStyle = C; ell(ctx, -3, -6, 7.4, 6.4); ctx.fill();
+    ell(ctx, 0, -11, 6, 8.6, 0.12); ctx.fill();
+    ctx.fillStyle = L; ell(ctx, 3.6, -11.4, 3.4, 6.4, 0.15); ctx.fill();
+    // stripes
+    ln(ctx, D, 1);
+    [[-8, -9, -5.6, -4], [-6.4, -12, -3.6, -7.6], [-3.6, -15.6, -1.8, -11.4]].forEach(function (s) { ctx.beginPath(); ctx.moveTo(s[0], s[1]); ctx.quadraticCurveTo(s[0] + 2.4, s[1] + 1.4, s[2], s[3]); ctx.stroke(); });
+    // the front legs and paws
+    ln(ctx, C, 2.5); sg(ctx, 3, -9, 3.4, -1); sg(ctx, 5.6, -9, 6.2, -1);
+    ctx.fillStyle = L; ell(ctx, 3.8, -0.9, 1.7, 1); ctx.fill(); ell(ctx, 6.6, -0.9, 1.7, 1); ctx.fill();
+    // the head: ears, a cream muzzle, green eyes
+    ctx.fillStyle = C; tri(ctx, 0.6, -22, 1.2, -28.6, 4.6, -23.4); ctx.fill(); tri(ctx, 5, -23.6, 8.4, -28.4, 9.2, -21.8); ctx.fill();
+    ctx.fillStyle = '#F2B8B0'; tri(ctx, 1.6, -22.6, 2, -26.6, 4, -23.4); ctx.fill(); tri(ctx, 6, -23.4, 8.2, -26.6, 8.6, -22.4); ctx.fill();
+    ctx.fillStyle = C; circ(ctx, 5, -19.6, 5.4); ctx.fill();
+    ln(ctx, D, 0.8); sg(ctx, 3.4, -24.4, 3.8, -22.4); sg(ctx, 5.4, -24.8, 5.6, -22.6); sg(ctx, 7.2, -24.2, 7, -22.4);
+    ctx.fillStyle = L; ell(ctx, 8.6, -17.8, 2.6, 2); ctx.fill();
+    ctx.fillStyle = '#E07A8A'; tri(ctx, 9.4, -19.4, 11, -19.4, 10.2, -18.2); ctx.fill();
+    ctx.fillStyle = '#8CC63A'; ell(ctx, 7.4, -20.6, 1.15, 1.3); ctx.fill();
+    ctx.fillStyle = '#17141C'; ell(ctx, 7.6, -20.6, 0.35, 1.05); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.9)'; circ(ctx, 7.9, -21.2, 0.3); ctx.fill();
+    ln(ctx, 'rgba(255,255,255,0.85)', 0.2);
+    sg(ctx, 9.4, -17.6, 13.6, -18.4); sg(ctx, 9.4, -17.2, 13.6, -16.6); sg(ctx, 9.2, -16.8, 12.8, -15.4);
+    // the tail, curled round the front
+    ln(ctx, C, 2.6);
+    ctx.beginPath(); ctx.moveTo(-9, -2); ctx.quadraticCurveTo(-6, 1.2, 1, 0.6); ctx.quadraticCurveTo(7, 0, 9.6 + flick * 0.4, -2.4 - flick); ctx.stroke();
+    ln(ctx, D, 2.6); sg(ctx, 8.6 + flick * 0.3, -1.6 - flick * 0.8, 9.6 + flick * 0.4, -2.4 - flick);
+  } };
+
+  /* a golden hamster, cheeks full */
+  A.hamster = { w: 20, s: 1.7, draw: function (ctx, t) {
+    floorShadow(ctx, 8);
+    var C = '#E0A35A', L = '#F7ECDC', twitch = Math.sin(t * 10) > 0.6 ? 0.3 : 0;
+    ctx.fillStyle = '#F2B8B0'; ell(ctx, -4, -0.5, 1.6, 0.8); ctx.fill(); ell(ctx, 5, -0.5, 1.6, 0.8); ctx.fill();
+    ctx.fillStyle = C; ell(ctx, -0.6, -6.4, 8.6, 6.4); ctx.fill();
+    ctx.fillStyle = shade(C, -0.1); ell(ctx, -2.6, -9.6, 5, 2.4, -0.1); ctx.fill();
+    ctx.fillStyle = L; ell(ctx, 2, -3.2, 5.6, 3.2); ctx.fill();
+    // the head and a puffed-out cheek
+    ctx.fillStyle = C; ell(ctx, 6, -8.4, 4.6, 4.2); ctx.fill();
+    ctx.fillStyle = L; circ(ctx, 6.6, -6.2, 3.3); ctx.fill();
+    ctx.fillStyle = '#D8946A'; circ(ctx, 3.4, -12.6, 1.9); ctx.fill();
+    ctx.fillStyle = '#F2B8B0'; circ(ctx, 3.4, -12.6, 1.05); ctx.fill();
+    eye(ctx, 7.8, -9.8, 1.05);
+    ctx.fillStyle = '#E87A8A'; circ(ctx, 10.4, -8 - twitch, 0.7); ctx.fill();
+    ln(ctx, 'rgba(120,90,60,0.6)', 0.18); sg(ctx, 10, -7.6, 13, -8.4); sg(ctx, 10, -7.2, 13, -6.6);
+    // tiny front paws holding a sunflower seed
+    ctx.fillStyle = '#2A2626'; ell(ctx, 9.4, -4.4, 0.9, 1.6, 0.5); ctx.fill();
+    ln(ctx, '#E8E2D6', 0.25); sg(ctx, 9, -5.4, 9.8, -3.4);
+    ctx.fillStyle = '#F2B8B0'; ell(ctx, 8.4, -4, 0.9, 0.7); ctx.fill(); ell(ctx, 10.2, -3.8, 0.9, 0.7); ctx.fill();
+  } };
+
+  /* a guinea pig in three colours */
+  A.guineapig = { w: 26, s: 1.45, draw: function (ctx, t) {
+    floorShadow(ctx, 11);
+    ctx.fillStyle = '#E8A8A0'; ell(ctx, -6, -0.4, 1.6, 0.8); ctx.fill(); ell(ctx, 6.4, -0.4, 1.6, 0.8); ctx.fill();
+    ctx.save();
+    ell(ctx, 0, -6.4, 12, 6.6); ctx.clip();
+    ctx.fillStyle = '#F6F1E8'; ctx.fillRect(-13, -14, 26, 15);
+    ctx.fillStyle = '#D9822B'; ell(ctx, -7, -7.6, 6.4, 6); ctx.fill();
+    ctx.fillStyle = '#2E2624'; ell(ctx, 1.4, -10.4, 4, 3.6); ctx.fill();
+    ctx.fillStyle = '#D9822B'; ell(ctx, 9.6, -9, 4, 4.6); ctx.fill();
+    ctx.fillStyle = '#F6F1E8'; ell(ctx, 7.4, -4, 3.2, 3.2); ctx.fill();
+    var sh = ctx.createLinearGradient(0, -13, 0, 0); sh.addColorStop(0, 'rgba(255,255,255,0.18)'); sh.addColorStop(1, 'rgba(0,0,0,0.14)');
+    ctx.fillStyle = sh; ctx.fillRect(-13, -14, 26, 15);
+    ctx.restore();
+    // fur at the back, a petal ear, the face
+    ln(ctx, 'rgba(120,80,40,0.45)', 0.3);
+    for (var i = 0; i < 6; i++) sg(ctx, -11.6 + i * 0.5, -9 + i * 1.4, -12.8 + i * 0.4, -9.6 + i * 1.6);
+    ctx.fillStyle = '#C98A80'; ell(ctx, 6.8, -12, 2, 1.4, -0.4); ctx.fill();
+    eye(ctx, 9.8, -9.2, 1.05);
+    ctx.fillStyle = '#C98A80'; circ(ctx, 12.4, -6.8, 0.6); ctx.fill();
+    ln(ctx, 'rgba(90,60,40,0.6)', 0.18); sg(ctx, 12, -6.2, 15, -7); sg(ctx, 12, -5.8, 14.8, -5.2);
+  } };
+
+  /* a fancy goldfish with a fan tail, swimming */
+  A.goldfish = { w: 26, s: 1.4, fly: 1, draw: function (ctx, t) {
+    var bob = Math.sin(t * 1.6) * 1.2, fan = Math.sin(t * 4) * 0.12;
+    ctx.fillStyle = 'rgba(25,18,30,0.1)'; ell(ctx, 0, 0, 8, 1.3); ctx.fill();
+    ctx.save(); ctx.translate(0, -15 + bob);
+    // the tail: two soft fans
+    ctx.save(); ctx.translate(-7, 0); ctx.rotate(fan);
+    [-1, 1].forEach(function (s) {
+      ctx.fillStyle = 'rgba(242,128,40,0.72)';
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.bezierCurveTo(-4, s * 2, -11, s * 6, -10, s * 9); ctx.quadraticCurveTo(-6, s * 6.4, -3.6, s * 4.2); ctx.quadraticCurveTo(-2, s * 2, 0, 0); ctx.fill();
+      ln(ctx, 'rgba(255,200,140,0.6)', 0.25); sg(ctx, -1, s * 0.6, -8.6, s * 7.6); sg(ctx, -1, s * 0.4, -6, s * 6.4);
+    });
+    ctx.restore();
+    // the fins on top and underneath
+    ctx.fillStyle = 'rgba(240,120,30,0.85)';
+    ctx.beginPath(); ctx.moveTo(-4, -4.4); ctx.quadraticCurveTo(-1, -9.4 - fan * 6, 3, -4.6); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(-3, 4.2); ctx.quadraticCurveTo(-4, 7.4, -6, 6.6); ctx.quadraticCurveTo(-5, 5, -4.6, 3.6); ctx.fill();
+    // the body, scaled and shining
+    var g = ctx.createLinearGradient(0, -5.6, 0, 5.6); g.addColorStop(0, '#FFB24A'); g.addColorStop(0.55, '#F2801E'); g.addColorStop(1, '#D8641A');
+    ctx.fillStyle = g; ell(ctx, 0, 0, 8.4, 5.6); ctx.fill();
+    ctx.fillStyle = 'rgba(255,214,150,0.75)'; ell(ctx, 1.4, 2.4, 5.4, 2.2); ctx.fill();
+    ln(ctx, 'rgba(200,90,20,0.45)', 0.3);
+    for (var i = 0; i < 4; i++) for (var j = 0; j < 2; j++) { ctx.beginPath(); ctx.arc(-4 + i * 2.4, -1.6 + j * 2.6, 1.3, -1.2, 1.2); ctx.stroke(); }
+    ctx.fillStyle = 'rgba(255,255,255,0.35)'; ell(ctx, 1.4, -3, 3.6, 1, -0.1); ctx.fill();
+    ctx.fillStyle = 'rgba(240,120,30,0.9)'; ell(ctx, 2.6, 2.6, 2.2, 0.9, 0.5 + fan * 2); ctx.fill();
+    ctx.fillStyle = '#FFFFFF'; circ(ctx, 5, -1.2, 1.6); ctx.fill();
+    eye(ctx, 5.2, -1.2, 1.15);
+    ctx.fillStyle = '#C8501A'; circ(ctx, 8.2, 0.6, 0.6); ctx.fill();
+    // bubbles
+    for (var b = 0; b < 3; b++) { var p = (t * 0.5 + b / 3) % 1; ln(ctx, 'rgba(255,255,255,' + (0.8 * (1 - p)) + ')', 0.25); circ(ctx, 9.6 + Math.sin(p * 9) * 0.6, -1 - p * 12, 0.6 + p * 0.6); ctx.stroke(); }
+    ctx.restore();
+  } };
+
+  /* a green budgie, upright, long tail down */
+  A.budgie = { w: 20, s: 1.5, draw: function (ctx, t) {
+    floorShadow(ctx, 6);
+    var bob = Math.sin(t * 2.4) > 0.85 ? -0.5 : 0;
+    ln(ctx, '#B8A0A0', 0.8); sg(ctx, -0.4, -4.4, -0.8, 0); sg(ctx, 2, -4.4, 2.4, 0);
+    ln(ctx, '#B8A0A0', 0.5); sg(ctx, -0.8, 0, 0.8, 0); sg(ctx, 2.4, 0, 4, 0);
+    // the long tail
+    ctx.fillStyle = '#2E5AA8'; poly(ctx, [-2.6, -7, -12.6, 0.4, -11.4, 1.4, -1.2, -4.8]); ctx.fill();
+    ctx.save(); ctx.translate(0, bob);
+    // the body: bright green, paler at the front
+    ctx.fillStyle = '#6EBA3A'; ell(ctx, 0, -10.4, 5.6, 7.6, 0.22); ctx.fill();
+    ctx.fillStyle = '#92D25A'; ell(ctx, 1.6, -8.4, 3.6, 5.6, 0.22); ctx.fill();
+    // the wing: yellow with black scallops
+    ctx.fillStyle = '#DCD66A'; ell(ctx, -2.6, -11.6, 3, 5.8, 0.4); ctx.fill();
+    ln(ctx, '#2A2A22', 0.4);
+    for (var r = 0; r < 4; r++) { ctx.beginPath(); ctx.moveTo(-4.6 + r * 0.9, -15.4 + r * 2.4); ctx.quadraticCurveTo(-3.2 + r * 0.9, -14 + r * 2.4, -1.4 + r * 0.9, -15 + r * 2.4); ctx.stroke(); }
+    ctx.fillStyle = '#2E5AA8'; ell(ctx, -4.2, -6.6, 1.4, 2.4, 0.5); ctx.fill();
+    // the head: a yellow face, barred at the back, a blue cere over the beak
+    ctx.fillStyle = '#F2E24A'; circ(ctx, 3, -19, 4.4); ctx.fill();
+    ln(ctx, '#2A2A22', 0.35);
+    for (var k = 0; k < 4; k++) { ctx.beginPath(); ctx.arc(1 - k * 0.2, -21.6 + k * 1.4, 2.2, Math.PI * 0.9, Math.PI * 1.5); ctx.stroke(); }
+    ctx.fillStyle = '#1E1E26'; circ(ctx, 4.6, -15.4, 0.55); ctx.fill(); circ(ctx, 6.2, -15.6, 0.5); ctx.fill();
+    eye(ctx, 4.8, -19.8, 0.95);
+    ctx.fillStyle = '#5A8AD8'; ell(ctx, 6.6, -20.2, 1.2, 0.8); ctx.fill();
+    ctx.fillStyle = '#E8C29A'; ctx.beginPath(); ctx.moveTo(6.4, -19.6); ctx.quadraticCurveTo(8.6, -19.4, 7.6, -16.8); ctx.quadraticCurveTo(6.8, -17.6, 6, -18.4); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  } };
+
+  /* a tortoise, head out, in no hurry */
+  A.tortoise = { w: 34, s: 1.25, draw: function (ctx, t) {
+    floorShadow(ctx, 15);
+    var nod = Math.sin(t * 0.7) * 0.6;
+    var S = '#9C9A66';
+    // stubby legs
+    [[-9, 0], [7.6, 0], [-5, 0.6], [11, 0.6]].forEach(function (l, i) { ctx.fillStyle = i > 1 ? S : shade(S, -0.15); ell(ctx, l[0], -2 + l[1], 2.8, 2.6); ctx.fill(); });
+    ctx.fillStyle = shade(S, -0.1); tri(ctx, -13, -3, -16, -1.6, -12.4, -1); ctx.fill();
+    // the neck and head, nodding
+    ln(ctx, S, 3.6); ctx.beginPath(); ctx.moveTo(8, -4.6); ctx.quadraticCurveTo(12, -5.6, 14.4, -8 + nod); ctx.stroke();
+    ctx.fillStyle = '#A8A470'; ell(ctx, 16, -8.6 + nod, 3.8, 2.8, -0.1); ctx.fill();
+    eye(ctx, 17.2, -9.6 + nod, 0.85);
+    ln(ctx, '#5E5A3A', 0.35); ctx.beginPath(); ctx.moveTo(19.4, -8 + nod); ctx.quadraticCurveTo(18, -7 + nod, 16.4, -7.4 + nod); ctx.stroke();
+    // the shell: a dome of plates, each with a paler middle
+    var g = ctx.createLinearGradient(0, -17, 0, -2); g.addColorStop(0, '#9A7A44'); g.addColorStop(1, '#5E4A2A');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(-1, -3.4, 13, 12.6, 0, Math.PI, TAU); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#6E5430'; rr(ctx, -14.4, -4.6, 26.8, 2.8, 1.4); ctx.fill();
+    ln(ctx, '#4A3820', 0.4); for (var m = 0; m < 8; m++) sg(ctx, -12.6 + m * 3.3, -4.6, -12.6 + m * 3.3, -1.8);
+    ctx.save(); ctx.beginPath(); ctx.ellipse(-1, -3.4, 13, 12.6, 0, Math.PI, TAU); ctx.closePath(); ctx.clip();
+    ln(ctx, '#4A3820', 0.6);
+    [[-1, -12.4], [-7.6, -8.6], [5.6, -8.6], [-12.4, -5], [10.4, -5], [-1, -6]].forEach(function (p) {
+      ctx.fillStyle = '#C9A45A'; ell(ctx, p[0], p[1], 2.2, 1.6); ctx.fill();
+      ctx.beginPath();
+      for (var k = 0; k < 6; k++) { var a = k * Math.PI / 3; ctx.lineTo(p[0] + Math.cos(a) * 4, p[1] + Math.sin(a) * 3); }
+      ctx.closePath(); ctx.stroke();
+    });
+    ctx.restore();
+    ctx.fillStyle = 'rgba(255,255,255,0.15)'; ell(ctx, -4, -13, 5, 1.6, -0.2); ctx.fill();
+  } };
+
   /* ---------- beach and coast ---------- */
 
   A.seagull = { w: 34, s: 1.2, draw: function (ctx, t) {
@@ -847,7 +1054,6 @@
     'Dance Studio': { wall: ['panels', '#E6E2F2'], floor: ['boards', '#D9B88A'], back: [['mirror', 0.26, { y: 0.45 }], ['barre', 0.5, { y: 0.62 }], ['notes', 0.62]], rear: [['spotlight', 0.5]] },
     'Butterfly Ballroom': { wall: ['damask', '#5A3E8A', '#6E52A0'], floor: ['marble', '#E8E0F0'], back: [['curtains', 0.5, { c: '#8A2A5A' }], ['chandelier', 0.5, { y: 0.38 }]], light: 'warm' },
     'Garden Shed': { wall: ['planks', '#8A6A48'], floor: ['boards', '#6E5034'], win: { x: 0.68, y: 0.46, w: 0.2, h: 0.14, view: 'garden', frame: '#C9B08A' }, back: [['shelf', 0.3, { y: 0.45, items: ['pot', 'pot', 'jar'], wood: '#5A4030' }]], rear: [['tools', 0.17], ['can', 0.83]] },
-    'Kitchen Table': { wall: ['tiles', '#E4EEF2', '#FFFFFF'], floor: ['checker', '#E8E4DC', '#7A8A9A'], win: { x: 0.7, y: 0.45, w: 0.22, h: 0.14, view: 'garden', curtains: '#D8432F' }, back: [['pans', 0.3, { y: 0.38 }]], rear: [['table', 0.5, { on: ['bread', 'milk', 'cup'], cloth: '#E8F0F8', w: 34 }], ['chair', 0.15, { dir: 1 }]] },
     'Reading Nook': { wall: ['damask', '#5E7A6A', '#6E8A7A'], floor: ['carpet', '#7A4A3A'], rear: [['rug', 0.5, { c: '#B8483A' }], ['bookshelf', 0.2, { h: 44 }], ['armchair', 0.72, { c: '#B5523D', cushion: '#F2C14E' }], ['lamp', 0.9]], light: 'warm' },
     'Little Post Office': { wall: ['stripes', '#EDE3D0', '#E2D4BC'], floor: ['boards', '#A8805A'], back: [['sign', 0.5, { y: 0.34, text: 'POST OFFICE', c: '#C8202A', w: 40 }], ['letters', 0.62, { y: 0.45 }]], rear: [['counter', 0.62, { w: 40, c: '#8A5A36', on: ['parcel', 'letter'] }], ['post', 0.16]] },
     'Christmas Fireside': { wall: ['damask', '#7A2A2A', '#8E3636'], floor: ['carpet', '#5A2020'], rear: [['rug', 0.5, { c: '#2E6A4A' }], ['fireplace', 0.68, { stockings: 1 }], ['tree', 0.2], ['presents', 0.38]], light: 'night' },
@@ -861,7 +1067,6 @@
     'Bakery': { wall: ['tiles', '#F6F0E8', 'rgba(200,180,160,0.5)'], floor: ['checker', '#E8E0D4', '#8A6A4A'], back: [['sign', 0.5, { y: 0.34, text: 'BAKERY', c: '#8A5A36' }], ['shelf', 0.5, { y: 0.46, w: 50, items: ['bread', 'bread', 'bread', 'bread'] }]], rear: [['counter', 0.5, { w: 56, c: '#B8865A', on: ['bread', 'cake', 'bread'] }]] },
     'Library': { wall: ['panels', '#5A3A2A'], floor: ['boards', '#7A5236'], rear: [['rug', 0.5, { c: '#7A2A3A' }], ['bookshelf', 0.17, { h: 48 }], ['bookshelf', 0.83, { h: 48, seed: 9 }], ['lamp', 0.66]], light: 'warm' },
     'Acorn Treehouse': { wall: ['planks', '#9A6A40'], floor: ['boards', '#7A5236'], win: { x: 0.5, y: 0.47, w: 0.24, shape: 'round', view: 'forest', frame: '#6E4528' }, back: [['acorns', 0.5]], rear: [['lantern', 0.16], ['nutpile', 0.82]] },
-    'Cosy Kitchen': { wall: ['brick', '#E8DCC2', '#D2C2A2'], floor: ['stone', '#B8AC9A'], win: { x: 0.3, y: 0.45, w: 0.2, h: 0.14, view: 'garden', curtains: '#7A9A5A' }, back: [['pans', 0.72, { y: 0.38 }]], rear: [['stove', 0.74, { c: '#2E5A3A', pan: 1 }], ['table', 0.24, { on: ['bread', 'cup'], w: 16 }]] },
     'Cottage Bedroom': { wall: ['floral', '#F2E6D8', '#C9708A'], floor: ['boards', '#B88A5E'], win: { x: 0.3, y: 0.45, w: 0.2, h: 0.14, view: 'night', curtains: '#7A9A5A' }, rear: [['rug', 0.5, { c: '#C9708A' }], ['bed', 0.7, { c: '#C9708A', w: 32 }]], light: 'warm' },
     'Fireside Armchair': { wall: ['damask', '#6E4A3A', '#7E5A48'], floor: ['carpet', '#5A2E26'], rear: [['rug', 0.5, { c: '#A86A3A' }], ['fireplace', 0.26], ['armchair', 0.74, { c: '#2E5A4A', cushion: '#E8B33A' }]], light: 'night' },
     // the beach and coast
@@ -919,7 +1124,6 @@
     'Grand Ballroom': { wall: ['damask', '#2E3A6A', '#3E4A7A'], floor: ['marble', '#EDE6D8'], back: [['curtains', 0.5, { c: '#A3263A' }], ['chandelier', 0.5, { y: 0.37 }]], light: 'warm' },
     'Royal Palace': { wall: ['damask', '#8A1E2A', '#9A2E3A'], floor: ['marble', '#F2E8D6'], back: [['banner', 0.22, { y: 0.38 }], ['banner', 0.78, { y: 0.38 }]], rear: [['runner', 0.5, { c: '#A3263A' }], ['pillar', 0.2, { c: '#F2E8D6' }], ['pillar', 0.8, { c: '#F2E8D6' }], ['throne', 0.5]], light: 'warm' },
     'Pond Cabin': { wall: ['logs', '#8A6A48'], floor: ['boards', '#7A5A3A'], win: { x: 0.3, y: 0.45, w: 0.22, h: 0.15, view: 'lake', frame: '#5A3A22' }, rear: [['rug', 0.5, { c: '#5A8A6A' }], ['reeds', 0.8]] },
-    'Kitchen': { wall: ['tiles', '#E2F0E4', '#FFFFFF'], floor: ['checker', '#F2F2EE', '#5A8A6A'], win: { x: 0.7, y: 0.45, w: 0.2, h: 0.14, view: 'garden', curtains: '#5A8A6A' }, back: [['pans', 0.28, { y: 0.38 }]], rear: [['stove', 0.24, { c: '#5A8A6A', pan: 1 }], ['table', 0.76, { on: ['bread', 'cup'], w: 18 }]] },
     'Laundry Room': { wall: ['tiles', '#E6EEF6', '#FFFFFF'], floor: ['tiles', '#D8E2EC'], back: [['washing', 0.5, { y: 0.36 }]], rear: [['washer', 0.2], ['basket', 0.82]] },
     // the zoo
     'Safari Tent': { wall: ['canvas', '#D8C29A', '#C9B080'], floor: ['boards', '#A8805A'], back: [['binoculars', 0.78, { y: 0.5 }]], rear: [['rug', 0.5, { c: '#B8642A' }], ['chest', 0.2], ['lantern', 0.86]] },
@@ -932,22 +1136,60 @@
     'Treehouse': { wall: ['planks', '#9A6A40'], floor: ['boards', '#7A5236'], win: { x: 0.28, y: 0.46, w: 0.2, shape: 'round', view: 'jungle', frame: '#6E4528' }, rear: [['lantern', 0.85]] },
     'Palace Garden': { wall: ['garden', '#8FC4EA', '#4E8A44'], floor: ['stone', '#D8D0C0'], rear: [['fountain', 0.78], ['plant', 0.14, { s: 1.2, flower: '#E84A6A' }]] },
     'Living Room': { wall: ['floral', '#E6D6C2', '#A8705A'], floor: ['carpet', '#8A6A4A'], back: [['picture', 0.3, { y: 0.42 }]], rear: [['rug', 0.5, { c: '#A8402A' }], ['sofa', 0.5, { c: '#4E7FB8', w: 52 }], ['lamp', 0.92]] },
-    'Big Kitchen': { wall: ['tiles', '#F2EEE6', '#FFFFFF'], floor: ['checker', '#EDE6DA', '#4A5A6A'], back: [['pans', 0.5, { y: 0.38 }]], rear: [['stove', 0.15, { c: '#2E4A6A', pan: 1 }], ['table', 0.86, { on: ['bread', 'cup'], w: 16 }]] },
     'Bubble Bathhouse': { wall: ['tiles', '#5AB4B8', '#7CC6C8'], floor: ['tiles', '#E8E0D0'], back: [['bubbles', 0.5]], rear: [['pool', 0.5, { from: 4, c: '#7AD0E0', edgeC: '#E8E0D0' }], ['pillar', 0.2, { c: '#F2EEE6' }], ['pillar', 0.8, { c: '#F2EEE6' }]], front: [['waterfront', 0.5, { from: 9 }]], y: 12 },
     'High Loft': { wall: ['planks', '#D8C3A0'], ceil: ['attic', '#B8A280'], floor: ['boards', '#A8805A'], win: { x: 0.24, y: 0.5, w: 0.16, h: 0.18, view: 'sky', frame: '#8A6A48' }, rear: [['boxes', 0.17], ['plant', 0.88, { s: 1.2 }]] },
-    'Treetop Kitchen': { wall: ['leaves', '#5E9A4A', '#7AB45A'], floor: ['boards', '#8A6A48'], rear: [['counter', 0.2, { w: 28, c: '#8A6A48', on: ['jar', 'pot'] }], ['stove', 0.84, { c: '#3E7A5A' }]] },
     'Tall Library': { wall: ['panels', '#5A3A2A'], floor: ['boards', '#7A5236'], rear: [['bookshelf', 0.16, { h: 66, w: 16 }], ['bookshelf', 0.84, { h: 66, w: 16, seed: 12 }]], light: 'warm' },
     'Stargazing Tower': { wall: ['night', '#141C40'], ceil: ['tower'], floor: ['boards', '#3A3A4A'], back: [['moon', 0.26, { y: 0.4, sky: '#141C40' }]], rear: [['telescope', 0.8]], light: 'night' },
     'Igloo': { wall: ['ice', '#DDEEF8'], ceil: ['dome'], floor: ['snow', '#EEF4FA'], rear: [['lantern', 0.8], ['fishpile', 0.22]], light: 'cool' },
     'Fish Kitchen': { wall: ['tiles', '#DCEEF4', '#FFFFFF'], floor: ['checker', '#EEF2F4', '#4A6A8A'], back: [['shelf', 0.3, { y: 0.45, items: ['fish', 'jar', 'fish'] }]], rear: [['counter', 0.72, { w: 38, c: '#9AB0C4', on: ['fish', 'fish'] }], ['stove', 0.18, { c: '#4A6A8A', pan: 1 }]] },
     'Ice Palace': { wall: ['ice', '#BFE0F4'], floor: ['ice', '#DDEEFA'], back: [['snowflakes', 0.5], ['chandelier', 0.5, { y: 0.37 }]], rear: [['pillar', 0.21, { c: '#DDEEFA' }], ['pillar', 0.79, { c: '#DDEEFA' }]], light: 'cool' },
     'Burrow Den': { wall: ['earth', '#C9A06A', '#B8905A'], floor: ['earth', '#B8905A'], win: { x: 0.7, y: 0.45, w: 0.18, shape: 'round', view: 'desert', frame: '#8A6A48' }, rear: [['rug', 0.5, { c: '#B8642A' }], ['lamp', 0.15]] },
-    'Sandy Kitchen': { wall: ['tiles', '#F2E2C2', '#FFFFFF'], floor: ['tiles', '#E2CCA0'], win: { x: 0.3, y: 0.45, w: 0.2, h: 0.14, view: 'desert', frame: '#FFFFFF' }, rear: [['stove', 0.8, { c: '#C9802A', pan: 1 }], ['table', 0.2, { on: ['cup', 'bread'], w: 16 }]] },
     'Lookout Post': { wall: ['sky', '#9FD0F2'], floor: ['sand', '#E2C98A'], back: [['sun', 0.8, { y: 0.4 }]], rear: [['railing', 0.5, { c: '#8A5A36' }], ['flag', 0.12, { c: '#E74C3C' }]] },
     'Observatory': { wall: ['night', '#18204A'], ceil: ['dome'], floor: ['boards', '#3A3A4A'], rear: [['telescope', 0.76], ['table', 0.18, { on: ['globe', 'book'], w: 14, wood: '#5A4A3A' }]], light: 'night' },
     'Lagoon Lounge': { wall: ['stripes', '#F7E6DA', '#FFF4EC'], floor: ['boards', '#E2C29A'], win: { x: 0.5, y: 0.46, w: 0.36, h: 0.17, view: 'lagoon', frame: '#FFFFFF' }, back: [['palms', 0.5]], rear: [['sofa', 0.5, { c: '#F28AAE', w: 44 }]] },
     'Pink Kitchen': { wall: ['tiles', '#F6D6DE', '#FFFFFF'], floor: ['checker', '#FFF4F6', '#E87A9A'], back: [['pans', 0.3, { y: 0.38 }]], rear: [['stove', 0.78, { c: '#E87A9A', pan: 1 }], ['table', 0.2, { on: ['cake', 'cup'], w: 16, cloth: '#FFFFFF' }]] },
-    'Pool Party': { wall: ['tiles', '#DDF0F8', '#FFFFFF'], floor: ['tiles', '#E8F4F8'], back: [['palms', 0.5], ['bunting', 0.5, { y: 0.36 }]], rear: [['pool', 0.5, { from: 4 }], ['ring', 0.2, { c: '#FF6B6B' }]], front: [['waterfront', 0.5, { from: 10 }]], y: 13 }
+    'Pool Party': { wall: ['tiles', '#DDF0F8', '#FFFFFF'], floor: ['tiles', '#E8F4F8'], back: [['palms', 0.5], ['bunting', 0.5, { y: 0.36 }]], rear: [['pool', 0.5, { from: 4 }], ['ring', 0.2, { c: '#FF6B6B' }]], front: [['waterfront', 0.5, { from: 10 }]], y: 13 },
+
+    // 0.12.0: rooms in place of seven kitchens
+    'Veg Patch': { wall: ['garden', '#9FD0F2', '#4E8A44'], floor: ['earth', '#7A5A3A'], rear: [['vegrows', 0.5], ['tools', 0.1], ['can', 0.9, { c: '#2E6DB4' }]], y: 10 },
+    'Toadstool Cottage': { wall: ['dots', '#C8322A', '#F6EDE0'], ceil: ['dome'], floor: ['earth', '#7A5A3A'], win: { x: 0.74, y: 0.45, w: 0.2, shape: 'round', view: 'forest', frame: '#F6EDE0' }, back: [['shelf', 0.28, { y: 0.45, items: ['acorn', 'jar', 'acorn'], wood: '#6E4528' }]], rear: [['mushrooms', 0.22], ['lantern', 0.8]], light: 'warm' },
+    'Hen House': { wall: ['planks', '#B8865A'], floor: ['straw', '#C9A45A'], back: [['nests', 0.5, { y: 0.5 }]], rear: [['hay', 0.21, { w: 14, h: 9 }], ['hay', 0.8, { w: 12, h: 8 }]], light: 'dusk' },
+    'Umbrella Shop': { wall: ['stripes', '#DDEBF5', '#EEF5FA'], floor: ['checker', '#F2F2EE', '#2E6DB4'], win: { x: 0.74, y: 0.55, w: 0.22, h: 0.13, view: 'rain', frame: '#FFFFFF' }, back: [['sign', 0.5, { y: 0.27, text: 'UMBRELLAS', c: '#2E6DB4', w: 40 }], ['umbrellas', 0.5, { y: 0.42 }]], rear: [['umbrellastand', 0.2], ['counter', 0.76, { w: 28, c: '#7A9AB8', on: ['parcel'] }]], at: 0.46 },
+    'Mud Spa': { wall: ['tiles', '#E8D8C0', '#F6EEE2'], floor: ['tiles', '#E8E0D0'], back: [['sign', 0.5, { y: 0.3, text: 'MUD SPA', c: '#8A5A36', w: 30 }], ['towel', 0.24, { y: 0.4, c: '#5AB4A0' }], ['towel', 0.76, { y: 0.4, c: '#F28AA0' }]], rear: [['pool', 0.5, { from: 4, c: '#8A5A36', edgeC: '#E8E0D0' }]], front: [['waterfront', 0.5, { from: 9, c: 'rgba(110,70,40,0.88)' }]], y: 12 },
+    'Rooftop Garden': { wall: ['sky', '#9FD0F2'], floor: ['boards', '#B88A5E'], back: [['skyline', 0.5], ['lights', 0.5, { y: 0.3 }]], rear: [['railing', 0.5, { c: '#5A5E68' }], ['plant', 0.1, { s: 1.6 }], ['plant', 0.9, { s: 1.4, flower: '#E84A6A' }]] },
+    'Sun Terrace': { wall: ['sky', '#A8D8F6'], floor: ['tiles', '#E8D2A8'], back: [['sun', 0.72, { y: 0.32 }]], rear: [['parasol', 0.26, { c: '#F2C230' }], ['deckchair', 0.76, { c: '#E74C3C' }]], at: 0.5 },
+
+    // 0.12.0: the pets
+    'Boot Room': { wall: ['panels', '#CFDCC8'], floor: ['stone', '#B8AC9A'], back: [['coats', 0.3, { y: 0.4 }], ['picture', 0.78, { y: 0.44, w: 10, h: 8 }]], rear: [['dogbed', 0.28, { c: '#2E6DB4' }], ['wellies', 0.76]], at: 0.56 },
+    'Back Garden': { wall: ['garden', '#9FD0F2', '#4E8A44'], floor: ['grass', '#6AA24A'], rear: [['kennel', 0.26], ['plant', 0.84, { flower: '#F2C230' }]], front: [['ball', 0.8, { d: 14 }]], at: 0.56 },
+    'Dog Show': { wall: ['curtain', '#2A3A6A'], ceil: ['stage', '#A3263A'], floor: ['boards', '#8A5A36'], back: [['bunting', 0.5, { y: 0.3 }], ['rosette', 0.25, { y: 0.46 }]], rear: [['spotlight', 0.5], ['bigtrophy', 0.78]], light: 'warm', at: 0.48 },
+    'Big Comfy Bed': { wall: ['floral', '#ECE4F2', '#9A7AB8'], floor: ['carpet', '#7A5A8A'], win: { x: 0.26, y: 0.42, w: 0.2, h: 0.14, view: 'night', curtains: '#9A7AB8' }, rear: [['bed', 0.52, { c: '#8A6AB8', w: 62 }]], at: 0.6, y: -8.6, light: 'warm' },
+    'Sunny Windowsill': { wall: ['stripes', '#F4E8D8', '#FBF2E6'], floor: ['boards', '#C9A87A'], win: { x: 0.5, y: 0.47, w: 0.44, h: 0.2, view: 'sunny', curtains: '#E2884A' }, rear: [['windowseat', 0.5, { c: '#E2884A', w: 50 }], ['plant', 0.08, { flower: '#E84A6A' }]], y: -10.4, s: 0.95, light: 'warm' },
+    'Airing Cupboard': { wall: ['planks', '#E8DCC8'], floor: ['boards', '#C9A87A'], back: [['towelshelves', 0.5]], rear: [['basket', 0.78]], at: 0.42, light: 'warm' },
+    'Bookshop': { wall: ['stripes', '#EADFCC', '#F2EADA'], floor: ['boards', '#9A7A5A'], back: [['sign', 0.5, { y: 0.27, text: 'BOOKS', c: '#5A3A2A' }]], rear: [['bookshelf', 0.14, { h: 48 }], ['bookshelf', 0.86, { h: 48, seed: 3 }], ['counter', 0.5, { w: 36, c: '#7A5236', on: ['book', 'cup', 'book'] }]], y: -12.4, s: 0.9, light: 'warm' },
+    'Conservatory': { wall: ['glass', '#D6EEDC'], floor: ['tiles', '#E8DCC8'], rear: [['plant', 0.1, { s: 1.6 }], ['plant', 0.9, { s: 1.4, flower: '#E84A6A' }], ['armchair', 0.66, { c: '#C9A06A', cushion: '#5AB4A0' }]], at: 0.4, light: 'warm' },
+    'Cardboard Box Castle': { wall: ['stripes', '#E2E8F4', '#EEF2FA'], floor: ['carpet', '#5A7AA8'], rear: [['boxcastle', 0.5]] },
+    'Sock Drawer': { wall: ['planks', '#D8B88A'], floor: ['boards', '#C9A07A'], rear: [['socks', 0.5]], front: [['drawerfront', 0.5]], y: 8 },
+    'Playroom': { wall: ['dots', '#DDEEFA', '#F6C6D6'], floor: ['carpet', '#5AB4A0'], back: [['picture', 0.72, { y: 0.42 }]], rear: [['blocks', 0.18], ['toytrain', 0.76]], at: 0.46 },
+    'Wheel Gym': { wall: ['panels', '#E2E8EE'], floor: ['tiles', '#C9D2DC'], back: [['mirror', 0.24, { y: 0.44 }], ['sign', 0.66, { y: 0.3, text: 'GYM', c: '#E74C3C', w: 20 }]], rear: [['hamsterwheel', 0.7], ['dumbbells', 0.22]], at: 0.44 },
+    'Popcorn Cinema': { wall: ['night', '#1A1430'], floor: ['carpet', '#2A1E3A'], back: [['screen', 0.5, { y: 0.4, w: 62 }]], rear: [['seats', 0.5]], front: [['popcorn', 0.8, { d: 13 }]], at: 0.44, light: 'night' },
+    'Seed Vault': { wall: ['stone', '#8E8A86', '#6E6A66'], floor: ['stone', '#7E7A76'], back: [['vaultdoor', 0.68, { y: 0.52 }], ['torch', 0.3, { y: 0.48 }]], rear: [['seedpile', 0.26, { s: 1.1 }], ['seedpile', 0.74, { s: 0.8, seed: 9, d: 6 }]], at: 0.46, light: 'warm' },
+    'Straw Cottage': { wall: ['planks', '#D8C08A'], floor: ['straw', '#D8B86A'], win: { x: 0.3, y: 0.45, w: 0.18, shape: 'round', view: 'garden', frame: '#A8804A' }, rear: [['hay', 0.86, { w: 16, h: 10 }], ['hidey', 0.64]], at: 0.4 },
+    'Veg Market': { wall: ['brick', '#B8704A', '#9A5A3A'], ceil: ['awning', '#3E8E5A'], floor: ['stone', '#B8B0A0'], rear: [['vegstall', 0.5]] },
+    'Soft Play': { wall: ['stripes', '#F6E08A', '#FBF0C4'], floor: ['carpet', '#5A8AD0'], rear: [['ballpit', 0.7], ['tunnel', 0.27, { c: '#2ECC71' }]], at: 0.46 },
+    'Hair Salon': { wall: ['tiles', '#F6E6EC', '#FFFFFF'], floor: ['checker', '#FFFFFF', '#2A2A34'], back: [['sign', 0.5, { y: 0.27, text: 'SALON', c: '#C0507A', w: 26 }], ['mirror', 0.3, { y: 0.45 }], ['mirror', 0.7, { y: 0.45 }]], rear: [['salonchair', 0.3], ['hairdryer', 0.85]], at: 0.55 },
+    'Birthday Party': { wall: ['dots', '#F6E0EA', '#F28AA0'], floor: ['boards', '#D9B88A'], back: [['bunting', 0.5, { y: 0.32 }], ['balloons', 0.76, { y: 0.44 }]], rear: [['table', 0.27, { on: ['cake'], cloth: '#FFFFFF', w: 16 }], ['presents', 0.76]], at: 0.52 },
+    'Garden Pond': { wall: ['sea', '#3E7A6A'], floor: ['earth', '#5A4A3A'], back: [['lilypads', 0.5]], rear: [['rocks', 0.5, { c: '#6E7A72' }], ['weeds', 0.3], ['weeds', 0.72, { c: '#4E9A44', s: 0.8 }]], light: 'water' },
+    'Aquarium Castle': { wall: ['sea', '#3E7FB8'], floor: ['sand', '#E2C98A'], rear: [['castleorn', 0.74], ['weeds', 0.14, { c: '#2E8A5A' }], ['shells', 0.42]], at: 0.42, light: 'water' },
+    'Treasure Grotto': { wall: ['sea', '#2E5A8A'], floor: ['sand', '#D8C08A'], back: [['bubbles', 0.5]], rear: [['rocks', 0.5, { c: '#5A6A7A' }], ['chest', 0.64], ['weeds', 0.3, { c: '#3E8A6A', s: 0.9 }]], at: 0.44, light: 'water' },
+    'Underwater Palace': { wall: ['sea', '#2E6A9A'], floor: ['marble', '#CFE6F2'], back: [['chandelier', 0.5, { y: 0.36 }], ['bubbles', 0.5]], rear: [['pillar', 0.2, { c: '#BFE0F4' }], ['pillar', 0.8, { c: '#BFE0F4' }], ['weeds', 0.36, { c: '#3E9A7A', s: 0.7 }], ['weeds', 0.64, { c: '#3E9A7A', s: 0.6 }]], light: 'water' },
+    'Window Perch': { wall: ['stripes', '#E2F0E4', '#F2F8F2'], floor: ['boards', '#C9A87A'], win: { x: 0.5, y: 0.46, w: 0.42, h: 0.2, view: 'garden', curtains: '#5AB45A' }, back: [['bell', 0.82, { y: 0.42 }]], rear: [['perchstand', 0.5, { h: 22 }], ['plant', 0.1]], y: -15.8 },
+    'Dressing Table': { wall: ['floral', '#F4E6EE', '#D88AAA'], floor: ['carpet', '#B87A9A'], back: [['mirror', 0.58, { y: 0.48 }]], rear: [['dresser', 0.5]], at: 0.36, y: -11.8 },
+    'Swing Park': { wall: ['garden', '#9FD0F2', '#5A9A4A'], floor: ['grass', '#6AA24A'], rear: [['swings', 0.5]] },
+    'Tropical Treehouse': { wall: ['planks', '#9A6A40'], floor: ['boards', '#7A5236'], win: { x: 0.72, y: 0.45, w: 0.22, shape: 'round', view: 'jungle', frame: '#6E4528' }, back: [['palms', 0.5]], rear: [['perchstand', 0.4, { h: 16 }], ['plant', 0.9, { s: 1.3, flower: '#F2C230' }]], at: 0.4, y: -9.8, light: 'warm' },
+    'Rockery': { wall: ['garden', '#9FD0F2', '#4E8A44'], floor: ['stone', '#A8A094'], rear: [['stones', 0.72]], at: 0.42 },
+    'Race Track': { wall: ['sky', '#9FD0F2'], floor: ['grass', '#6AA24A'], back: [['bunting', 0.5, { y: 0.32 }]], rear: [['finish', 0.7]], at: 0.42 },
+    'Strawberry Picnic': { wall: ['garden', '#9FD0F2', '#4E8A44'], floor: ['grass', '#6AA24A'], rear: [['picnic', 0.5]], y: 10 }
   };
   /* a soft light over the whole room */
   function lightUp(ctx, W, H, kind, t) {
