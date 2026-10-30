@@ -5,7 +5,7 @@
   'use strict';
   var WC = window.WC;
   var RU = WC.rules, SKY = WC.sky, AN = WC.animals, SP = WC.spotter, SK = WC.seek;
-  var VERSION = '0.13.0';
+  var VERSION = '0.13.1';
   var TEST = /[?&]test=1(&|$)/.test(location.search);
   var KEY = 'frzfrm-wc-state-1';
   var WX_KEY = 'frzfrm-wc-weather-1';
@@ -1784,14 +1784,16 @@
      straight after. Each animal can be caught once every 30 minutes. Its first catch moves into its everyday home;
      after that, every catch turns up in one of its five homes. */
   function freshAnimals() { return { book: {}, day: null, rows: {} }; }
-  /* Hide & seek: finds that earned points today (d is the day), every find ever, and each animal's quickest find in ms */
-  function freshSeek() { return { d: '', n: 0, total: 0, best: {} }; }
+  /* Hide & seek: finds that earned points today (d is the day), every find ever, each animal's quickest find in ms, and
+     how hard the pictures are now (skill, 0 to 1: it goes up with quick finds and down with hints) */
+  function freshSeek() { return { d: '', n: 0, total: 0, best: {}, skill: 0.5 }; }
   function cleanSeek(k) {
     var out = freshSeek();
     if (!k || typeof k !== 'object' || Array.isArray(k)) return out;
     if (typeof k.d === 'string') out.d = k.d;
     if (typeof k.n === 'number' && isFinite(k.n)) out.n = Math.max(0, Math.floor(k.n));
     if (typeof k.total === 'number' && isFinite(k.total)) out.total = Math.max(0, Math.floor(k.total));
+    if (typeof k.skill === 'number' && isFinite(k.skill)) out.skill = Math.max(0, Math.min(1, k.skill));
     if (k.best && typeof k.best === 'object') Object.keys(k.best).forEach(function (id) { if (AN && AN.type(id) && typeof k.best[id] === 'number' && k.best[id] > 0) out.best[id] = k.best[id]; });
     return out;
   }
@@ -2244,7 +2246,19 @@
     el.textContent = left === SEEK_DAY ? 'Find the animal hiding in a busy picture. The first ' + SEEK_DAY + ' finds each day earn points.' :
       left ? 'Find the animal hiding in a busy picture. ' + left + ' more ' + plural(left, 'find') + ' earn points today.' : 'Today’s points are all found. You can keep playing for fun.';
   }
-  function seekPoints(ms, hint) { var p = ms <= 15000 ? 6 : ms <= 45000 ? 4 : 2; return hint ? Math.max(1, Math.round(p / 2)) : p; }
+  function seekPoints(ms, hint) { var p = ms <= 20000 ? 6 : ms <= 60000 ? 4 : 2; return hint ? Math.max(1, Math.round(p / 2)) : p; }
+  var SEEK_WORDS = ['Easy', 'Medium', 'Tricky', 'Hard', 'Very hard'];
+  function seekWord() { return SEEK_WORDS[Math.min(4, Math.floor(S.seek.skill * 5))]; }
+  /* quick finds make the next picture harder; slow ones, hints and Show me make it a little easier */
+  function seekLearn(ms, hint, shown) {
+    var k = S.seek.skill;
+    if (shown) k -= 0.12;
+    else if (hint) k -= 0.06;
+    else if (ms <= 12000) k += 0.1;
+    else if (ms <= 25000) k += 0.05;
+    else if (ms > 60000) k -= 0.06;
+    S.seek.skill = Math.round(Math.max(0, Math.min(1, k)) * 100) / 100;
+  }
   function clock(ms) { var s = Math.floor(ms / 1000); return Math.floor(s / 60) + ':' + pad(s % 60); }
   function secs1(ms) { return (Math.round(ms / 100) / 10).toFixed(1) + ' seconds'; }
   function openSeek() {
@@ -2257,7 +2271,7 @@
     var old = R.seek || {}, recent = (old.recent || []).slice(-8), rand = Math.random, round = null;
     stopSeek();
     for (var i = 0; i < 6 && !round; i++) {
-      var p = SK.pick(rand, recent), ph = SK.photo(p.id, p.scene, p.layout), sp = ph && SK.hide(ph, rand);
+      var p = SK.pick(rand, recent), ph = SK.photo(p.id, p.scene, p.layout), sp = ph && SK.hide(ph, rand, S.seek.skill);
       if (sp) round = { ph: ph, sp: sp };
     }
     if (!round) {
@@ -2269,7 +2283,7 @@
     var t = AN.type(round.ph.id), best = S.seek.best[t.id];
     R.seek = { ph: round.ph, sp: round.sp, start: now(), found: false, hint: null, misses: [], recent: recent, timer: null, fx: null };
     $('k-title').textContent = 'Find the ' + t.name;
-    $('k-where').textContent = SK.sceneName(round.ph.scene) + (best ? ' · your best: ' + secs1(best) : '');
+    $('k-where').textContent = SK.sceneName(round.ph.scene) + ' · ' + seekWord() + (best ? ' · best ' + secs1(best).replace(' seconds', ' s') : '');
     $('k-msg').textContent = '';
     var who = $('k-who'), wctx = who.getContext('2d');
     wctx.clearRect(0, 0, who.width, who.height);
@@ -2340,6 +2354,7 @@
     clearInterval(K1.timer); K1.timer = null;
     seekTick();
     var t = AN.type(K1.ph.id), day = seekToday(), pts = 0, before = RU.levelFor(S.points), best = S.seek.best[t.id], quickest = false;
+    seekLearn(K1.ms, !!K1.hint, shown);
     if (!shown) {
       S.seek.total += 1;
       if (!best || K1.ms < best) { S.seek.best[t.id] = K1.ms; quickest = !!best; }

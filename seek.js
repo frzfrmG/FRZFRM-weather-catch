@@ -174,7 +174,7 @@
     ctx.fillStyle = 'rgba(255,255,255,0.4)'; ell(ctx, -1 * v, -3 * v, 1.2 * v, 0.5 * v); ctx.fill();
   };
   I.lollipop = function (ctx, v, c, c2) {
-    pen(ctx, '#F4F0E8', 0.7 * v); sg(ctx, 0, 0, 0, -5.4 * v);
+    pen(ctx, '#D9CFBE', 0.7 * v); sg(ctx, 0, 0, 0, -5.4 * v);
     ctx.fillStyle = c; circ(ctx, 0, -7.6 * v, 2.8 * v); ctx.fill();
     pen(ctx, c2 || '#FFFFFF', 0.6 * v); ctx.beginPath();
     for (var i = 0; i < 26; i++) { var a = i * 0.5, r = i * 0.1 * v; ctx.lineTo(Math.cos(a) * r, -7.6 * v + Math.sin(a) * r); }
@@ -446,6 +446,7 @@
     bush: ['savanna', 'jungle', 'flowers'], grass: ['savanna', 'rocks', 'farm', 'flowers'], bottle: ['farm', 'party'], haybale: ['farm']
   };
   var OWN_COLOURS = { rubberduck: 1 };
+  var TALL = { lollipop: 1, reed: 1, boot: 1, teddy: 1, balloon: 1, flower: 1, partyhat: 1, bottle: 1, jungleleaf: 1, seaweed: 1, grass: 1, sock: 1, shirt: 1 };
 
   /* ---------- the animals' shapes ----------
      Measured once from each drawing: its outline box in its own units, and its main colours */
@@ -488,20 +489,23 @@
     var sc = SCENES[sceneId], wh = WHERE[id], sh = shape(id);
     if (!sc || !wh || !sh) return null;
     var r = rnd(hash(id + '|' + sceneId + '|' + layout));
-    var kinds = sc.items.concat((wh.like || []).filter(function (it) { return !FIT[it[0]] || FIT[it[0]].indexOf(sceneId) !== -1; })), total = 0;
+    var likes = (wh.like || []).filter(function (it) { return !FIT[it[0]] || FIT[it[0]].indexOf(sceneId) !== -1; }).map(function (it) { return [it[0], it[1] * 1.5]; });
+    var kinds = sc.items.concat(likes), total = 0;
     kinds.forEach(function (it) { total += it[1]; });
     var palette = function (it) { for (var j = 0; j < sc.items.length; j++) if (sc.items[j][0] === it) return sc.items[j][2]; return null; };
-    var y0 = sc.gy * HU + 3, items = [], step = 8.4 + r() * 0.8;
+    var y0 = sc.gy * HU + 3, items = [], step = 7.6 + r() * 0.6;
     for (var gy = y0; gy < HU + 4; gy += step * 0.8) for (var gx = -2; gx < 104; gx += step) {
       if (r() < 0.07) continue;
-      var x = gx + (r() - 0.5) * step * 0.9, y = Math.max(y0 - 1, gy + (r() - 0.5) * step * 0.7);
-      var depth = Math.max(0, Math.min(1, (y - y0) / (HU - y0)));
+      var x = gx + (r() - 0.5) * step * 0.9, y = gy + (r() - 0.5) * step * 0.7;
       var pickN = r() * total, kind = kinds[0][0];
       for (var j = 0; j < kinds.length; j++) { pickN -= kinds[j][1]; if (pickN <= 0) { kind = kinds[j][0]; break; } }
+      // tall things stand a little further down, so nothing floats against the wall or the sky
+      y = Math.max(y0 + (TALL[kind] ? 5 : 1), y);
+      var depth = Math.max(0, Math.min(1, (y - y0) / (HU - y0)));
       var pal = palette(kind) || sh.cols, c = pal[Math.floor(r() * pal.length)], c2 = null;
       var mix = r(), mix2 = r();
-      if (!OWN_COLOURS[kind] && mix < 0.42) c = sh.cols[Math.floor(r() * Math.min(3, sh.cols.length))];
-      if (!OWN_COLOURS[kind] && mix2 < 0.35) c2 = sh.cols[Math.floor(r() * sh.cols.length)];
+      if (!OWN_COLOURS[kind] && mix < 0.52) c = sh.cols[Math.floor(r() * Math.min(3, sh.cols.length))];
+      if (!OWN_COLOURS[kind] && mix2 < 0.4) c2 = sh.cols[Math.floor(r() * sh.cols.length)];
       var flat = kind === 'leaf' || kind === 'lilypad' || kind === 'stick' || kind === 'feather' || kind === 'banana' || kind === 'bone';
       items.push({ k: kind, x: x, y: y, s: (8.6 + r() * 3.6) * (0.82 + depth * 0.36), c: c, c2: c2, rot: (r() - 0.5) * (flat ? 2.4 : 0.5), f: r() < 0.5 && kind !== 'block' ? -1 : 1, q: r() });
     }
@@ -521,7 +525,7 @@
   function animalScale(sp, k) { var sh = shape(sp.id); return sp.d * k / Math.max(sh.w, sh.h * 0.9); }
   function drawHidden(ctx, sp, k, t) {
     var a = ZA.A[sp.id], m = animalScale(sp, k);
-    ctx.save(); ctx.translate(sp.x * k, sp.y * k); ctx.scale((a.sym ? 1 : sp.dir) * m, m);
+    ctx.save(); ctx.translate(sp.x * k, sp.y * k); if (sp.rot) ctx.rotate(sp.rot); ctx.scale((a.sym ? 1 : sp.dir) * m, m);
     try { a.draw(ctx, t === undefined ? POSE_T : t); } finally { ctx.restore(); }
   }
   /* the whole picture: the background, then everything from the back to the front, with the animal in its place */
@@ -539,33 +543,54 @@
 
   /* ---------- hiding ----------
      A new spot every time: somewhere on the ground, the right size for that depth, and partly behind the things in
-     front of it, but never so hidden it can't be found. rand: a random number function */
-  function hide(ph, rand) {
-    var sh = shape(ph.id), a = ZA.A[ph.id];
+     front of it, but never so hidden it can't be found. rand: a random number function. level: how hard, from 0 to 1.
+     The harder it is, the smaller the animal, the more of it is covered, the more it tilts like it's fallen into the
+     pile, and the more it picks a spot among things its own colours */
+  function rgbOf(hex) { return typeof hex === 'string' && hex.length === 7 ? [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)] : null; }
+  function near(c, cols) {
+    var a = rgbOf(c);
+    if (!a) return false;
+    for (var i = 0; i < cols.length; i++) { var b = cols[i]; if (b && Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]) < 110) return true; }
+    return false;
+  }
+  function hide(ph, rand, level) {
+    var sh = shape(ph.id), a = ZA.A[ph.id], L = Math.max(0, Math.min(1, level === undefined ? 0.5 : level));
     var S = 2, Wm = 100 * S, Hm = HU * S;
     var cv = makeCanvas(Wm, Hm), ctx = cv.getContext('2d');
-    var best = null;
-    for (var tries = 0; tries < 36; tries++) {
+    var lo = 0.42 - 0.12 * L, hi = 0.85 - 0.25 * L, aim = (lo + hi) / 2, best = null;
+    var cols = sh.cols.slice(0, 3).map(rgbOf);
+    if (!ph.near) ph.near = ph.items.map(function (it) { return near(it.c, cols) || near(it.c2, cols); });
+    // lots of spots, quickly scored by how many things round each are the animal's colours
+    var cands = [];
+    for (var n = 0; n < 60; n++) {
       var depth = 0.12 + rand() * 0.8, y = ph.y0 + depth * (HU - ph.y0) + 2;
-      var d = (11.5 + rand() * 2.5) * (0.84 + depth * 0.34);
-      var sp = { id: ph.id, x: 0, y: y, d: d, dir: rand() < 0.5 ? -1 : 1 };
+      var d = Math.max(7.5, (12.5 - 3.6 * L) * (0.9 + rand() * 0.2) * (0.84 + depth * 0.34));
+      var sp = { id: ph.id, x: 0, y: y, d: d, dir: rand() < 0.5 ? -1 : 1, rot: (rand() - 0.5) * 0.7 * L };
       var m = animalScale(sp, 1), cx = 9 + rand() * 82;
-      // keep the whole animal inside the picture
+      // keep the whole animal inside the picture, and below where the ground starts
       var left = sp.dir > 0 || a.sym ? sh.x0 : -sh.x1, right = sp.dir > 0 || a.sym ? sh.x1 : -sh.x0;
-      sp.x = Math.max(2 - left * m, Math.min(98 - right * m, cx));
+      sp.x = Math.max(3 - left * m, Math.min(97 - right * m, cx));
       if (y + sh.y0 * m < ph.y0 + 1 || y + sh.y1 * m > HU - 1) continue;
+      var c = centre(sp), R = Math.max(6, c.r * 1.3), all = 0, same = 0;
+      ph.items.forEach(function (it, i) { if (Math.abs(it.x - c.x) < R && Math.abs(it.y - it.s * 0.4 - c.y) < R) { all++; if (ph.near[i]) same++; } });
+      sp.blend = same / Math.max(4, all);
+      cands.push({ sp: sp, score: sp.blend * L + rand() * (1.05 - L) * 0.5 });
+    }
+    cands.sort(function (p, q) { return q.score - p.score; });
+    for (var t = 0; t < cands.length && t < 32; t++) {
+      var s2 = cands[t].sp;
       ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = 'source-over'; ctx.clearRect(0, 0, Wm, Hm);
-      drawHidden(ctx, sp, S);
+      drawHidden(ctx, s2, S);
       var n0 = count(ctx, Wm, Hm);
       if (!n0) continue;
       ctx.globalCompositeOperation = 'destination-out';
-      ph.items.forEach(function (it) { if (it.y > sp.y) drawItem(ctx, it, S); });
+      ph.items.forEach(function (it) { if (it.y > s2.y) drawItem(ctx, it, S); });
       ctx.globalCompositeOperation = 'source-over';
       var vis = count(ctx, Wm, Hm) / n0;
-      sp.vis = vis;
-      var score = Math.abs(vis - 0.62);
-      if (vis >= 0.42 && vis <= 0.86) return sp;
-      if (vis >= 0.3 && (!best || score < best.score)) best = { sp: sp, score: score };
+      s2.vis = vis;
+      if (vis >= lo && vis <= hi) return s2;
+      var miss = Math.abs(vis - aim);
+      if (vis >= lo - 0.05 && (!best || miss < best.miss)) best = { sp: s2, miss: miss };
     }
     return best ? best.sp : null;
   }
