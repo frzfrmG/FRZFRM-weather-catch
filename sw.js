@@ -2,7 +2,7 @@
    The app's files are fetched fresh when online and fall back to the saved copy when offline.
    Weather and place-name requests always go to the network. The animal spotter's files are left alone here: the
    spotter keeps them in a cache of its own, which is kept through updates. */
-var CACHE = 'frzfrm-wc-0.13.1';
+var CACHE = 'frzfrm-wc-0.14.0';
 var FONTS = 'frzfrm-wc-fonts';
 var SHELL = ['./', './index.html', './app.css', './rules.js', './sky.js', './variants.js', './kit.js', './jars-rain.js', './jars-wonders.js', './jars-storm.js', './animals.js', './zoo.js', './zoo-art.js', './seek.js', './spotter.js', './game.js', './photocheck.js', './app.js', './manifest.webmanifest', './storms.json',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'];

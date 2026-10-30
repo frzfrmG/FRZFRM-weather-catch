@@ -5,7 +5,7 @@
   'use strict';
   var WC = window.WC;
   var RU = WC.rules, SKY = WC.sky, AN = WC.animals, SP = WC.spotter, SK = WC.seek;
-  var VERSION = '0.13.1';
+  var VERSION = '0.14.0';
   var TEST = /[?&]test=1(&|$)/.test(location.search);
   var KEY = 'frzfrm-wc-state-1';
   var WX_KEY = 'frzfrm-wc-weather-1';
@@ -1811,6 +1811,7 @@
         x.homes[h] = { n: Math.floor(hh.n), seed: num0(hh.seed) >>> 0, t: num0(hh.t) };
       });
       if (!Object.keys(x.homes).length) x.homes.h1 = { n: x.n, seed: 0, t: x.first.t };
+      if (Array.isArray(e.prints)) x.prints = e.prints.filter(function (p) { return typeof p === 'string' && /^[0-9.]+:[A-Za-z0-9+/=]+$/.test(p) && p.length < 900; }).slice(-PET_PRINTS);
       out.book[id] = x;
     });
     if (a.day && typeof a.day === 'object' && typeof a.day.d === 'string' && a.day.n && typeof a.day.n === 'object') {
@@ -1821,6 +1822,50 @@
     return out;
   }
   function aName(t) { var n = t.name.toLowerCase(); return (/^[aeiou]/.test(n) ? 'an ' : 'a ') + n; }
+
+  /* ---------- telling pets apart ----------
+     Each pet counts once: catching your own dog over and over doesn't level up the Dog jar. Every pet caught leaves a
+     print, the 512 numbers the spotter made from that scan (never the photo), kept on the phone. A new scan that's very
+     like one of them is taken to be the same pet. Two pets that look almost the same can be mistaken for one another */
+  var PET_SAME = 0.84, PET_PRINTS = 20;
+  function isPet(id) { var t = AN && AN.type(id); return !!(t && t.row === 'pets'); }
+  function packPrint(v) {
+    var mx = 0, i;
+    for (i = 0; i < v.length; i++) mx = Math.max(mx, Math.abs(v[i]));
+    var sc = (mx || 1) / 127, q = new Int8Array(v.length), bin = '';
+    for (i = 0; i < v.length; i++) q[i] = Math.max(-127, Math.min(127, Math.round(v[i] / sc)));
+    var b = new Uint8Array(q.buffer);
+    for (i = 0; i < b.length; i++) bin += String.fromCharCode(b[i]);
+    return sc.toFixed(8) + ':' + btoa(bin);
+  }
+  function unpackPrint(p) {
+    try {
+      var parts = p.split(':'), sc = parseFloat(parts[0]), bin = atob(parts[1]), q = new Int8Array(bin.length), v = new Float32Array(bin.length), n = 0, i;
+      for (i = 0; i < bin.length; i++) q[i] = (bin.charCodeAt(i) << 24) >> 24;
+      for (i = 0; i < q.length; i++) { v[i] = q[i] * sc; n += v[i] * v[i]; }
+      n = 1 / Math.sqrt(n || 1);
+      for (i = 0; i < v.length; i++) v[i] *= n;
+      return v;
+    } catch (e) { return null; }
+  }
+  /* how like the closest pet already caught this scan is, from -1 to 1 (0 when there's nothing to compare) */
+  function petLikeness(id, emb) {
+    var e = S.animals.book[id], best = 0;
+    if (!e || !e.prints || !emb) return 0;
+    e.prints.forEach(function (p) {
+      var v = unpackPrint(p);
+      if (!v || v.length !== emb.length) return;
+      var d = 0;
+      for (var i = 0; i < v.length; i++) d += v[i] * emb[i];
+      if (d > best) best = d;
+    });
+    return best;
+  }
+  function addPrint(id, emb) {
+    var e = S.animals.book[id];
+    if (!e || !emb) return;
+    e.prints = (e.prints || []).concat([packPrint(emb)]).slice(-PET_PRINTS);
+  }
   function homesFound(e) { return e ? AN.HOME_SLOTS.filter(function (h) { return !!e.homes[h]; }).length : 0; }
   /* the home on show on the shelf: the rarest one found */
   function bestHome(e) {
@@ -2224,8 +2269,14 @@
         readyToScan('That’s ' + aName(t) + '! You caught one ' + minutes(now() - S.animals.book[res.id].last) + ' ago. Each animal can be caught once every 30 minutes, so try again in ' + minutes(cool) + '.');
         return;
       }
+      var emb = res.emb ? (res.emb instanceof Float32Array ? res.emb : new Float32Array(res.emb)) : null;
+      if (isPet(res.id) && emb && petLikeness(res.id, emb) >= PET_SAME) {
+        readyToScan('That looks like the same ' + t.name.toLowerCase() + ' you’ve already caught. Each pet only counts once, so find a different ' + t.name.toLowerCase() + ' to level up your ' + t.name + ' jar.');
+        return;
+      }
       var before = RU.levelFor(S.points);
       var r = awardAnimal(res.id);
+      if (isPet(res.id)) addPrint(res.id, emb);
       stopCamera();
       afterAward([r], before);
       return;
@@ -4127,6 +4178,8 @@
   function backupCode() {
     var copy = JSON.parse(JSON.stringify(S));
     copy.drive = false;
+    // pets' prints are only for telling pets apart on this phone, and would make the code very long
+    if (copy.animals && copy.animals.book) Object.keys(copy.animals.book).forEach(function (id) { delete copy.animals.book[id].prints; });
     return 'FRZFRM1:' + btoa(unescape(encodeURIComponent(JSON.stringify(copy))));
   }
   function openBackup() {

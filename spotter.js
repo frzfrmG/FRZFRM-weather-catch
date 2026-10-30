@@ -567,6 +567,8 @@
     else if (k !== 'catch' && gp[top] < dc.rejectMin) res.kind = 'unsure';
     // how sure it was of the animal it's best at, even when it's not sure enough to say
     res.guess = top;
+    // the photo's own numbers, so the app can tell one pet from another (they're kept, the photo never is)
+    res.emb = avg;
     return res;
   }
 
