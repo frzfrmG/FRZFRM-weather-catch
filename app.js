@@ -4,8 +4,8 @@
 (function () {
   'use strict';
   var WC = window.WC;
-  var RU = WC.rules, SKY = WC.sky;
-  var VERSION = '0.10.0';
+  var RU = WC.rules, SKY = WC.sky, AN = WC.animals, SP = WC.spotter;
+  var VERSION = '0.11.0';
   var TEST = /[?&]test=1(&|$)/.test(location.search);
   var KEY = 'frzfrm-wc-state-1';
   var WX_KEY = 'frzfrm-wc-weather-1';
@@ -18,7 +18,6 @@
   var CUR = 'temperature_2m,relative_humidity_2m,is_day,precipitation,rain,showers,snowfall,weather_code,cloud_cover,cloud_cover_low,cloud_cover_high,wind_speed_10m,wind_gusts_10m,visibility';
   var HRLY = 'temperature_2m,relative_humidity_2m,is_day,rain,showers,snowfall,weather_code,cloud_cover,wind_speed_10m,wind_gusts_10m,visibility';
   var VARS = RU.VARIANT_SLOTS; // mystery variants, commonest first: Classic, the row's six surprises, its legendary
-  var GL = RU.GLASS_SLOTS;     // jar glass, commonest first: plain, then the row's three special glasses
 
   /* ---------- small helpers ---------- */
 
@@ -46,19 +45,8 @@
   function freshState() {
     return {
       v: 1, created: Date.now(), points: 0, book: {}, caught: {}, cool: {}, recent: {}, names: {}, log: [], haul: null, drive: false, passengerUntil: 0, onboarded: false,
-      rewards: {}, style: { wood: 'pine', lights: 'off' }, oldJars: null, vmap: 2, glassDone: 1, games: freshGames()
+      rewards: {}, style: { wood: 'pine', lights: 'off', jars: {} }, oldJars: null, vmap: 2, animals: freshAnimals()
     };
-  }
-  /* the Games tab keeps its own XP and best scores, separate from catching */
-  function freshGames() { return { xp: 0, best: {}, plays: {} }; }
-  function cleanGames(g) {
-    if (!g || typeof g !== 'object' || Array.isArray(g)) return freshGames();
-    var out = freshGames();
-    out.xp = typeof g.xp === 'number' && isFinite(g.xp) && g.xp >= 0 ? Math.floor(g.xp) : 0;
-    ['best', 'plays'].forEach(function (k) {
-      if (g[k] && typeof g[k] === 'object' && !Array.isArray(g[k])) Object.keys(g[k]).forEach(function (id) { if (typeof g[k][id] === 'number' && isFinite(g[k][id])) out[k][id] = g[k][id]; });
-    });
-    return out;
   }
   function known(list, id) { return list.some(function (x) { return x.id === id; }); }
   /* what's been found of each variant: { c: { n, seed, t, place }, ... }. Jars caught before variants count as Classic,
@@ -74,10 +62,6 @@
         t: typeof x.t === 'number' && isFinite(x.t) ? x.t : 0, place: typeof x.place === 'string' ? x.place : ''
       };
       if (typeof x.power === 'number' && isFinite(x.power)) out[v].power = Math.max(0, Math.min(1, x.power));
-      if (GL.indexOf(x.g) > 0) out[v].g = x.g;
-      out[v].gs = typeof x.gs === 'string' ? x.gs.replace(/[^pabc]/g, '').slice(0, 4) : '';
-      if (out[v].g && out[v].gs.indexOf(out[v].g) === -1) out[v].gs += out[v].g;
-      if (!out[v].gs) out[v].gs = 'p';
       sum += out[v].n;
     });
     if (e.n > sum) {
@@ -85,10 +69,7 @@
       c.n += e.n - sum;
     }
     e.vars = out;
-    // how many of each special glass this jar has had
-    var gc = e.glass && typeof e.glass === 'object' && !Array.isArray(e.glass) ? e.glass : {};
-    e.glass = {};
-    ['a', 'b', 'c'].forEach(function (g) { if (typeof gc[g] === 'number' && gc[g] >= 1) e.glass[g] = Math.floor(gc[g]); });
+    delete e.glass;
   }
   /* 0.4 moved Ball Lightning from a storm's first surprise to its legendary */
   function moveStormVariants(id, e) {
@@ -115,11 +96,8 @@
   function cleanState(o) {
     if (!o || o.v !== 1 || typeof o.points !== 'number' || !isFinite(o.points) || !o.book || typeof o.book !== 'object') return null;
     var oldMap = !(o.vmap >= 2);
-    // jars saved before glass existed get their one-time roll for it
-    var hadGlass = !!o.glassDone;
     var f = freshState();
     Object.keys(f).forEach(function (k) { if (!(k in o)) o[k] = f[k]; });
-    o.glassDone = hadGlass ? 1 : 0;
     ['caught', 'cool', 'recent', 'names', 'rewards'].forEach(function (k) { if (!o[k] || typeof o[k] !== 'object' || Array.isArray(o[k])) o[k] = {}; });
     if (!Array.isArray(o.log)) o.log = [];
     Object.keys(o.book).forEach(function (id) {
@@ -153,10 +131,15 @@
     if (!o.style || typeof o.style !== 'object' || Array.isArray(o.style)) o.style = f.style;
     if (!known(RU.WOODS, o.style.wood)) o.style.wood = 'pine';
     if (!known(RU.LIGHTS, o.style.lights)) o.style.lights = 'off';
+    var jars = o.style.jars && typeof o.style.jars === 'object' && !Array.isArray(o.style.jars) ? o.style.jars : {};
+    o.style.jars = {};
+    sections().forEach(function (sec) { if (typeof jars[sec] === 'string' && RU.jarLook(jars[sec])) o.style.jars[sec] = jars[sec]; });
     if (o.haul && !Array.isArray(o.haul.jars)) o.haul = null;
     if (o.oldJars && (typeof o.oldJars !== 'object' || !Array.isArray(o.oldJars.found) || typeof o.oldJars.n !== 'number')) o.oldJars = null;
-    if (o.glassNote && (typeof o.glassNote !== 'object' || !Array.isArray(o.glassNote.found) || typeof o.glassNote.n !== 'number')) o.glassNote = null;
-    o.games = cleanGames(o.games);
+    // 0.11 took random glass out of catches: jar looks are picked in Shelf style instead
+    delete o.glassNote; delete o.glassDone;
+    delete o.games;
+    o.animals = cleanAnimals(o.animals);
     if (o.photoNote && !Array.isArray(o.photoNote)) o.photoNote = null;
     if (o.day && (typeof o.day !== 'object' || typeof o.day.d !== 'string' || !o.day.n || typeof o.day.n !== 'object')) o.day = null;
     if (o.tripNote && (typeof o.tripNote !== 'object' || !Array.isArray(o.tripNote.trips))) o.tripNote = null;
@@ -285,8 +268,9 @@
     reading: null, ctx: null, cls: null, wonders: [], spots: [], seen: [], near: {}, coming: [], warning: null,
     watchId: null, game: null, view: null, queue: [], cardState: null, lastFocus: null,
     installEvt: null, wake: null, wakeOk: null, photos: {}, pendingSpot: null, shelfJars: [], previewJars: null, share: null,
-    cardId: null, cardV: null, cardG: null, forceV: TEST ? ((location.search.match(/[?&]force=([cabdefgp])(?:&|$)/) || [])[1] || null) : null,
-    forceG: TEST ? ((location.search.match(/[?&]glass=([pabc])(?:&|$)/) || [])[1] || null) : null,
+    cardId: null, cardV: null, lookSec: 'sun', forceV: TEST ? ((location.search.match(/[?&]force=([cabdefgp])(?:&|$)/) || [])[1] || null) : null,
+    forceH: TEST ? ((location.search.match(/[?&]home=(h[1-5])(?:&|$)/) || [])[1] || null) : null, forceScan: null, cardKind: null, cardH: null,
+    cam: null, scanning: false, spotterHere: undefined, animalJars: [],
     depth: undefined, depthArea: null, depthAt: 0,
     storms: null, stormsAt: 0, storm: null, spin: null, rewardToken: null,
     flyReads: [], flyingNow: false, flyAt: 0, flightPos: null
@@ -330,8 +314,8 @@
     if (!x.best || catchRank(rec) >= catchRank(x.best)) x.best = Object.assign({}, rec);
     return x.n === 1;
   }
-  /* how special one catch is: its variant first, then its glass */
-  function catchRank(rec) { return rec ? RU.variantRank(rec.v || 'c') * 4 + RU.glassRank(rec.g || 'p') : -1; }
+  /* how special one catch is: its variant */
+  function catchRank(rec) { return rec ? RU.variantRank(rec.v || 'c') : -1; }
   function stormNames(e) {
     if (!e || !e.storms) return [];
     return Object.keys(e.storms).filter(RU.okStormName).sort(function (a, b) { return (e.storms[a].t || 0) - (e.storms[b].t || 0); });
@@ -347,7 +331,7 @@
   }
   function stormState(name) {
     var st = jarState('namedstorm'), rec = stormRec(S.book.namedstorm, name);
-    if (rec && !st.locked) st.mark = markOf('namedstorm', rec.v, rec.seed, rec.power, rec.g);
+    if (rec && !st.locked) st.mark = markOf('namedstorm', rec.v, rec.seed, rec.power);
     return st;
   }
   /* the season so far on the Named Storm jar card: caught, here now, or got away */
@@ -772,6 +756,10 @@
     eclipse: '<circle cx="12" cy="12" r="7.5"></circle><path d="M14 4.8a7.5 7.5 0 0 1 0 14.4 7.5 7.5 0 0 0 0-14.4z"></path>',
     sunCloud: '<path d="M9 4.5V3M4.5 9H3M5.6 5.6l-1-1M13.4 5.6l1-1"></path><path d="M6.3 10.2A3.5 3.5 0 0 1 12.6 8"></path><path d="M8.5 19.5h8a3.5 3.5 0 0 0 .3-6.98 4.8 4.8 0 0 0-9.2 1.05A3 3 0 0 0 8.5 19.5z"></path>',
     lock: '<rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path>',
+    flower: '<circle cx="12" cy="9" r="2.2"></circle><path d="M12 6.8a2.6 2.6 0 1 1 2.2-3.9M14.2 9a2.6 2.6 0 1 1 1.6 4.4M9.8 9a2.6 2.6 0 1 0-1.6 4.4M12 6.8a2.6 2.6 0 1 0-2.2-3.9M12 11.2V21M12 17c-2-2.6-4.6-2.6-6-1.6M12 15.5c1.8-2 4.2-2.2 5.6-1.2"></path>',
+    wave: '<path d="M3 9c2-2 4-2 6 0s4 2 6 0 4-2 6 0M3 14c2-2 4-2 6 0s4 2 6 0 4-2 6 0M3 19c2-2 4-2 6 0s4 2 6 0 4-2 6 0"></path>',
+    tree: '<path d="M12 21v-6M12 15c-4.4 0-7-2.2-7-5.4C5 6.4 8 3.5 12 3.5s7 2.9 7 6.1c0 3.2-2.6 5.4-7 5.4z"></path><path d="M8.5 21h7"></path>',
+    paw: '<path d="M12 12.6c-2.6 0-5 2.6-5 4.8 0 1.6 1.2 2.4 2.6 2.4 1 0 1.6-.5 2.4-.5s1.4.5 2.4.5c1.4 0 2.6-.8 2.6-2.4 0-2.2-2.4-4.8-5-4.8z"></path><ellipse cx="5.6" cy="10.6" rx="1.7" ry="2.1"></ellipse><ellipse cx="9.3" cy="6.4" rx="1.8" ry="2.3"></ellipse><ellipse cx="14.7" cy="6.4" rx="1.8" ry="2.3"></ellipse><ellipse cx="18.4" cy="10.6" rx="1.7" ry="2.1"></ellipse>',
     check: '<path d="M5 12.5l4.5 4.5L19 7.5"></path>'
   };
   var ICON = {
@@ -801,7 +789,7 @@
     renderTop();
     if (R.tab === 'catch') renderCatch();
     else if (R.tab === 'shelf') renderShelfHead();
-    else if (R.tab === 'games') renderGames();
+    else if (R.tab === 'animals') renderAnimalHead();
     else renderMore();
     if (S.drive) renderDrive();
   }
@@ -1184,7 +1172,7 @@
     }).join('');
     return '<div class="mini wood-' + (o.wood || S.style.wood) + ' lights-' + lights + '"><div class="' + shelfClass(o.el, o.themed, o.gold) + '">' + lightsFor(lights) + cells + '</div></div>';
   }
-  function collectPreview(box) { R.previewJars = Array.prototype.slice.call(box.querySelectorAll('canvas[data-id]')); }
+  function collectPreview(box) { R.previewJars = Array.prototype.slice.call(box.querySelectorAll('canvas[data-id], canvas[data-look]')); }
   function skySection() {
     var have = !!S.rewards.full;
     var label = 'The Sky Jar, ' + (have ? 'showing the live sky: ' + skyName() : 'not earned yet. Fill your shelf to earn it');
@@ -1255,11 +1243,11 @@
       var e = S.book[t.id];
       if (!e || !e.n || !RU.catchable(t)) return;
       var cands = [];
-      if (t.id === 'namedstorm' && stormNames(e).length) stormNames(e).forEach(function (nm) { var rec = stormRec(e, nm); cands.push({ storm: nm, v: (rec && rec.v) || 'c', g: (rec && rec.g) || 'p', n: e.storms[nm].n }); });
-      else { var bv = bestVariant(e); cands.push({ v: bv, g: (e.vars && e.vars[bv] && e.vars[bv].g) || 'p', n: e.n }); }
+      if (t.id === 'namedstorm' && stormNames(e).length) stormNames(e).forEach(function (nm) { var rec = stormRec(e, nm); cands.push({ storm: nm, v: (rec && rec.v) || 'c', n: e.storms[nm].n }); });
+      else cands.push({ v: bestVariant(e), n: e.n });
       cands.forEach(function (c) {
-        var score = (RU.variantRank(c.v) * 4 + RU.glassRank(c.g)) * 1000 + RU.rank(t.id) * 100 + Math.min(99, c.n);
-        if (!best || score > best.score) best = { id: t.id, v: c.v, g: c.g, storm: c.storm || null, score: score };
+        var score = RU.variantRank(c.v) * 1000 + RU.rank(t.id) * 100 + Math.min(99, c.n);
+        if (!best || score > best.score) best = { id: t.id, v: c.v, storm: c.storm || null, score: score };
       });
     });
     return best;
@@ -1292,9 +1280,7 @@
     var t = b ? T(b.id) : null, vr = b ? RU.variant(b.id, b.v) : null, e = b ? S.book[b.id] : null;
     var name = b ? (b.storm ? 'Storm ' + b.storm : t.name) : 'Your best jar goes here';
     $('case-name').textContent = name;
-    var gd = b && b.g && b.g !== 'p' ? glassOf(b.id, b.g) : null;
-    $('case-var').innerHTML = b ? '<span class="' + (vr.legend ? 'legend-text' : '') + '">' + esc(vr.name) + '</span><span class="case-odds">' + esc(vr.odds) + ' · ' + esc(vr.pct) + '</span>' +
-      (gd ? '<span class="case-glass">' + esc(gd.name) + ' · ' + esc(gd.odds) + '</span>' : '') : 'Catch your first weather to start your shelf.';
+    $('case-var').innerHTML = b ? '<span class="' + (vr.legend ? 'legend-text' : '') + '">' + esc(vr.name) + '</span><span class="case-odds">' + esc(vr.odds) + ' · ' + esc(vr.pct) + '</span>' : 'Catch your first weather to start your shelf.';
     $('case-meta').innerHTML = b ? '<span class="pill rc-' + t.r + '">' + esc(rlabel(b.id)) + '</span>' + (e && RU.tierFor(e.n) ? '<span class="case-tier">' + medal(e.n) + esc(RU.tierFor(e.n).name) + '</span>' : '') : '';
     var jb = $('case-jar');
     jb.setAttribute('aria-label', b ? 'Your best jar: ' + name + ', ' + vr.name + '. Open it' : 'No jars yet');
@@ -1304,7 +1290,8 @@
     box.classList.toggle('case-empty', !b);
     box.classList.toggle('case-legend', !!(vr && vr.legend));
   }
-  var ROW_ICON = { sun: 'clear', rain: 'rain', frost: 'snow', wind: 'windy', storm: 'thunderstorm', mist: 'fog', wonder: 'starry', change: 'sunbreak' };
+  var ROW_ICON = { sun: 'clear', rain: 'rain', frost: 'snow', wind: 'windy', storm: 'thunderstorm', mist: 'fog', wonder: 'starry', change: 'sunbreak', garden: 'flower', coast: 'wave', country: 'tree', zoo: 'paw' };
+  function secIcon(sec, size) { return icon(ROW_ICON[sec] || 'cloud', size); }
   function rowChips(prog) {
     return RU.ELEMENTS.map(function (el, i) {
       var row = prog.rows[i], st = rowState(el.id);
@@ -1330,8 +1317,8 @@
       var dark = st.themed ? DARK_ROWS[el.id] : darkWood();
       var pill = st.gold ? '<span class="row-pill gold-pill">Gold</span>' : st.themed ? '<span class="row-pill">Complete</span>' : '';
       var label = el.name + ' shelf, ' + row.have + ' of ' + row.need + (st.gold ? ', gold' : st.themed ? ', complete' : '') + '. See what this shelf earns';
-      return '<section class="shelf-sec" id="row-' + el.id + '"><div class="' + shelfClass(el.id, st.themed, st.gold) + '">' + lightsFor(S.style.lights) +
-        '<h2 class="plate-h"><button type="button" class="plate" data-row="' + el.id + '" aria-label="' + esc(label) + '">' +
+      return '<section class="shelf-sec" id="row-' + el.id + '"><div class="' + shelfClass(el.id, st.themed, st.gold) + '"><span class="sec-wash w-' + el.id + '" aria-hidden="true"></span>' + lightsFor(S.style.lights) +
+        '<h2 class="plate-h"><button type="button" class="plate p-' + el.id + '" data-row="' + el.id + '" aria-label="' + esc(label) + '">' + secIcon(el.id, 16) +
         '<span class="plate-name">' + esc(el.name) + '</span><span class="plate-n">' + row.have + ' of ' + row.need + '</span>' + pill + '</button></h2>' +
         types.map(function (t) { return jarCell(t, dark); }).join('') + '</div></section>';
     }).join('');
@@ -1388,27 +1375,32 @@
   function drawPreview(t) {
     var look = glassLook();
     R.previewJars.forEach(function (cv) {
-      var id = cv.getAttribute('data-id'), v = cv.getAttribute('data-var'), g = cv.getAttribute('data-glass');
-      drawJarOn(cv, v ? variantState(id, v, g || undefined) : jarState(id), t, lookFor(cv, look));
+      var an = cv.getAttribute('data-animal');
+      var lk = cv.getAttribute('data-look');
+      if (lk) { drawJarOn(cv, lookSample(cv.getAttribute('data-sec'), lk), t, lookFor(cv, look)); return; }
+      var an = cv.getAttribute('data-animal');
+      if (an) { drawJarOn(cv, cv.getAttribute('data-home') ? animalView(an, cv.getAttribute('data-home')) : animalJar(an), t, lookFor(cv, look)); return; }
+      var id = cv.getAttribute('data-id'), v = cv.getAttribute('data-var');
+      drawJarOn(cv, v ? variantState(id, v) : jarState(id), t, lookFor(cv, look));
     });
   }
-  /* has this jar had this variant in this glass? */
-  function comboFound(id, v, g) {
-    var e = S.book[id], x = e && e.vars && e.vars[v];
-    return !!x && (x.gs || 'p').indexOf(g || 'p') !== -1;
+  /* has this jar had this variant? */
+  function comboFound(id, v) {
+    var e = S.book[id];
+    return !!(e && e.vars && e.vars[v]);
   }
   /* one variant of a jar, in a glass (its best one if none is given): the one found, or a frosted preview of one
      still to find, even in a jar not caught yet */
-  function variantState(id, v, g) {
+  function variantState(id, v) {
     var e = S.book[id], x = e && e.vars && e.vars[v];
     var st = e && e.n ? jarState(id) : { id: id };
-    if (g === undefined || g === null) g = x && x.g ? x.g : 'p';
-    st.mark = markOf(id, v, x ? x.seed : PREVIEW_SEED, x ? x.power : undefined, g);
-    st.preview = !comboFound(id, v, g);
+    st.mark = markOf(id, v, x ? x.seed : PREVIEW_SEED, x ? x.power : undefined);
+    st.preview = !x;
     st.glow = null;
     st.hat = st.drip = false;
     return st;
   }
+
 
   /* ---------- shelf rewards ---------- */
 
@@ -1436,7 +1428,6 @@
     if (S.drive || !$('overlay').hidden) return;
     var before = RU.levelFor(S.points);
     var cards = claimRewards();
-    if (S.glassNote) { cards.unshift({ glassNote: S.glassNote }); S.glassNote = null; }
     if (S.oldJars) { cards.unshift({ oldJars: S.oldJars }); S.oldJars = null; }
     if (!cards.length) return;
     var after = RU.levelFor(S.points);
@@ -1609,36 +1600,6 @@
     openSheet();
     if (n) confetti(o.found.some(function (f) { return f.v === 'p'; }) ? 60 : 24);
   }
-  /* after jars already caught get their glass: what turned up, with the best of them on a little shelf */
-  function showGlassNote(r) {
-    var o = r.glassNote;
-    var best = {};
-    o.found.forEach(function (f) { if (T(f.id) && (!best[f.id] || RU.glassRank(f.g) > RU.glassRank(best[f.id]))) best[f.id] = f.g; });
-    var ids = Object.keys(best).sort(function (a, b) { return RU.glassRank(best[b]) - RU.glassRank(best[a]) || RU.rank(b) - RU.rank(a); });
-    var n = o.found.length;
-    if (!$('reward-view')) { toast('Your jars have their glass: ' + n + ' special.'); nextReveal(); return; }
-    showView('reward');
-    R.cardState = null;
-    var v = $('reward-view');
-    v.classList.remove('pop');
-    void v.offsetWidth;
-    v.classList.add('pop');
-    $('r-label').textContent = 'Jar glass';
-    $('r-label').className = 'ov-label rc-epic';
-    $('r-title').textContent = 'Your jars have their glass';
-    $('r-points').textContent = n ? n + ' special ' + plural(n, 'glass', 'glasses') + ' in ' + o.n + ' ' + plural(o.n, 'catch', 'catches') : 'All ' + o.n + ' came out in plain glass';
-    $('r-line').textContent = 'Every catch now comes in a glass, and every jar you’d already caught just had its own roll for one.';
-    $('r-stats').textContent = n ? ids.slice(0, 4).map(function (id) { return T(id).name + ': ' + glassOf(id, best[id]).name; }).join(' · ') +
-      (ids.length > 4 ? ' · and ' + (ids.length - 4) + ' more' : '') : 'Plain glass turns up 4 times in 5. Every new catch is a fresh chance.';
-    var show = ids.slice(0, 3);
-    bestJars(shelfIds(), 6).forEach(function (id) { if (show.length < 3 && show.indexOf(id) === -1 && S.book[id] && S.book[id].n) show.push(id); });
-    $('r-preview').innerHTML = miniShelf(show);
-    collectPreview($('r-preview'));
-    setActions('r-actions', R.queue.length ? [{ label: 'Next', primary: true, fn: nextReveal }] :
-      [{ label: 'Keep catching', fn: closeSheet }, { label: 'See your shelf', primary: true, fn: function () { closeSheet(); selectTab('shelf'); } }]);
-    openSheet();
-    if (n) confetti(o.found.some(function (f) { return f.g === 'c'; }) ? 50 : 20);
-  }
   function seeShelf(rw) {
     closeSheet();
     selectTab('shelf');
@@ -1690,16 +1651,77 @@
     return miniShelf(bestJars(shelfIds())) +
       '<h3 class="h2">Shelves</h3>' + styleChips('wood', RU.WOODS) +
       '<h3 class="h2">Lights</h3>' + styleChips('lights', RU.LIGHTS) +
+      '<h3 class="h2">Jars</h3>' + jarPicker() +
       '<h3 class="h2">Rewards</h3><ul class="rw-list">' + items + '</ul>' +
       '<p class="muted">Tap the name of a row on your shelf to see what it needs.</p>';
   }
   function openStyle() {
     showInfo({ label: 'Your shelf', title: 'Shelf style and rewards', body: styleBody() });
     collectPreview($('i-body'));
+    drawPreview(2);
+    centerSecChip($('i-body'));
+  }
+  /* keep the section being styled in view in its row of chips */
+  function centerSecChip(box) {
+    var row = box.querySelector('.sec-chips'), on = row && row.querySelector('.sec-chip.on');
+    if (on) row.scrollLeft = Math.max(0, on.offsetLeft - (row.clientWidth - on.offsetWidth) / 2);
+  }
+  /* jar looks: pick a section, then its look. Each look is shown on that section's own best jar */
+  function jarPicker() {
+    var L = RU.levelFor(S.points), secs = sections();
+    if (secs.indexOf(R.lookSec) === -1) R.lookSec = secs[0];
+    var cur = S.style.jars[R.lookSec] || 'plain';
+    var open = RU.JAR_LOOKS.filter(function (lk) { return L >= lk.level; }), next = RU.JAR_LOOKS.filter(function (lk) { return L < lk.level; })[0];
+    return '<div class="chips style-chips sec-chips" role="group" aria-label="Section">' + secs.map(function (sec) {
+        var on = sec === R.lookSec, lk = RU.jarLook(S.style.jars[sec] || 'plain');
+        return '<button type="button" class="chip sec-chip s-' + sec + (on ? ' on' : '') + '" data-style="sec:' + sec + '" aria-pressed="' + on + '" aria-label="' + esc(sectionName(sec) + ', ' + lk.name) + '">' + secIcon(sec, 15) + '<span>' + esc(sectionName(sec)) + '</span></button>';
+      }).join('') + '</div>' +
+      '<div class="look-grid" role="group" aria-label="' + esc('Jar look for ' + sectionName(R.lookSec)) + '">' + open.map(function (lk) {
+        var on = lk.id === cur;
+        return '<button type="button" class="look' + (on ? ' on' : '') + '" data-style="jar:' + R.lookSec + ':' + lk.id + '" aria-pressed="' + on + '">' +
+          '<canvas data-look="' + lk.id + '" data-sec="' + R.lookSec + '" aria-hidden="true"></canvas><span class="look-n">' + (on ? icon('check', 13) : '') + esc(lk.name) + '</span></button>';
+      }).join('') + '</div>' +
+      '<p class="small">' + (next ? 'Next jar look: <strong>' + esc(next.name) + '</strong> at Level ' + next.level + '. ' : '') + 'Each section can have its own look.</p>';
+  }
+  /* a section's best jar, in a jar look, for the picker */
+  function lookSample(sec, lookId) {
+    var lk = RU.jarLook(lookId), st;
+    if (AN && AN.ROWS.some(function (r) { return r.id === sec; })) {
+      var ids = AN.rowTypes(sec).map(function (t) { return t.id; });
+      var have = ids.filter(function (id) { return S.animals.book[id]; })[0] || ids[0];
+      st = S.animals.book[have] ? animalJar(have) : animalView(have, 'h1');
+    } else {
+      var id = bestJars(rowIds(sec), 1)[0];
+      st = S.book[id] && S.book[id].n ? jarState(id) : variantState(id, 'c');
+    }
+    st.preview = false;
+    st.glow = null;
+    st.mark = st.mark ? Object.assign({}, st.mark) : { seed: PREVIEW_SEED };
+    if (lk && lk.key) st.mark.glass = lk.key; else delete st.mark.glass;
+    return st;
   }
   function setStyle(val) {
     var p = val.split(':');
     var kind = p[0], id = p[1];
+    if (kind === 'sec' || kind === 'jar') {
+      if (sections().indexOf(id) === -1) return;
+      if (kind === 'jar') {
+        var lk = RU.jarLook(p[2]);
+        if (!lk || RU.levelFor(S.points) < lk.level) return;
+        if (lk.id === 'plain') delete S.style.jars[id]; else S.style.jars[id] = lk.id;
+        save();
+      }
+      R.lookSec = id;
+      var bd = $('i-body'), keep = $('sheet').scrollTop;
+      bd.innerHTML = styleBody();
+      collectPreview(bd);
+      drawPreview(2);
+      $('sheet').scrollTop = keep;
+      centerSecChip(bd);
+      var fb = bd.querySelector('[data-style="' + val + '"]');
+      if (fb) try { fb.focus({ preventScroll: true }); } catch (e) {}
+      return;
+    }
     var list = kind === 'wood' ? RU.WOODS : kind === 'lights' ? RU.LIGHTS : null;
     if (!list || !known(list, id)) return;
     var rw = RU.styleReward(kind, id);
@@ -1722,10 +1744,11 @@
     RU.TITLES.forEach(function (tt) { if (tt[0] > 1) at(tt[0]).items.push({ kind: 'title', name: tt[1] }); });
     RU.UNLOCKS.forEach(function (u) { at(u.level).items.push({ kind: 'unlock', name: u.name, text: u.text, hint: u.hint }); });
     RU.LEVEL_REWARDS.forEach(function (r) { at(r.level).items.push({ kind: 'style', name: r.name, text: r.about, hint: r.hint }); });
+    RU.JAR_LOOKS.forEach(function (lk) { if (lk.level > 1) at(lk.level).items.push({ kind: 'jar', name: lk.name, text: lk.about, hint: 'A new look for your jars' }); });
     return Object.keys(road).map(Number).sort(function (a, b) { return a - b; }).map(function (L) { return road[L]; });
   }
   function maskName(n) { return n.split(' ').map(function (w) { return w.charAt(0) + w.slice(1).replace(/[^\s]/g, '•'); }).join(' '); }
-  var ROAD_KIND = { title: 'New title', unlock: 'Unlocks', style: 'Shelf look' };
+  var ROAD_KIND = { title: 'New title', unlock: 'Unlocks', style: 'Shelf look', jar: 'Jar look' };
   function openLevels() {
     var L = RU.levelFor(S.points), lo = RU.pointsFor(L), hi = RU.pointsFor(L + 1);
     var road = levelRoad(), ahead = 0, nextLv = null;
@@ -1745,143 +1768,453 @@
         '<ul class="lr-items">' + items + '</ul></div></li>';
     }).join('');
     var head = '<div class="lv-now"><div class="bar" aria-hidden="true"><span style="width:' + Math.round((S.points - lo) / (hi - lo) * 100) + '%"></span></div>' +
-      '<p class="muted"><strong>' + (hi - S.points).toLocaleString('en-GB') + ' points</strong> to Level ' + (L + 1) + '. Catch weather to earn points: Common 10, Uncommon 25, Rare 75, Epic 200, Legendary 500. 4 and 5 star catches are worth more, and shelf rewards give bonus points.</p></div>';
+      '<p class="muted"><strong>' + (hi - S.points).toLocaleString('en-GB') + ' points</strong> to Level ' + (L + 1) + '. Catch weather to earn points: Common 10, Uncommon 25, Rare 75, Epic 200, Legendary 500. 4 and 5 star catches are worth more, and shelf rewards give bonus points. Animals earn 5 to 100 each.</p></div>';
     showInfo({
       label: 'Levels ahead', title: 'Level ' + L + ' · ' + (S.rewards.full ? RU.KEEPER : RU.titleFor(L)),
-      body: head + '<ol class="road">' + rows + '</ol><p class="muted">Your Games rank is separate. Play in the Games tab to rank up there.</p>'
+      body: head + '<ol class="road">' + rows + '</ol>'
     });
     var nx = $('i-body').querySelector('.lr-stop.next');
     if (nx) setTimeout(function () { var sh = $('sheet'); if (sh && nx.offsetTop > sh.clientHeight * 0.6) sh.scrollTop = nx.offsetTop - sh.clientHeight * 0.35; }, 30);
   }
 
-  /* ---------- the Games tab ----------
-     Weather minigames with a Games rank of their own. Nothing here changes catching: no points, no jars. */
-  function gameBest(g) {
-    var b = S.games.best[g.id];
-    if (b === undefined || b === null) return 'Not played yet';
-    if (g.id === 'reflex') return 'Best: ' + b + ' ms average' + (S.games.best.reflexTap ? ' · fastest ' + S.games.best.reflexTap + ' ms' : '');
-    if (g.id === 'thunder') return 'Best: ' + b + ' of 15 points';
-    if (g.id === 'rush') return 'Best: ' + b + ' ' + plural(b, 'drop');
-    return 'Best: ' + b + ' in a row';
+  /* ---------- animals ----------
+     Scan a real animal with the camera and it moves into its jar. The photo is looked at on the phone and thrown away
+     straight after. Each animal can be caught once every 30 minutes. Its first catch moves into its everyday home;
+     after that, every catch turns up in one of its five homes. */
+  function freshAnimals() { return { book: {}, day: null, rows: {} }; }
+  function cleanAnimals(a) {
+    var out = freshAnimals();
+    if (!a || typeof a !== 'object' || Array.isArray(a) || !AN) return out;
+    var num0 = function (v) { return typeof v === 'number' && isFinite(v) ? v : 0; };
+    if (a.book && typeof a.book === 'object' && !Array.isArray(a.book)) Object.keys(a.book).forEach(function (id) {
+      var e = a.book[id];
+      if (!AN.type(id) || !e || typeof e.n !== 'number' || !(e.n >= 1)) return;
+      var x = { n: Math.floor(e.n), first: { t: num0(e.first && e.first.t) }, last: num0(e.last), homes: {} };
+      AN.HOME_SLOTS.forEach(function (h) {
+        var hh = e.homes && e.homes[h];
+        if (!hh || typeof hh.n !== 'number' || !(hh.n >= 1)) return;
+        x.homes[h] = { n: Math.floor(hh.n), seed: num0(hh.seed) >>> 0, t: num0(hh.t) };
+      });
+      if (!Object.keys(x.homes).length) x.homes.h1 = { n: x.n, seed: 0, t: x.first.t };
+      out.book[id] = x;
+    });
+    if (a.day && typeof a.day === 'object' && typeof a.day.d === 'string' && a.day.n && typeof a.day.n === 'object') {
+      out.day = { d: a.day.d, n: {} };
+      Object.keys(a.day.n).forEach(function (id) { if (AN.type(id) && typeof a.day.n[id] === 'number') out.day.n[id] = a.day.n[id]; });
+    }
+    if (a.rows && typeof a.rows === 'object') AN.ROWS.forEach(function (r) { if (typeof a.rows[r.id] === 'number') out.rows[r.id] = a.rows[r.id]; });
+    return out;
   }
-  var GAME_ART = {
-    reflex: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"></path>',
-    thunder: '<path d="M7 15.5h9.5a4 4 0 0 0 .4-7.98 5.5 5.5 0 0 0-10.6 1.2A3.4 3.4 0 0 0 7 15.5z"></path><path d="M12.5 15l-2 3.2h3l-1.8 3.3"></path>',
-    rush: '<path d="M8 4h8v3l1.5 2v10a1.5 1.5 0 0 1-1.5 1.5H8A1.5 1.5 0 0 1 6.5 19V9L8 7z"></path><path d="M9.5 13.5c1 1.4 4 1.4 5 0"></path><path d="M12 1.5v1.5"></path>',
-    hot: '<path d="M10 14.8V5a2 2 0 0 1 4 0v9.8a3.6 3.6 0 1 1-4 0z"></path><path d="M12 9v7"></path>'
-  };
-  function gameIcon(id, size) { return '<svg viewBox="0 0 24 24" width="' + size + '" height="' + size + '" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + GAME_ART[id] + '</svg>'; }
-  function renderGames() {
-    if (!$('panel-games') || !WC.mini) return;
-    var G = S.games, rk = WC.mini.rankFor(G.xp);
-    $('rank-name').textContent = rk.name;
-    $('rank-xp').textContent = G.xp.toLocaleString('en-GB') + ' Games XP' + (rk.next ? ' · ' + (rk.next.at - G.xp) + ' to ' + rk.next.name : ' · the top rank');
-    $('rank-fill').style.width = (rk.next ? Math.round((G.xp - rk.at) / (rk.next.at - rk.at) * 100) : 100) + '%';
-    $('rank-badge').setAttribute('data-r', rk.i);
-    $('rank-badge').textContent = rk.i + 1;
-    $('game-list').innerHTML = WC.mini.GAMES.map(function (g) {
-      return '<button type="button" class="game-card g-' + g.id + '" data-game="' + g.id + '"><span class="gc-art">' + gameIcon(g.id, 30) + '</span>' +
-        '<span class="gc-body"><span class="gc-name">' + esc(g.name) + '</span><span class="gc-line">' + esc(g.line) + '</span><span class="gc-best">' + esc(gameBest(g)) + '</span></span>' +
-        '<span class="gc-play">Play</span></button>';
+  function aName(t) { var n = t.name.toLowerCase(); return (/^[aeiou]/.test(n) ? 'an ' : 'a ') + n; }
+  function homesFound(e) { return e ? AN.HOME_SLOTS.filter(function (h) { return !!e.homes[h]; }).length : 0; }
+  /* the home on show on the shelf: the rarest one found */
+  function bestHome(e) {
+    var best = 'h1';
+    AN.HOME_SLOTS.forEach(function (h) { if (e && e.homes[h]) best = h; });
+    return best;
+  }
+  /* one home of an animal: the one found, or a frosted preview of one still to find. Its jar is in its row's jar look */
+  function animalView(id, h) {
+    var e = S.animals.book[id], x = e && e.homes[h], lk = jarLook(AN.type(id).row);
+    var mk = { seed: x ? x.seed : PREVIEW_SEED };
+    if (lk) mk.glass = lk;
+    return { animal: id, home: h, id: 'a:' + id, lidTone: e ? tierOf(e.n) || null : null, preview: !x, mark: mk };
+  }
+  /* an animal's jar on the shelf: its best home, or an empty jar still to fill */
+  function animalJar(id) {
+    var e = S.animals.book[id];
+    if (!e || !e.n) return { locked: true, id: 'a:' + id };
+    return animalView(id, bestHome(e));
+  }
+  function animalPicture(id, h, seed, w, hh) {
+    var cv = document.createElement('canvas');
+    cv.width = w; cv.height = hh;
+    var st = animalView(id, h);
+    st.mark.seed = seed;
+    st.preview = false;
+    SKY.jar(cv.getContext('2d'), w, hh, st, 2, glassLook());
+    return cv;
+  }
+  function animalToday(id) { var d = S.animals.day; return d && d.d === today() ? d.n[id] || 0 : 0; }
+  function animalCool(id) { var e = S.animals.book[id]; return e && e.last ? Math.max(0, e.last + AN.COOLDOWN - now()) : 0; }
+  function animalPoints(id, again) { return Math.max(1, Math.round(AN.points(id) * (again ? AN.REPEAT : 1))); }
+  function awardAnimal(id) {
+    var A = S.animals, t = AN.type(id), e = A.book[id], isNew = !e;
+    if (!e) e = A.book[id] = { n: 0, first: { t: now() }, last: 0, homes: {} };
+    var before = e.n;
+    e.n += 1;
+    e.last = now();
+    var seed = rand32() || 1;
+    var h = isNew ? 'h1' : R.forceH || AN.rollHome(rand32() / 4294967296);
+    var x = e.homes[h], newH = !x;
+    if (!x) x = e.homes[h] = { n: 0, seed: seed, t: now() };
+    x.n += 1;
+    // each home shows its newest catch
+    x.seed = seed; x.t = now();
+    var again = animalToday(id) > 0;
+    var pts = animalPoints(id, again);
+    if (!A.day || A.day.d !== today()) A.day = { d: today(), n: {} };
+    A.day.n[id] = (A.day.n[id] || 0) + 1;
+    S.points += pts;
+    // the first time a whole row of the animal shelf is filled: bonus points
+    var rowDone = null;
+    if (isNew && !A.rows[t.row]) {
+      var row = AN.progress(A.book).rows.filter(function (rw) { return rw.row === t.row; })[0];
+      if (row && row.complete) { A.rows[t.row] = now(); S.points += AN.ROW_BONUS; rowDone = t.row; }
+    }
+    addLog((isNew ? 'New animal: ' + t.name : t.name + ' · ' + AN.home(id, h).name) + (isNew ? ' (+' + pts + ')' : ' (×' + e.n + ', +' + pts + ')'));
+    if (rowDone) addLog('Animal row complete: ' + AN.rowName(rowDone) + ' (+' + AN.ROW_BONUS + ')');
+    return { animal: id, isNew: isNew, n: e.n, h: h, seed: seed, pts: pts, again: again, newH: newH && !isNew, tier: RU.tierReached(before, e.n), rowDone: rowDone };
+  }
+
+  /* the Animals tab: a button to scan, then a shelf with a row for each place you'd find them */
+  function animalCell(t) {
+    var e = S.animals.book[t.id], n = e ? e.n : 0, dark = darkWood();
+    var label = t.name + ', ' + RU.RARITY[t.r].label + (n ? ', caught ' + n + ' ' + plural(n, 'time') + ', ' + homesFound(e) + ' of 5 homes' : ', not caught yet');
+    return '<button type="button" class="jarcell' + (n ? '' : ' locked') + '" data-animal="' + t.id + '" aria-label="' + esc(label) + '">' +
+      '<canvas data-animal="' + t.id + '"' + (dark ? ' data-dark="1"' : '') + ' aria-hidden="true"></canvas><span class="plank"></span>' +
+      '<span class="jar-name">' + esc(t.name) + (n > 1 ? ' ×' + n : '') + '</span><span class="jar-meta rc-' + t.r + '">' + (n ? medal(n) : '') + esc(RU.RARITY[t.r].label) + '</span></button>';
+  }
+  function renderAnimalHead(prog) {
+    if (!$('an-count') || !AN) return;
+    prog = prog || AN.progress(S.animals.book);
+    $('an-count').textContent = prog.have + ' of ' + prog.total;
+    var note = R.spotterHere ? 'Animals are recognised on your phone, even with no signal. The photo is never kept.' : 'Your first scan downloads the animal spotter: about 88 MB, just once. The photo is never kept or sent anywhere.';
+    if ($('scan-note').textContent !== note) $('scan-note').textContent = note;
+  }
+  function renderAnimals() {
+    if (!$('panel-animals') || !AN) return;
+    R.animalJars = [];
+    var prog = AN.progress(S.animals.book);
+    renderAnimalHead(prog);
+    $('an-chips').innerHTML = AN.ROWS.map(function (r, i) {
+      var row = prog.rows[i];
+      return '<button type="button" class="rchip' + (row.complete ? ' done' : '') + '" data-jump="arow-' + r.id + '" aria-label="' + esc(r.name + ' row, ' + row.have + ' of ' + row.need) + '">' +
+        secIcon(r.id, 16) + '<span>' + esc(r.name) + '</span><span class="rchip-n">' + row.have + '/' + row.need + '</span></button>';
     }).join('');
-    $('rank-road').innerHTML = WC.mini.RANKS.map(function (r, i) {
-      var have = G.xp >= r[0];
-      return '<li class="' + (have ? 'have' : '') + (i === rk.i ? ' cur' : '') + '"><span class="rr-n">' + (i + 1) + '</span><span class="rr-name">' + esc(r[1]) + '</span><span class="rr-xp">' + (i ? r[0].toLocaleString('en-GB') + ' XP' : 'Start') + '</span></li>';
+    var box = $('an-shelves');
+    box.className = 'shelves cabinet wood-' + S.style.wood + ' lights-' + S.style.lights;
+    box.innerHTML = AN.ROWS.map(function (r, i) {
+      var row = prog.rows[i];
+      return '<section class="shelf-sec" id="arow-' + r.id + '"><div class="shelf plain"><span class="sec-wash w-' + r.id + '" aria-hidden="true"></span>' + lightsFor(S.style.lights) +
+        '<h2 class="plate-h"><span class="plate plate-static p-' + r.id + '">' + secIcon(r.id, 16) + '<span class="plate-name">' + esc(r.name) + '</span><span class="plate-n">' + row.have + ' of ' + row.need + '</span>' +
+        (S.animals.rows[r.id] ? '<span class="row-pill">Complete</span>' : '') + '</span></h2>' +
+        AN.rowTypes(r.id).map(animalCell).join('') + '</div></section>';
     }).join('');
+    var cvs = box.querySelectorAll('canvas');
+    for (var i = 0; i < cvs.length; i++) { R.animalJars.push(cvs[i]); if (jarObserver) jarObserver.observe(cvs[i]); }
+    requestAnimationFrame(function () { drawAnimals(2, true); });
+    if (SP && R.spotterHere === undefined) SP.stored().then(function (have) { R.spotterHere = have; renderAnimalHead(); });
   }
-  var MINI_INSTR = {
-    reflex: 'Wait for the lightning, then tap as fast as you can. Five strikes. Tap too soon and you have to wait again.',
-    thunder: 'Watch for the flash, then count the seconds until you hear or feel the rumble. Every 3 seconds is about 1 km. Turn your sound on.',
-    rush: 'Drag the jar to catch the rain. Gold drops are worth 5. Hail costs a life, and so does lightning: move away from the glowing stripe.',
-    hot: 'Two cities and their weather right now. Tap the one you think is hotter. How many can you get in a row?'
-  };
-  function openMini(id) {
-    var g = WC.mini && WC.mini.GAMES.filter(function (x) { return x.id === id; })[0];
-    if (!g || !$('mini-view')) return;
-    showView('mini');
-    $('mg-label').textContent = 'Games';
-    $('mg-title').textContent = g.name;
-    $('mg-instr').textContent = MINI_INSTR[id];
-    $('mg-msg').hidden = true;
-    $('mg-msg').innerHTML = '';
-    $('mg-stage').hidden = id === 'hot';
-    $('mg-choices').hidden = true;
-    $('mg-choices').innerHTML = '';
-    $('mg-choices').className = 'mg-choices';
-    $('mg-status').textContent = '';
-    $('mg-best').textContent = gameBest(g);
-    setActions('mg-actions', [{ label: 'Stop', fn: closeSheet }]);
-    openSheet();
-    try { $('mg-stage').focus({ preventScroll: true }); } catch (e) {}
-    WC.mini.start(id, miniUI(id));
-  }
-  function miniUI(id) {
-    return {
-      canvas: $('mg-canvas'),
-      status: function (t) { $('mg-status').textContent = t; },
-      choices: function (list, kind) { miniChoices(list, kind); },
-      reveal: function (temps, picked, right) {
-        Array.prototype.forEach.call($('mg-choices').querySelectorAll('.city'), function (b, i) {
-          b.disabled = true;
-          var tEl = b.querySelector('.city-t');
-          if (tEl) tEl.textContent = temps[i] + '°C';
-          b.classList.add(i === picked ? (right ? 'right' : 'wrong') : 'other');
-        });
-      },
-      done: function (res) { finishMini(id, res); },
-      buzz: function (p) { try { if (navigator.vibrate) navigator.vibrate(p); } catch (e) {} },
-      here: function () {
-        var o = R.reading;
-        return o && typeof o.temp === 'number' && !flying() && R.wx && now() - R.wx.at < HOUR ? { temp: o.temp, name: R.place ? R.place.short : 'Where you are', code: o.code, day: o.isDay } : null;
-      }
-    };
-  }
-  function miniChoices(list, kind) {
-    var box = $('mg-choices');
-    if (!list) { box.hidden = true; box.innerHTML = ''; return; }
-    box.hidden = false;
-    box.className = 'mg-choices' + (kind === 'cities' ? ' cities' : '');
-    box.innerHTML = '';
-    list.forEach(function (c) {
-      var b = document.createElement('button');
-      b.type = 'button';
-      if (kind === 'cities') {
-        var city = c.city;
-        b.className = 'city';
-        b.innerHTML = '<span class="city-ic">' + icon(WC.mini.weatherKind(city.code, city.day), 30) + '</span><span class="city-name">' + esc(city.name) + '</span>' +
-          '<span class="city-c">' + esc(city.you ? 'Where you are' : city.country) + (city.offset !== null && city.offset !== undefined ? ' · ' + WC.mini.localTime(city.offset) + ' there' : '') + '</span><span class="city-t">?</span>';
-      } else {
-        b.className = 'btn';
-        b.textContent = c.label;
-      }
-      b.addEventListener('click', c.fn);
-      box.appendChild(b);
+  function drawAnimals(t, all) {
+    var look = glassLook();
+    (R.animalJars || []).forEach(function (cv) {
+      if (!all && jarObserver && !cv.wcSeen) return;
+      var st = animalJar(cv.getAttribute('data-animal'));
+      if (st.locked && !all) return;
+      drawJarOn(cv, st, t, lookFor(cv, look));
     });
   }
-  function finishMini(id, res) {
-    var G = S.games;
-    if (!res) {
-      $('mg-msg').innerHTML = '<strong>No internet right now.</strong> Hotter or Colder needs the live weather. The other games work anywhere.';
-      $('mg-msg').hidden = false;
-      setActions('mg-actions', [{ label: 'Close', fn: closeSheet }, { label: 'Try again', primary: true, fn: function () { openMini(id); } }]);
+
+  /* an animal's card: its five homes, every one of which can be looked at */
+  function setAnimalPill(id) {
+    var t = AN.type(id), p = $('c-pill');
+    p.className = 'pill rc-' + t.r;
+    p.textContent = RU.RARITY[t.r].label + ' · ' + AN.rowName(t.row);
+  }
+  function setHome(id, h, fresh, locked) {
+    var el = $('c-var');
+    if (!el) return;
+    if (id && h === null) { el.hidden = false; el.innerHTML = '<span class="v-name">Opening the jar…</span>'; return; }
+    var hd = id && h ? AN.home(id, h) : null;
+    if (!hd) { el.hidden = true; el.innerHTML = ''; return; }
+    el.hidden = false;
+    el.innerHTML = '<span class="v-name' + (hd.fav ? ' legend-text' : '') + '">' + esc(hd.name) + '</span><span class="v-odds">' + esc(hd.odds) + ' · ' + esc(hd.pct) + '</span>' +
+      (hd.fav ? '<span class="v-legend">Favourite</span>' : hd.id === 'h1' ? '<span class="v-home">Everyday</span>' : '') +
+      (fresh ? '<span class="v-new">New home</span>' : locked ? '<span class="v-lock">' + icon('lock', 13) + 'Not found yet</span>' : '');
+  }
+  function homeStrip(id, e) {
+    var list = AN.homes(id);
+    return '<div class="var-h"><span class="h2">Homes</span><span class="var-n">' + homesFound(e) + ' of ' + list.length + ' found</span></div>' +
+      '<div class="var-strip" role="group" aria-label="Homes of this animal">' + list.map(function (hd) {
+        var x = e && e.homes[hd.id], on = R.cardH === hd.id;
+        return '<button type="button" class="vjar' + (on ? ' on' : '') + (x ? '' : ' locked') + (hd.fav ? ' legend' : '') + '" data-home="' + hd.id + '" aria-pressed="' + on + '"' +
+          ' aria-label="' + esc(hd.name + (hd.fav ? ', its favourite' : '') + (x ? ', found ' + x.n + ' ' + plural(x.n, 'time') : ', not found yet, ' + hd.odds)) + '">' +
+          '<canvas data-animal="' + id + '" data-home="' + hd.id + '" aria-hidden="true"></canvas><span class="vjar-n">' + (x ? '×' + x.n : esc(hd.odds)) + '</span></button>';
+      }).join('') + '</div>' +
+      '<p class="small var-note">The first catch moves into its everyday home. After that, each catch turns up in one of its five homes, up to its favourite: <span class="legend-text">' + esc(list[4].name) + '</span>, 1 in 24.</p>';
+  }
+  function renderHomes(id) {
+    var box = $('c-vars');
+    if (!box) return;
+    setJarNav(!!id);
+    if (!id) { box.hidden = true; box.innerHTML = ''; return; }
+    var e = S.animals.book[id];
+    box.hidden = false;
+    box.innerHTML = homeStrip(id, e);
+    R.previewJars = Array.prototype.slice.call(box.querySelectorAll('canvas[data-animal]'));
+  }
+  function markHomes(h) {
+    Array.prototype.forEach.call($('c-vars').querySelectorAll('button[data-home]'), function (b) {
+      var on = b.getAttribute('data-home') === h;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  }
+  function showHome(id, h) {
+    var e = S.animals.book[id];
+    R.cardH = h;
+    R.cardState = animalView(id, h);
+    setHome(id, h, false, !(e && e.homes[h]));
+    updateScorch();
+  }
+  function pickHome(h) {
+    if (R.cardKind !== 'animal' || R.view !== 'card' || AN.HOME_SLOTS.indexOf(h) === -1) return;
+    showHome(R.cardId, h);
+    markHomes(h);
+  }
+  function stepHome(dir) {
+    var i = AN.HOME_SLOTS.indexOf(R.cardH);
+    var next = AN.HOME_SLOTS[(i + dir + AN.HOME_SLOTS.length) % AN.HOME_SLOTS.length];
+    var cv = $('c-canvas');
+    var swap = function () { pickHome(next); centerStrip(true); };
+    if (reduce) { swap(); return; }
+    cv.classList.remove('drag');
+    cv.style.transform = 'translateX(' + (-dir * 34) + '%)';
+    cv.style.opacity = '0';
+    setTimeout(function () {
+      swap();
+      cv.classList.add('drag');
+      cv.style.transform = 'translateX(' + (dir * 34) + '%)';
+      void cv.offsetWidth;
+      cv.classList.remove('drag');
+      cv.style.transform = '';
+      cv.style.opacity = '';
+    }, 150);
+  }
+  function animalStats(id, e) {
+    if (!e || !e.n) return 'Scan a real ' + AN.type(id).name.toLowerCase() + ' to catch it.';
+    var cool = animalCool(id);
+    return '×' + e.n + ' · ' + homesFound(e) + ' of 5 homes' + (cool ? ' · next catch in ' + minutes(cool) : '');
+  }
+  function openAnimal(id) {
+    var t = AN.type(id), e = S.animals.book[id], n = e ? e.n : 0;
+    if (!t) return;
+    showView('card');
+    R.cardKind = 'animal';
+    R.cardId = id;
+    $('c-label').textContent = n ? 'On your animal shelf' : 'Not caught yet';
+    $('c-label').className = 'ov-label rc-' + t.r;
+    $('c-title').textContent = t.name;
+    setAnimalPill(id);
+    $('c-points').textContent = AN.points(id) + ' points a catch, or a fifth for another the same day';
+    $('c-line').textContent = t.line;
+    $('c-stats').textContent = animalStats(id, e);
+    setVerify(n && e.first.t ? 'First caught ' + new Date(e.first.t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' at ' + hm(e.first.t) : '');
+    setTier(n);
+    setPhotoLine(null);
+    setStrength(null);
+    showHome(id, n ? bestHome(e) : 'h1');
+    renderHomes(id);
+    R.share = null;
+    setActions('c-actions', [{ label: 'Scan an animal', fn: function () { openScan(); } }, { label: 'Close', primary: true, fn: closeSheet }]);
+    openSheet();
+    centerStrip();
+  }
+  /* a new catch, opened: the reel spins through its homes at their real odds and lands on this one */
+  function revealAnimal(r) {
+    var id = r.animal, t = AN.type(id), e = S.animals.book[id];
+    showView('card');
+    R.cardKind = 'animal';
+    R.cardId = id;
+    $('c-label').textContent = r.isNew ? 'New animal' : 'Caught again';
+    $('c-label').className = 'ov-label rc-' + t.r;
+    $('c-title').textContent = t.name;
+    setAnimalPill(id);
+    var pts = '+' + r.pts + ' points' + (r.again ? ' · a fifth, as it’s not your first today' : '');
+    if (r.rowDone) pts += ' · +' + AN.ROW_BONUS + ' for filling the ' + AN.rowName(r.rowDone) + ' row!';
+    if (r.lvUp) pts += ' · Level ' + r.lvUp + '! ' + unlockText(r.lvUp);
+    $('c-points').textContent = pts;
+    $('c-line').textContent = r.isNew ? 'It’s moved into its everyday home, the ' + AN.home(id, 'h1').name + '. Catch it again to find its other homes.' : t.line;
+    $('c-stats').textContent = r.isNew ? 'First one on your animal shelf.' : '×' + r.n + ' · ' + homesFound(e) + ' of 5 homes';
+    setTier(e.n, r.tier);
+    setPhotoLine(null);
+    setVerify('');
+    setStrength(null);
+    R.cardH = r.h;
+    R.cardState = animalView(id, r.h);
+    R.cardState.mark.seed = r.seed;
+    R.cardState.preview = false;
+    renderHomes(null);
+    setActions('c-actions', [{ label: R.queue.length ? 'Next' : 'Put it on the shelf', primary: true, fn: nextReveal }]);
+    openSheet();
+    var land = function () {
+      setHome(id, r.h, r.newH);
+      updateScorch();
+      if (r.h === 'h5') {
+        // its favourite home: a long buzz and a lot of confetti
+        confetti(70);
+        try { if (navigator.vibrate) navigator.vibrate([40, 60, 40, 60, 80]); } catch (err) {}
+      } else if (r.isNew || r.rowDone) confetti(24);
+      else if (r.newH) { try { if (navigator.vibrate) navigator.vibrate(30); } catch (err) {} }
+    };
+    if (!r.isNew && spinOn()) {
+      spinReveal(r, land, {
+        roll: function () { return AN.rollHome(rand32() / 4294967296); },
+        won: r.h,
+        pic: function (h, pw, ph) { return animalPicture(id, h, r.seed, pw, ph); },
+        tile: function (h) { var hd = AN.home(id, h); return { cls: ['classic', 'uncommon', 'rare', 'epic', 'legend'][hd.rank], odds: hd.odds }; },
+        slow: r.h === 'h5',
+        during: function () { setHome(id, null); }
+      });
+    } else land();
+    if (r.lvUp) toast('Level ' + r.lvUp + '! ' + unlockText(r.lvUp));
+  }
+
+  /* ---------- scanning an animal ----------
+     The camera shows what's in front of you; Scan grabs a frame or three from it, which the spotter looks at on the
+     phone and throws away. A real animal in the collection goes in its jar, at most once every 30 minutes each */
+  var SCAN_TIPS = {
+    person: 'That looks like a person. Point the camera at an animal.',
+    screen: 'That looks like a screen. Animals have to be scanned for real, not on a phone or a TV.',
+    picture: 'That looks like a picture. Scan the real animal.',
+    toy: 'That looks like a toy or an ornament. Scan a real animal.',
+    nothing: 'No animal there. Get it in the square and try again.',
+    unsure: 'Not sure what that is. Get the whole animal in the square, close up and in good light.',
+    other: 'That animal isn’t in the collection yet.'
+  };
+  function scanMsg(text) { $('s-msg').textContent = text || ''; }
+  function setDl(done, total) {
+    var f = total ? done / total : 0;
+    $('s-dl-fill').style.width = Math.round(f * 100) + '%';
+    $('s-dl-t').textContent = total ? Math.round(done / 1e6) + ' of ' + Math.round(total / 1e6) + ' MB' : 'Starting…';
+  }
+  function openScan() {
+    if (!SP || !AN) { toast('Scanning animals doesn’t work on this phone yet.'); return; }
+    showView('scan');
+    $('s-title').textContent = 'Getting ready…';
+    $('s-stage').hidden = true;
+    $('s-dl').hidden = true;
+    $('s-busy').hidden = true;
+    scanMsg('');
+    setActions('s-actions', [{ label: 'Close', fn: closeSheet }]);
+    openSheet();
+    if (R.forceScan || SP.ready()) { startCamera(); return; }
+    SP.stored().then(function (have) {
+      R.spotterHere = have;
+      if (R.view !== 'scan') return;
+      if (have) startCamera(); else offerDownload();
+    });
+  }
+  function offerDownload() {
+    $('s-title').textContent = 'The animal spotter';
+    scanMsg('To recognise animals, Weather Catch keeps an animal spotter on your phone. It’s a one-time download of about 88 MB, so Wi-Fi is best. After that it works with no signal, and photos never leave your phone.');
+    setActions('s-actions', [{ label: 'Not now', fn: closeSheet }, { label: 'Download', primary: true, fn: downloadSpotter }]);
+  }
+  function downloadSpotter() {
+    $('s-title').textContent = 'Downloading the spotter';
+    $('s-dl').hidden = false;
+    setDl(0, 0);
+    scanMsg('It carries on if you close this, as long as the app stays open.');
+    setActions('s-actions', [{ label: 'Close', fn: closeSheet }]);
+    SP.load(function (d, t) { if (R.view === 'scan') setDl(d, t); }).then(function () {
+      R.spotterHere = true;
+      renderAnimalHead();
+      if (R.view !== 'scan') { toast('The animal spotter is ready. Tap Scan an animal.'); return; }
+      $('s-dl').hidden = true;
+      startCamera();
+    }, function () {
+      if (R.view !== 'scan') return;
+      $('s-title').textContent = 'The download stopped';
+      scanMsg('Check your connection and try again. What’s downloaded so far is kept.');
+      setActions('s-actions', [{ label: 'Close', fn: closeSheet }, { label: 'Try again', primary: true, fn: downloadSpotter }]);
+    });
+  }
+  function startCamera() {
+    $('s-title').textContent = 'Point at the animal';
+    $('s-stage').hidden = false;
+    scanMsg('Starting the camera…');
+    setActions('s-actions', [{ label: 'Close', fn: closeSheet }]);
+    // the spotter gets ready meanwhile, from the phone
+    if (!R.forceScan && !SP.ready()) SP.load().catch(function () {});
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { camProblem('This browser can’t use the camera.'); return; }
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 1280 } }, audio: false }).then(function (stream) {
+      if (R.view !== 'scan') { stream.getTracks().forEach(function (tr) { tr.stop(); }); return; }
+      stopCamera();
+      R.cam = stream;
+      var v = $('s-video');
+      v.srcObject = stream;
+      var p = v.play();
+      if (p && p.catch) p.catch(function () {});
+      readyToScan();
+    }, function (err) {
+      if (R.view !== 'scan') return;
+      var blocked = err && (err.name === 'NotAllowedError' || err.name === 'SecurityError');
+      camProblem(blocked ? 'Weather Catch needs the camera to scan animals. Allow camera access for this site in your browser’s settings, then try again.' : 'The camera didn’t start. Close anything else using it and try again.');
+    });
+  }
+  function camProblem(text) {
+    $('s-title').textContent = 'No camera';
+    $('s-stage').hidden = true;
+    scanMsg(text);
+    setActions('s-actions', [{ label: 'Close', fn: closeSheet }, { label: 'Try again', primary: true, fn: startCamera }]);
+  }
+  function readyToScan(text) {
+    scanMsg(text || 'Get the whole animal in the square, then tap Scan.');
+    setActions('s-actions', [{ label: 'Close', fn: closeSheet }, { label: 'Scan', primary: true, id: 's-go', fn: doScan }]);
+  }
+  function stopCamera() {
+    if (R.cam) { R.cam.getTracks().forEach(function (tr) { try { tr.stop(); } catch (e) {} }); R.cam = null; }
+    var v = $('s-video');
+    if (v && v.srcObject) { try { v.pause(); } catch (e) {} v.srcObject = null; }
+    R.scanning = false;
+  }
+  function wait(ms) { return new Promise(function (res) { setTimeout(res, ms); }); }
+  function doScan() {
+    if (R.scanning) return;
+    var v = $('s-video');
+    if (!R.forceScan && (!R.cam || !v || !v.videoWidth)) { scanMsg('The camera isn’t ready yet. Give it a moment.'); return; }
+    R.scanning = true;
+    $('s-busy').hidden = false;
+    if ($('s-go')) $('s-go').disabled = true;
+    scanMsg('Looking…');
+    var slow = setTimeout(function () { if (R.scanning && R.view === 'scan') scanMsg('Looking… this takes a few seconds on this phone.'); }, 2500);
+    var job;
+    if (R.forceScan) job = wait(300).then(function () { return R.forceScan; });
+    else job = SP.load().then(function () {
+      // a quick burst of three frames where the phone is quick enough, one where it isn't: they're averaged
+      var embs = [];
+      var grab = function () { return SP.embed(SP.pixels(v, v.videoWidth, v.videoHeight)).then(function (em) { embs.push(em); }); };
+      return grab().then(function () {
+        if (SP.backend() !== 'gpu') return null;
+        return wait(120).then(grab).then(function () { return wait(120); }).then(grab);
+      }).then(function () { return SP.classify(embs); });
+    });
+    job.then(function (res) { clearTimeout(slow); scanDone(res); }, function () {
+      clearTimeout(slow);
+      R.scanning = false;
+      if (R.view !== 'scan') return;
+      $('s-busy').hidden = true;
+      readyToScan('Something went wrong looking at that. Try again.');
+    });
+  }
+  function scanDone(res) {
+    R.scanning = false;
+    if (R.view !== 'scan') return;
+    $('s-busy').hidden = true;
+    if (res && res.kind === 'catch' && AN.type(res.id)) {
+      var t = AN.type(res.id), cool = animalCool(res.id);
+      if (cool) {
+        readyToScan('That’s ' + aName(t) + '! You caught one ' + minutes(now() - S.animals.book[res.id].last) + ' ago. Each animal can be caught once every 30 minutes, so try again in ' + minutes(cool) + '.');
+        return;
+      }
+      var before = RU.levelFor(S.points);
+      var r = awardAnimal(res.id);
+      stopCamera();
+      afterAward([r], before);
       return;
     }
-    var xp = WC.mini.xpFor(id, res), before = WC.mini.rankFor(G.xp);
-    var sc = WC.mini.scoreOf(id, res), old = G.best[id], isBest = WC.mini.better(id, sc, old);
-    G.xp += xp;
-    G.plays[id] = (G.plays[id] || 0) + 1;
-    if (isBest) G.best[id] = sc;
-    if (id === 'reflex' && (!G.best.reflexTap || res.bestTap < G.best.reflexTap)) G.best.reflexTap = res.bestTap;
-    var after = WC.mini.rankFor(G.xp);
-    save();
-    renderGames();
-    $('mg-msg').innerHTML = '<div class="mg-res"><strong>' + esc(res.summary) + '</strong>' + (isBest && old !== undefined ? '<span class="v-new">New best</span>' : '') + '</div>' +
-      '<div>+' + xp + ' Games XP' + (after.i > before.i ? ' · <strong>New rank: ' + esc(after.name) + '!</strong>' : after.next ? ' · ' + (after.next.at - G.xp) + ' to ' + esc(after.next.name) : '') + '</div>';
-    $('mg-msg').hidden = false;
-    $('mg-best').textContent = gameBest(WC.mini.GAMES.filter(function (x) { return x.id === id; })[0]);
-    setActions('mg-actions', [{ label: 'Close', fn: closeSheet }, { label: 'Play again', primary: true, fn: function () { openMini(id); } }]);
-    if (after.i > before.i) { confetti(50); toast('New Games rank: ' + after.name + '!'); }
-    else if (isBest && old !== undefined) confetti(18);
+    readyToScan(SCAN_TIPS[res && res.kind] || SCAN_TIPS.unsure);
   }
 
   /* ---------- sharing a jar ----------
@@ -1962,7 +2295,7 @@
       jc.height = jh;
       var st = jarState(id);
       st.img = res[1] || null;
-      st.mark = markOf(id, rec && rec.v, rec && rec.seed, rec && rec.power, rec && rec.g);
+      st.mark = markOf(id, rec && rec.v, rec && rec.seed, rec && rec.power);
       SKY.jar(jc.getContext('2d'), jw, jh, st, stillTime(id), DARK_LOOK);
       ctx.drawImage(jc, (SHARE_W - jw) / 2, 150);
       // the label
@@ -1983,10 +2316,8 @@
       ctx.fillText(title, lx + pad, y);
       y += 52;
       var vr = RU.variant(id, (rec && rec.v) || 'c');
-      var sgl = rec && rec.g && rec.g !== 'p' ? glassOf(id, rec.g) : null;
       var kind = rlabel(id).toUpperCase() + (t.el === 'wonder' ? ' · SKY WONDER' : t.el === 'change' ? ' · CHANGE MOMENT' : '') +
-        (vr.id !== 'c' ? ' · ' + vr.name.toUpperCase() + ', ' + vr.odds.toUpperCase() + ' (' + vr.pct + ')' : e.n > 1 ? ' · ×' + e.n : '') +
-        (sgl ? ' · ' + sgl.name.toUpperCase() : '');
+        (vr.id !== 'c' ? ' · ' + vr.name.toUpperCase() + ', ' + vr.odds.toUpperCase() + ' (' + vr.pct + ')' : e.n > 1 ? ' · ×' + e.n : '');
       ctx.fillStyle = INK_R[t.r];
       fitText(ctx, kind, '600', 26, MONO, maxW);
       ctx.fillText(kind, lx + pad, y);
@@ -2013,8 +2344,7 @@
   function shareText(id, rec) {
     var vr = RU.variant(id, (rec && rec.v) || 'c');
     var sg = rec ? RU.strength(id, rec) : null;
-    var sgl = rec && rec.g && rec.g !== 'p' ? glassOf(id, rec.g) : null;
-    return 'Look what I caught' + (rec && rec.place ? ' in ' + rec.place : '') + ': ' + recName(id, rec) + ' (' + rlabel(id) + (vr.id !== 'c' ? ', ' + vr.name + ', ' + vr.odds + ', ' + vr.pct : '') + (sgl ? ', ' + sgl.name + ', ' + sgl.odds : '') + ')' +
+    return 'Look what I caught' + (rec && rec.place ? ' in ' + rec.place : '') + ': ' + recName(id, rec) + ' (' + rlabel(id) + (vr.id !== 'c' ? ', ' + vr.name + ', ' + vr.odds + ', ' + vr.pct : '') + ')' +
       (sg ? ', ' + sg.stars + ' ' + plural(sg.stars, 'star') + ': ' + RU.strengthText(sg) : '') + '. Catch the weather where you are: ' + appUrl();
   }
   /* rec: the catch to share. Without one, the newest */
@@ -2070,13 +2400,14 @@
 
   function selectTab(tab) {
     R.tab = tab;
-    ['catch', 'shelf', 'games', 'more'].forEach(function (k) {
+    ['catch', 'shelf', 'animals', 'more'].forEach(function (k) {
       if (!$('panel-' + k)) return;
       $('panel-' + k).hidden = k !== tab;
       if (k === tab) $('nav-' + k).setAttribute('aria-current', 'page');
       else $('nav-' + k).removeAttribute('aria-current');
     });
     if (tab === 'shelf') renderShelf();
+    if (tab === 'animals') renderAnimals();
     render();
     window.scrollTo(0, 0);
     kick();
@@ -2090,13 +2421,14 @@
     R.previewJars = null;
     $('sheet').classList.remove('scorched');
     $('sheet').scrollTop = 0;
+    R.cardKind = null;
     $('game-view').hidden = name !== 'game';
-    if ($('mini-view')) $('mini-view').hidden = name !== 'mini';
-    if (name !== 'mini' && WC.mini) WC.mini.stop();
+    if ($('scan-view')) $('scan-view').hidden = name !== 'scan';
+    if (name !== 'scan') stopCamera();
     $('card-view').hidden = name !== 'card';
     if ($('reward-view')) $('reward-view').hidden = name !== 'reward';
     $('info-view').hidden = name !== 'info';
-    $('sheet').setAttribute('aria-labelledby', name === 'game' ? 'g-title' : name === 'mini' ? 'mg-title' : name === 'card' ? 'c-title' : name === 'reward' ? 'r-title' : 'i-title');
+    $('sheet').setAttribute('aria-labelledby', name === 'game' ? 'g-title' : name === 'scan' ? 's-title' : name === 'card' ? 'c-title' : name === 'reward' ? 'r-title' : 'i-title');
   }
   function setActions(boxId, list) {
     var box = $(boxId);
@@ -2116,8 +2448,8 @@
     if (ov.hidden) R.lastFocus = document.activeElement;
     ov.hidden = false;
     kick();
-    if (R.view !== 'game' && R.view !== 'mini') {
-      var btns = $(R.view === 'card' ? 'c-actions' : R.view === 'reward' ? 'r-actions' : 'i-actions').querySelectorAll('button');
+    if (R.view !== 'game') {
+      var btns = $(R.view === 'card' ? 'c-actions' : R.view === 'reward' ? 'r-actions' : R.view === 'scan' ? 's-actions' : 'i-actions').querySelectorAll('button');
       var target = btns[btns.length - 1];
       if (target) try { target.focus({ preventScroll: true }); } catch (e) { target.focus(); }
     }
@@ -2126,7 +2458,7 @@
     stopSpin();
     freeThumbs();
     $('sheet').classList.remove('scorched');
-    if (WC.mini) WC.mini.stop();
+    stopCamera();
     $('overlay').hidden = true;
     R.game = null;
     R.cardState = null;
@@ -2134,11 +2466,13 @@
     R.share = null;
     R.queue = [];
     R.view = null;
+    R.cardKind = null;
     clearTimeout(confTimer);
     if ($('confetti')) $('confetti').innerHTML = '';
     if (R.lastFocus && R.lastFocus.focus && document.contains(R.lastFocus)) try { R.lastFocus.focus({ preventScroll: true }); } catch (e) {}
     render();
     if (R.tab === 'shelf') renderShelf();
+    if (R.tab === 'animals') renderAnimals();
   }
   function showInfo(o) {
     showView('info');
@@ -2308,7 +2642,6 @@
   }
   function rollCatch(rec) {
     rec.v = TEST && R.forceV ? R.forceV : RU.rollVariant(rand32() / 4294967296);
-    rec.g = TEST && R.forceG ? R.forceG : RU.rollGlass(rand32() / 4294967296);
     rec.seed = rand32() || 1;
     return rec;
   }
@@ -2317,30 +2650,23 @@
     if (!e.vars) e.vars = {};
     var x = e.vars[rec.v];
     var fresh = !x;
-    if (!x) x = e.vars[rec.v] = { n: 0, seed: 0, t: 0, place: '', gs: '' };
+    if (!x) x = e.vars[rec.v] = { n: 0, seed: 0, t: 0, place: '' };
     x.n += 1;
-    var g = rec.g || 'p';
-    if ((x.gs || '').indexOf(g) === -1) x.gs = (x.gs || '') + g;
-    // the catch on show is the one in the best glass, the newest of those
-    if (fresh || RU.glassRank(g) >= RU.glassRank(x.g || 'p')) {
-      x.seed = rec.seed;
-      x.t = rec.t;
-      x.place = rec.place || '';
-      if (g !== 'p') x.g = g; else delete x.g;
-      if (typeof rec.power === 'number') x.power = rec.power; else delete x.power;
-    }
+    // the catch on show is the newest
+    x.seed = rec.seed;
+    x.t = rec.t;
+    x.place = rec.place || '';
+    if (typeof rec.power === 'number') x.power = rec.power; else delete x.power;
     return fresh;
   }
-  /* a special glass found: true the first time this jar has had it */
-  function addGlass(e, rec) {
-    var g = rec.g || 'p';
-    if (g === 'p') return false;
-    if (!e.glass || typeof e.glass !== 'object') e.glass = {};
-    e.glass[g] = (e.glass[g] || 0) + 1;
-    return e.glass[g] === 1;
+  /* the shelf's sections: a row for each kind of weather, then the animal rows */
+  function sections() { return RU.ELEMENTS.map(function (el) { return el.id; }).concat(AN ? AN.ROWS.map(function (r) { return r.id; }) : []); }
+  function sectionName(sec) { var el = RU.ELEMENTS.filter(function (x) { return x.id === sec; })[0]; return el ? el.name : AN ? AN.rowName(sec) : ''; }
+  /* the jar look picked for a section in Shelf style, if it's unlocked: the key sky.js draws it by, or null for clear glass */
+  function jarLook(sec) {
+    var id = S.style.jars && S.style.jars[sec], lk = id && RU.jarLook(id);
+    return lk && lk.key && RU.levelFor(S.points) >= lk.level ? lk.key : null;
   }
-  function glassOf(id, g) { return RU.glass(T(id).el, g || 'p'); }
-  function glassFound(e, g) { return g === 'p' ? !!(e && e.n) : !!(e && e.glass && e.glass[g]); }
   /* the shelf shows the rarest variant found */
   function bestVariant(e) {
     var best = 'c';
@@ -2349,21 +2675,20 @@
   }
   function varsFound(e) { return VARS.filter(function (v) { return e && e.vars && e.vars[v]; }).length; }
   /* what the jar needs to draw one particular catch */
-  function markOf(id, v, seed, power, g) {
+  function markOf(id, v, seed, power) {
     var vr = RU.variant(id, v || 'c');
     seed = seed >>> 0;
     var pw = typeof power === 'number' && isFinite(power) ? power : undefined;
-    var gk = g && g !== 'p' ? glassOf(id, g).key : null;
-    if (!vr || (!seed && !vr.deco && !vr.legend && pw === undefined && !gk)) return null;
+    var lk = T(id) ? jarLook(T(id).el) : null;
+    if (!vr || (!seed && !vr.deco && !vr.legend && pw === undefined && !lk)) return null;
     var mk = { seed: seed, deco: vr.deco, legend: vr.legend };
     if (pw !== undefined) mk.power = pw;
-    if (gk && gk !== 'plain') { mk.glass = gk; mk.g = g; }
-    if (RU.sealed(vr.id, g)) mk.seal = true;
+    if (lk) mk.glass = lk;
     return mk;
   }
   function shelfMark(id, e) {
     var v = bestVariant(e), x = e.vars && e.vars[v];
-    return markOf(id, v, x ? x.seed : 0, x ? x.power : undefined, x ? x.g : null);
+    return markOf(id, v, x ? x.seed : 0, x ? x.power : undefined);
   }
   /* the catch to show for a variant: the record of the one on show, or what the jar remembers of it */
   function recFor(e, v) {
@@ -2371,13 +2696,11 @@
     var seed = x ? x.seed : 0;
     var list = e.catches || [];
     for (var i = list.length - 1; i >= 0; i--) if ((list[i].v || 'c') === v && (list[i].seed >>> 0) === seed) return list[i];
-    return x ? { t: x.t, place: x.place, v: v, seed: seed, g: x.g || 'p' } : lastCatch(e);
+    return x ? { t: x.t, place: x.place, v: v, seed: seed } : lastCatch(e);
   }
-  function variantNote(id, v, g) {
-    var vr = RU.variant(id, v), bits = [];
-    if (vr && vr.id !== 'c') bits.push(vr.name);
-    if (g && g !== 'p') bits.push(glassOf(id, g).name);
-    return bits.length ? ' (' + bits.join(', ') + ')' : '';
+  function variantNote(id, v) {
+    var vr = RU.variant(id, v);
+    return vr && vr.id !== 'c' ? ' (' + vr.name + ')' : '';
   }
   /* jars caught before variants existed: each of those catches gets one mystery roll, once, at the usual odds.
      They're the Classic ones with no seed. A card then shows what turned up. */
@@ -2394,8 +2717,7 @@
       for (var i = old.length; i < n; i++) recs.push({ t: (e.first && e.first.t) || 0, place: x.place });
       recs.concat(old).forEach(function (rec) {
         rollCatch(rec);
-        delete rec.g;
-        var y = e.vars[rec.v] || (e.vars[rec.v] = { n: 0, seed: 0, t: -1, place: '', gs: 'p' });
+        var y = e.vars[rec.v] || (e.vars[rec.v] = { n: 0, seed: 0, t: -1, place: '' });
         y.n += 1;
         if ((rec.t || 0) >= y.t) {
           y.seed = rec.seed; y.t = rec.t || 0; y.place = rec.place || '';
@@ -2408,57 +2730,6 @@
     if (total) {
       S.oldJars = { n: total, found: found };
       addLog('Opened ' + total + ' old ' + plural(total, 'jar') + ': ' + found.length + ' ' + plural(found.length, 'surprise'));
-    }
-    return total;
-  }
-
-  /* jars caught before glass existed: every catch on the shelf gets one roll for its glass, once, at the usual odds.
-     The newest catches of each variant take the rolls; each variant then shows its catch in the best glass it got.
-     A card shows what turned up */
-  function giveGlass() {
-    if (S.glassDone) return 0;
-    S.glassDone = 1;
-    var total = 0, found = [];
-    Object.keys(S.book).forEach(function (id) {
-      var e = S.book[id];
-      if (!e || !e.n || !e.vars || !T(id)) return;
-      if (!e.glass || typeof e.glass !== 'object') e.glass = {};
-      VARS.forEach(function (v) {
-        var x = e.vars[v];
-        if (!x || !x.n) return;
-        var recs = (e.catches || []).filter(function (r) { return r && (r.v || 'c') === v && !r.g; });
-        var best = 'p', bestRec = null, gs = '';
-        for (var i = 0; i < x.n; i++) {
-          var g = TEST && R.forceG ? R.forceG : RU.rollGlass(rand32() / 4294967296);
-          var rec = recs[recs.length - 1 - i] || null;
-          if (rec) rec.g = g;
-          if (gs.indexOf(g) === -1) gs += g;
-          if (g !== 'p') { e.glass[g] = (e.glass[g] || 0) + 1; found.push({ id: id, v: v, g: g }); }
-          if (RU.glassRank(g) > RU.glassRank(best)) { best = g; bestRec = rec; }
-          total += 1;
-        }
-        x.gs = gs;
-        if (best !== 'p') {
-          x.g = best;
-          if (bestRec) {
-            if (bestRec.seed) x.seed = bestRec.seed >>> 0;
-            if (bestRec.t) x.t = bestRec.t;
-            if (bestRec.place) x.place = bestRec.place;
-            if (typeof bestRec.power === 'number') x.power = bestRec.power;
-          }
-        }
-      });
-      // each named storm's own jar shows its catch in that catch's glass
-      if (e.storms) Object.keys(e.storms).forEach(function (nm) {
-        var b = e.storms[nm].best;
-        if (!b || b.g) return;
-        var m = (e.catches || []).filter(function (r) { return r && r.t === b.t && r.seed === b.seed; })[0];
-        if (m && m.g) b.g = m.g;
-      });
-    });
-    if (total) {
-      S.glassNote = { n: total, found: found };
-      addLog('Glass for ' + total + ' ' + plural(total, 'catch', 'catches') + ' already caught: ' + found.length + ' special');
     }
     return total;
   }
@@ -2499,7 +2770,6 @@
     if (id === 'namedstorm') addStorm(e, rec);
     record(e, rec);
     var newV = addVariant(e, rec) && !isNew;
-    var newG = addGlass(e, rec);
     var newBest = sg ? bestUpdate(e, rec, sg) : false;
     var spotted = how === 'spotted';
     var again = caughtToday(id);
@@ -2508,11 +2778,11 @@
     countToday(id);
     S.points += pts;
     var tier = RU.tierReached(before, e.n);
-    var r = { id: id, isNew: isNew, n: e.n, newPlace: newPlace && !isNew, place: place, pts: pts, tier: tier, verify: verify || '', spotted: spotted, v: rec.v, g: rec.g || 'p', seed: rec.seed, newV: newV, newG: newG, rec: rec,
+    var r = { id: id, isNew: isNew, n: e.n, newPlace: newPlace && !isNew, place: place, pts: pts, tier: tier, verify: verify || '', spotted: spotted, v: rec.v, seed: rec.seed, newV: newV, rec: rec,
       sg: sg, newBest: newBest, again: again };
     var t = T(id);
     var lead = spotted ? (isNew ? 'Spotted a new jar: ' : 'Spotted: ') : isNew ? (t.el === 'change' ? 'Change moment: ' : t.el === 'wonder' ? 'Sky Wonder: ' : 'New jar: ') : '';
-    addLog(lead + recName(id, rec) + variantNote(id, rec.v, rec.g) + (isNew ? '' : ' again') + (place ? ' in ' + place : '') + (isNew ? ' (+' + pts + ')' : ' (×' + e.n + ', +' + pts + ')'));
+    addLog(lead + recName(id, rec) + variantNote(id, rec.v) + (isNew ? '' : ' again') + (place ? ' in ' + place : '') + (isNew ? ' (+' + pts + ')' : ' (×' + e.n + ', +' + pts + ')'));
     return r;
   }
   function finishCatch() {
@@ -2549,7 +2819,6 @@
   function afterAward(list, before) {
     var cards = list.concat(claimRewards());
     if (S.oldJars) { cards.push({ oldJars: S.oldJars }); S.oldJars = null; }
-    if (S.glassNote) { cards.push({ glassNote: S.glassNote }); S.glassNote = null; }
     var after = RU.levelFor(S.points);
     if (after > before && cards.length) {
       cards[cards.length - 1].lvUp = after;
@@ -2561,8 +2830,10 @@
     openReveal(cards);
   }
   function unlockText(L) {
-    for (var i = 0; i < RU.UNLOCKS.length; i++) if (RU.UNLOCKS[i].level === L) return 'Unlocked: ' + RU.UNLOCKS[i].name.toLowerCase() + '.';
-    return '';
+    var bits = [];
+    for (var i = 0; i < RU.UNLOCKS.length; i++) if (RU.UNLOCKS[i].level === L) bits.push('Unlocked: ' + RU.UNLOCKS[i].name.toLowerCase() + '.');
+    RU.jarLooksAt(L).forEach(function (lk) { bits.push('New jar look: ' + lk.name + '. Pick it in Shelf style.'); });
+    return bits.join(' ');
   }
   function openReveal(list) {
     R.queue = list.slice();
@@ -2573,7 +2844,7 @@
     if (!r) { closeSheet(); return; }
     if (r.reward) { showReward(r); return; }
     if (r.oldJars) { showOldJars(r); return; }
-    if (r.glassNote) { showGlassNote(r); return; }
+    if (r.animal) { revealAnimal(r); return; }
     var t = T(r.id);
     var e = S.book[r.id];
     showView('card');
@@ -2600,39 +2871,28 @@
     setVerify(r.verify);
     R.cardState = jarState(r.id);
     if (r.img) R.cardState.img = r.img;
-    var v = r.v || bestVariant(e), g = r.g || 'p', crown = RU.sealed(v, g);
+    var v = r.v || bestVariant(e);
     R.cardV = v;
-    R.cardG = g;
-    if (r.v) R.cardState.mark = markOf(r.id, r.v, r.seed, r.rec && r.rec.power, g);
+    if (r.v) R.cardState.mark = markOf(r.id, r.v, r.seed, r.rec && r.rec.power);
     setVariant(r.id, v, r.newV);
-    setGlass(r.id, g, r.newG && g !== 'p', false);
-    setSeal(false);
     setStrength(r.sg, r.newBest ? 'Strongest yet' : '');
     renderVars(null);
     var next = { label: R.queue.length ? 'Next' : 'Put it on the shelf', primary: true, fn: nextReveal };
     R.share = null;
-    if (RU.rank(r.id) >= 3 || RU.variantRank(v) >= 3 || RU.glassRank(g) >= 2 || (r.sg && r.sg.stars >= 4)) {
+    if (RU.rank(r.id) >= 3 || RU.variantRank(v) >= 3 || (r.sg && r.sg.stars >= 4)) {
       prepareShare(r.id, r.rec);
       setActions('c-actions', [{ label: 'Share', fn: function () { doShare(nextReveal); } }, next]);
     } else setActions('c-actions', [next]);
     openSheet();
     var land = function () {
-      if (r.v && R.cardState) R.cardState.mark = markOf(r.id, r.v, r.seed, r.rec && r.rec.power, g);
+      if (r.v && R.cardState) R.cardState.mark = markOf(r.id, r.v, r.seed, r.rec && r.rec.power);
       setVariant(r.id, v, r.newV);
-      setGlass(r.id, g, r.newG && g !== 'p', false);
-      setSeal(crown);
       updateScorch();
-      if (crown) {
-        // the best a jar can be: no words, just a seal, a long buzz and a lot of gold
-        confetti(90);
-        try { if (navigator.vibrate) navigator.vibrate([60, 80, 60, 80, 60, 120, 200]); } catch (err) {}
-        var sl = $('c-seal');
-        if (sl) { sl.classList.remove('stamp'); void sl.offsetWidth; sl.classList.add('stamp'); }
-      } else if (v === 'p') {
+      if (v === 'p') {
         confetti(60);
         try { if (navigator.vibrate) navigator.vibrate([40, 60, 40, 60, 80]); } catch (err) {}
-      } else if ((RU.variantRank(v) >= 5 && (r.newV || r.isNew)) || (r.newBest && r.sg.stars === 5) || (RU.glassRank(g) >= 2 && r.newG)) confetti(18);
-      else if (RU.variantRank(v) >= 1 || g !== 'p') { try { if (navigator.vibrate) navigator.vibrate(30); } catch (err) {} }
+      } else if ((RU.variantRank(v) >= 5 && (r.newV || r.isNew)) || (r.newBest && r.sg.stars === 5)) confetti(18);
+      else if (RU.variantRank(v) >= 1) { try { if (navigator.vibrate) navigator.vibrate(30); } catch (err) {} }
     };
     if (r.v && spinOn()) spinReveal(r, land); else land();
     if (r.lvUp) toast('Level ' + r.lvUp + '! ' + unlockText(r.lvUp));
@@ -2681,20 +2941,6 @@
       (vr.legend ? '<span class="v-legend">Legendary</span>' : '') +
       (fresh ? '<span class="v-new">New variant</span>' : locked ? '<span class="v-lock">' + icon('lock', 13) + 'Not found yet</span>' : '');
   }
-  /* the glass line under the variant: which glass, its odds, and whether it's new to this jar or not found yet.
-     always: show plain glass too (on a jar's own card, where every glass can be looked at) */
-  function setGlass(id, g, fresh, locked, always) {
-    var el = $('c-glass');
-    if (!el) return;
-    if (!id || g === null || (g === 'p' && !always && !fresh)) { el.hidden = true; el.innerHTML = ''; return; }
-    var gd = glassOf(id, g);
-    el.hidden = false;
-    el.innerHTML = '<span class="v-name g-name">' + esc(gd.name) + '</span><span class="v-odds">' + esc(gd.odds) + ' · ' + esc(gd.pct) + '</span>' +
-      (fresh ? '<span class="v-new">New glass</span>' : locked ? '<span class="v-lock">' + icon('lock', 13) + 'Not found yet</span>' : '');
-    el.title = gd.line;
-  }
-  /* a wax seal by the jar's name: nothing says what it means */
-  function setSeal(on) { if ($('c-seal')) $('c-seal').hidden = !on; }
   /* Burning Glass gathers the sun and scorches the card it's on */
   function updateScorch() {
     var sh = $('sheet');
@@ -2723,45 +2969,8 @@
           '<canvas data-id="' + id + '" data-var="' + vr.id + '" aria-hidden="true"></canvas><span class="vjar-n">' + (x ? '×' + x.n : esc(vr.odds)) + '</span></button>';
       }).join('') + '</div>' +
       (!have ? '<p class="small var-note">Swipe the jar to see all eight. You find out which one you get when you catch it. <span class="legend-text">' + esc(lv.name) + '</span> is its legendary, about 1 in every 60 catches.</p>' :
-        e.vars && e.vars.p ? '' : '<p class="small var-note"><span class="legend-text">' + esc(lv.name) + '</span> is this jar’s legendary, the rarest find of all: about 1 in every 60 catches.</p>') +
-      glassStrip(id, e);
+        e.vars && e.vars.p ? '' : '<p class="small var-note"><span class="legend-text">' + esc(lv.name) + '</span> is this jar’s legendary, the rarest find of all: about 1 in every 60 catches.</p>');
     R.previewJars = Array.prototype.slice.call(box.querySelectorAll('canvas[data-var]'));
-  }
-  /* the jar's four glasses: plain, then its row's three special ones, each shown on the variant on show */
-  function glassStrip(id, e) {
-    var list = RU.glasses(T(id).el);
-    if (!list.length) return '';
-    var have = list.filter(function (gd) { return gd.id !== 'p' && glassFound(e, gd.id); }).length;
-    return '<div class="var-h glass-h"><span class="h2">Glass</span><span class="var-n">' + have + ' of 3 special found</span></div>' +
-      '<div class="var-strip glass-strip" role="group" aria-label="Glass for this jar">' + list.map(function (gd) {
-        var found = glassFound(e, gd.id), on = (R.cardG || 'p') === gd.id;
-        var n = gd.id === 'p' ? 0 : found ? e.glass[gd.id] : 0;
-        return '<button type="button" class="vjar gjar' + (on ? ' on' : '') + (found ? '' : ' locked') + '" data-glass="' + gd.id + '" aria-pressed="' + on + '"' +
-          ' aria-label="' + esc(gd.name + (found ? (n ? ', found ' + n + ' ' + plural(n, 'time') : ', found') : ', not found yet') + ', ' + gd.odds + ' jars') + '">' +
-          '<canvas data-id="' + id + '" data-var="' + esc(R.cardV || 'c') + '" data-glass="' + gd.id + '" aria-hidden="true"></canvas><span class="vjar-n">' + (gd.id === 'p' ? 'Plain' : found ? '×' + n : esc(gd.odds)) + '</span></button>';
-      }).join('') + '</div>' +
-      '<p class="small var-note">Every catch comes in a glass: plain 4 in 5, then ' + esc(list[1].name) + ' 1 in 8, ' + esc(list[2].name) + ' 1 in 20 and ' + esc(list[3].name) + ' 1 in 40.</p>';
-  }
-  function markGlass(g) {
-    Array.prototype.forEach.call($('c-vars').querySelectorAll('button[data-glass]'), function (b) {
-      var on = b.getAttribute('data-glass') === g;
-      b.classList.toggle('on', on);
-      b.setAttribute('aria-pressed', on ? 'true' : 'false');
-    });
-  }
-  /* look at the variant on show in another glass */
-  function pickGlass(g) {
-    var id = R.cardId, e = id && S.book[id];
-    if (!id || R.view !== 'card' || GL.indexOf(g) === -1) return;
-    var x = e && e.vars && e.vars[R.cardV];
-    R.cardG = g;
-    if (!e || !e.n) R.cardState = variantState(id, R.cardV, g);
-    R.cardState.mark = markOf(id, R.cardV, x ? x.seed : PREVIEW_SEED, x ? x.power : undefined, g);
-    R.cardState.preview = !comboFound(id, R.cardV, g);
-    setGlass(id, g, false, !glassFound(e, g), true);
-    setSeal(!R.cardState.preview && RU.sealed(R.cardV, g));
-    markGlass(g);
-    updateScorch();
   }
   /* scroll the strip sideways so the variant on show is in the middle, without moving the card */
   function centerStrip(smooth) {
@@ -2775,6 +2984,7 @@
   function canSwipe() { return R.view === 'card' && !R.spin && !!R.cardId && !$('c-vars').hidden && !!$('c-vars').querySelector('.var-strip'); }
   function stepVariant(dir) {
     if (!canSwipe()) return;
+    if (R.cardKind === 'animal') { stepHome(dir); return; }
     var list = RU.variants(R.cardId), i = 0;
     list.forEach(function (vr, k) { if (vr.id === R.cardV) i = k; });
     var next = list[(i + dir + list.length) % list.length];
@@ -2809,44 +3019,53 @@
   }
   var TILE_W = 78, TILE_GAP = 8, REEL_N = 34, REEL_AT = 28, REEL_MS = 3400;
   /* a still picture of one variant, for the reel */
-  function variantPicture(id, v, seed, power, w, h, g) {
+  function variantPicture(id, v, seed, power, w, h) {
     var cv = document.createElement('canvas');
     cv.width = w; cv.height = h;
     var st = jarState(id);
-    st.mark = markOf(id, v, seed, power, g);
+    st.mark = markOf(id, v, seed, power);
     st.glow = null;
     st.hat = st.drip = false;
     SKY.jar(cv.getContext('2d'), w, h, st, stillTime(id), glassLook());
     return cv;
   }
-  function spinReveal(r, land) {
-    var list = RU.variants(r.id);
-    if (!list.length) { land(); return; }
+  /* kit: what's on the reel. Left out, it's a weather jar's variants and glass */
+  function spinReveal(r, land, kit) {
+    if (!kit) {
+      if (!RU.variants(r.id).length) { land(); return; }
+      kit = {
+        roll: function () { return RU.rollVariant(rand32() / 4294967296); },
+        won: r.v,
+        pic: function (v, w, h) { return variantPicture(r.id, v, r.seed, r.rec && r.rec.power, w, h); },
+        tile: function (v) { var vr = RU.variant(r.id, v), vk = RU.variantRank(v); return { cls: vr.legend ? 'legend' : vk >= 5 ? 'epic' : vk >= 3 ? 'rare' : vk >= 1 ? 'uncommon' : 'classic', odds: vr.odds }; },
+        slow: r.v === 'p',
+        during: function () { setVariant(r.id, null); }
+      };
+    }
     var dpr = Math.min(2, window.devicePixelRatio || 1), pw = Math.round(64 * dpr), ph = Math.round(85 * dpr);
     var pics = {};
-    var pic = function (vg) { var p = vg.split(':'); return pics[vg] || (pics[vg] = variantPicture(r.id, p[0], r.seed, r.rec && r.rec.power, pw, ph, p[1])); };
-    // every jar on the reel turns up at the real odds, glass and all
+    var pic = function (vg) { return pics[vg] || (pics[vg] = kit.pic(vg, pw, ph)); };
+    // every jar on the reel turns up at the real odds
     var seq = [];
-    for (var i = 0; i < REEL_N; i++) seq.push(i === REEL_AT ? r.v + ':' + (r.g || 'p') : RU.rollVariant(rand32() / 4294967296) + ':' + RU.rollGlass(rand32() / 4294967296));
-    // the best a jar can be: the reel takes its time
-    var crown = RU.sealed(r.v, r.g || 'p'), ms = crown ? REEL_MS * 1.6 : REEL_MS;
+    for (var i = 0; i < REEL_N; i++) seq.push(i === REEL_AT ? kit.won : kit.roll());
+    // the rarest of all: the reel takes its time
+    var crown = kit.slow, ms = crown ? REEL_MS * 1.6 : REEL_MS;
     var reel = document.createElement('div');
     reel.className = 'reel';
     reel.setAttribute('aria-hidden', 'true');
     var track = document.createElement('div');
     track.className = 'reel-track';
     seq.forEach(function (vg) {
-      var v = vg.split(':')[0];
-      var vr = RU.variant(r.id, v);
+      var tl = kit.tile(vg.split(':')[0]);
       var tile = document.createElement('div');
-      tile.className = 'reel-tile r-' + (vr.legend ? 'legend' : RU.variantRank(v) >= 5 ? 'epic' : RU.variantRank(v) >= 3 ? 'rare' : RU.variantRank(v) >= 1 ? 'uncommon' : 'classic');
+      tile.className = 'reel-tile r-' + tl.cls;
       var c = document.createElement('canvas');
       c.width = pw; c.height = ph;
       c.getContext('2d').drawImage(pic(vg), 0, 0);
       tile.appendChild(c);
       var lab = document.createElement('span');
       lab.className = 'reel-odds';
-      lab.textContent = vr.odds;
+      lab.textContent = tl.odds;
       tile.appendChild(lab);
       track.appendChild(tile);
     });
@@ -2860,9 +3079,7 @@
     var sp = { reel: reel, raf: 0, timer: 0 };
     R.spin = sp;
     $('c-var').classList.add('spinning');
-    setVariant(r.id, null);
-    setGlass(null);
-    setSeal(false);
+    kit.during();
     updateScorch();
     var width = reel.clientWidth || 320;
     // land somewhere inside the caught tile, not always dead centre
@@ -2917,16 +3134,11 @@
     if (!vr || vr.id !== v || R.view !== 'card') return;
     var x = e && e.vars && e.vars[v];
     R.cardV = v;
-    R.cardG = x && x.g ? x.g : 'p';
-    if (!e || !e.n) R.cardState = variantState(id, v, R.cardG);
-    R.cardState.mark = markOf(id, v, x ? x.seed : PREVIEW_SEED, x ? x.power : undefined, R.cardG);
+    if (!e || !e.n) R.cardState = variantState(id, v);
+    R.cardState.mark = markOf(id, v, x ? x.seed : PREVIEW_SEED, x ? x.power : undefined);
     R.cardState.preview = !x;
     setVariant(id, v, false, !x);
-    setGlass(id, R.cardG, false, !glassFound(e, R.cardG), true);
-    setSeal(!!x && RU.sealed(v, R.cardG));
     markStrip(v);
-    Array.prototype.forEach.call($('c-vars').querySelectorAll('canvas[data-glass]'), function (c) { c.setAttribute('data-var', v); });
-    markGlass(R.cardG);
     updateScorch();
     if (x) {
       prepareShare(id, recFor(e, v));
@@ -2951,8 +3163,6 @@
     $('c-stats').textContent = have ? 'It changes with the weather wherever you go.' : jarCount() + ' of ' + RU.SHELF_TOTAL + ' jars so far.';
     setVerify('');
     setVariant(null);
-    setGlass(null);
-    setSeal(false);
     setStrength(null);
     setTier(0);
     setPhotoLine(null);
@@ -2980,10 +3190,7 @@
     R.cardState = stormState(name);
     R.cardId = id;
     R.cardV = (rec && rec.v) || 'c';
-    R.cardG = (rec && rec.g) || 'p';
     setVariant(id, R.cardV, false);
-    setGlass(id, R.cardG, false, false);
-    setSeal(RU.sealed(R.cardV, R.cardG));
     setStrength(rec ? RU.strength(id, rec) : null);
     renderVars(null);
     R.share = null;
@@ -3020,11 +3227,8 @@
     // a jar not caught yet shows a frosted preview of its Classic, and every variant can be looked at
     var open = !n && RU.catchable(t);
     R.cardV = n ? bestVariant(e) : open ? 'c' : null;
-    R.cardG = n && e.vars && e.vars[R.cardV] && e.vars[R.cardV].g ? e.vars[R.cardV].g : 'p';
-    R.cardState = open ? variantState(id, 'c', 'p') : jarState(id);
+    R.cardState = open ? variantState(id, 'c') : jarState(id);
     setVariant(n || open ? id : null, R.cardV, false, open);
-    setGlass(n || open ? id : null, R.cardG, false, open, true);
-    setSeal(!!n && RU.sealed(R.cardV, R.cardG));
     setStrength(n && e.best ? e.best : null, '', 'Strongest');
     renderVars(id);
     R.share = null;
@@ -3548,7 +3752,6 @@
       if (j.id === 'namedstorm') addStorm(e, rec);
       record(e, rec);
       var newV = addVariant(e, rec) && !isNew;
-      var newG = addGlass(e, rec);
       var newBest = sg ? bestUpdate(e, rec, sg) && !isNew : false;
       var again = caughtToday(j.id);
       var pts = catchPoints(j.id, sg, true, again);
@@ -3557,7 +3760,7 @@
       total += pts;
       return {
         id: j.id, isNew: isNew, n: e.n, count: 1, pts: pts, place: j.place, trip: true, again: again,
-        tier: RU.tierReached(b4, e.n), v: rec.v, g: rec.g || 'p', seed: rec.seed, rec: rec, sg: sg, newV: newV, newG: newG, newBest: newBest,
+        tier: RU.tierReached(b4, e.n), v: rec.v, seed: rec.seed, rec: rec, sg: sg, newV: newV, newBest: newBest,
         verify: 'Sealed on your trip' + (j.place ? ' in ' + j.place : '') + (j.t ? ' at ' + hm(j.t) : '') + ', matching the live weather there.'
       };
     });
@@ -3748,7 +3951,6 @@
     o.onboarded = true;
     S = o;
     openOldJars();
-    giveGlass();
     var tn = recountTrips();
     save();
     closeSheet();
@@ -3756,6 +3958,7 @@
     if (R.area) evaluate();
     render();
     if (R.tab === 'shelf') renderShelf();
+    if (R.tab === 'animals') renderAnimals();
     toast('Jars restored.');
     setTimeout(checkPendingRewards, 500);
   }
@@ -3810,6 +4013,10 @@
     if (R.tab === 'shelf' && !reduce && ts - lastShelf > 110) {
       lastShelf = ts;
       drawShelf(t, false);
+    }
+    if (R.tab === 'animals' && !reduce && ts - lastShelf > 110) {
+      lastShelf = ts;
+      drawAnimals(t, false);
     }
     rafId = requestAnimationFrame(frame);
   }
@@ -3871,8 +4078,8 @@
     });
     if ($('style-btn')) $('style-btn').addEventListener('click', openStyle);
     if ($('c-vars')) $('c-vars').addEventListener('click', function (ev) {
-      var gb = ev.target.closest ? ev.target.closest('button[data-glass]') : null;
-      if (gb && !gb.disabled) { pickGlass(gb.getAttribute('data-glass')); return; }
+      var hb = ev.target.closest ? ev.target.closest('button[data-home]') : null;
+      if (hb && !hb.disabled) { pickHome(hb.getAttribute('data-home')); return; }
       var b = ev.target.closest ? ev.target.closest('button[data-var]') : null;
       if (b && !b.disabled) pickVariant(b.getAttribute('data-var'));
     });
@@ -3887,7 +4094,7 @@
     $('lvl').addEventListener('click', openLevels);
     $('nav-catch').addEventListener('click', function () { selectTab('catch'); });
     $('nav-shelf').addEventListener('click', function () { selectTab('shelf'); });
-    if ($('nav-games')) $('nav-games').addEventListener('click', function () { selectTab('games'); });
+    if ($('nav-animals')) $('nav-animals').addEventListener('click', function () { selectTab('animals'); });
     $('nav-more').addEventListener('click', function () { selectTab('more'); });
     if ($('lv-tile')) $('lv-tile').addEventListener('click', openLevels);
     if ($('rw-tile')) $('rw-tile').addEventListener('click', openStyle);
@@ -3897,24 +4104,16 @@
       var to = b && $(b.getAttribute('data-jump'));
       if (to) try { to.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' }); } catch (e) { to.scrollIntoView(); }
     });
-    if ($('game-list')) $('game-list').addEventListener('click', function (ev) {
-      var b = ev.target.closest ? ev.target.closest('[data-game]') : null;
-      if (b) openMini(b.getAttribute('data-game'));
+    if ($('scan-btn')) $('scan-btn').addEventListener('click', openScan);
+    if ($('an-shelves')) $('an-shelves').addEventListener('click', function (ev) {
+      var b = ev.target.closest ? ev.target.closest('[data-animal]') : null;
+      if (b) openAnimal(b.getAttribute('data-animal'));
     });
-    var mst = $('mg-stage');
-    if (mst) {
-      var mxy = function (e) { var r = mst.getBoundingClientRect(); return r.width ? [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height] : [0.5, 0.5]; };
-      mst.addEventListener('pointerdown', function (e) {
-        if (!WC.mini || !WC.mini.active()) return;
-        e.preventDefault();
-        try { mst.setPointerCapture(e.pointerId); } catch (x) {}
-        var p = mxy(e);
-        WC.mini.pointer('down', p[0], p[1], e.timeStamp);
-      });
-      mst.addEventListener('pointermove', function (e) { if (WC.mini && WC.mini.active()) { var p = mxy(e); WC.mini.pointer('move', p[0], p[1]); } });
-      mst.addEventListener('contextmenu', function (e) { e.preventDefault(); });
-      mst.addEventListener('keydown', function (e) { if (WC.mini && WC.mini.key(e.key)) e.preventDefault(); });
-    }
+    if ($('an-chips')) $('an-chips').addEventListener('click', function (ev) {
+      var b = ev.target.closest ? ev.target.closest('[data-jump]') : null;
+      var to = b && $(b.getAttribute('data-jump'));
+      if (to) try { to.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' }); } catch (e) { to.scrollIntoView(); }
+    });
     $('shelves').addEventListener('click', function (ev) {
       var row = ev.target.closest ? ev.target.closest('[data-row]') : null;
       if (row) { openRowInfo(row.getAttribute('data-row')); return; }
@@ -3975,7 +4174,7 @@
       var jars = jarCount();
       showInfo({
         label: 'Warning', labelClass: 'rc-danger', title: 'Clear everything?',
-        body: '<p><strong>This can’t be undone.</strong> Every jar' + (jars ? ' (' + jars + ' on your shelf)' : '') + ', point, level, photo and shelf reward on this phone will be gone for good.</p>' +
+        body: '<p><strong>This can’t be undone.</strong> Every jar' + (jars ? ' (' + jars + ' on your shelf)' : '') + ', animal, point, level, photo and shelf reward on this phone will be gone for good.</p>' +
           '<p class="muted">Want to keep them? Close this and tap Back up first, so you can restore them later.</p>',
         actions: [{ label: 'Keep my jars', primary: true, fn: closeSheet }, { label: 'Yes, clear everything', danger: true, fn: confirmClear }]
       });
@@ -3999,6 +4198,7 @@
       if (R.area) evaluate();
       render();
       if (R.tab === 'shelf') renderShelf();
+      if (R.tab === 'animals') renderAnimals();
       toast('Everything is cleared. Happy catching.');
     }
     $('install-btn').addEventListener('click', function () {
@@ -4014,6 +4214,7 @@
       if (document.hidden) {
         cancelAnimationFrame(rafId);
         rafId = 0;
+        if (R.view === 'scan' && R.cam) { stopCamera(); setActions('s-actions', [{ label: 'Close', fn: closeSheet }, { label: 'Start the camera', primary: true, fn: startCamera }]); scanMsg('The camera stopped while the app was in the background.'); }
         if (!S.drive) stopWatch();
         R.hiddenAt = now();
       } else {
@@ -4030,7 +4231,7 @@
         }
       }
     });
-    window.addEventListener('resize', function () { if (R.tab === 'shelf') requestAnimationFrame(function () { drawShelf(2, true); }); });
+    window.addEventListener('resize', function () { if (R.tab === 'shelf') requestAnimationFrame(function () { drawShelf(2, true); }); if (R.tab === 'animals') requestAnimationFrame(function () { drawAnimals(2, true); }); });
   }
   /* updates: when the app opens or comes back on screen, check whether a newer version is online and switch to it,
      so nobody has to close the app to get one. Once per version, and never mid-catch, on a card or in Drive mode. */
@@ -4060,7 +4261,6 @@
     loadStorms();
     fetchStorms(true);
     openOldJars();
-    giveGlass();
     var tn = recountTrips();
     if (tn) S.tripNote = tn;
     prune();
@@ -4108,7 +4308,9 @@
       pending: function () { checkPendingRewards(); },
       shelf: function () { renderShelf(); },
       variant: function (v) { R.forceV = v || null; },
-      glass: function (g) { R.forceG = g || null; },
+      home: function (h) { R.forceH = h || null; },
+      scanAs: function (res) { R.forceScan = res || null; },
+      animal: function (id) { openAnimal(id); },
       jarState: function (id) { return jarState(id); },
       checkUpdate: function () { checkForUpdate(true); },
       fetchStorms: function () { return fetchStorms(true); },

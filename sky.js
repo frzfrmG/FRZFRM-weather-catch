@@ -943,30 +943,43 @@
      a band of colour round the inside of the rim, and sometimes something of its own: flecks, bubbles, drops or frost.
      tint and edge are [r, g, b, alpha]; rim colours the jar's outline. */
   var GLASS = {
-    amber: { tint: [255, 176, 72, 0.13], edge: [226, 136, 36, 0.32], rim: 'rgba(196,120,40,0.9)' },
+    amber: { tint: [255, 176, 72, 0.2], edge: [226, 136, 36, 0.42], rim: 'rgba(196,120,40,0.9)' },
     sunstone: { tint: [255, 206, 130, 0.07], edge: [240, 190, 90, 0.2], rim: 'rgba(206,150,60,0.9)', fx: 'flecks' },
     burning: { tint: [255, 190, 110, 0.07], edge: [255, 170, 80, 0.24], rim: 'rgba(214,128,44,0.95)', fx: 'lens' },
-    seaglass: { tint: [110, 196, 184, 0.15], edge: [214, 246, 238, 0.42], wide: 1.4, rim: 'rgba(70,160,150,0.9)', fx: 'speckle' },
+    seaglass: { tint: [110, 196, 184, 0.22], edge: [214, 246, 238, 0.5], wide: 1.4, rim: 'rgba(70,160,150,0.9)', fx: 'speckle' },
     ripple: { tint: [160, 196, 236, 0.05], edge: [190, 215, 245, 0.18], fx: 'ripple' },
     raindrop: { tint: [170, 202, 240, 0.05], edge: [190, 215, 245, 0.16], fx: 'drops' },
-    frosted: { edge: [255, 255, 255, 0.5], wide: 1.7, fx: 'speckle' },
-    iceblue: { tint: [150, 200, 255, 0.14], edge: [190, 225, 255, 0.3], rim: 'rgba(235,246,255,0.95)', fx: 'crisp' },
+    frosted: { tint: [236, 244, 255, 0.1], edge: [255, 255, 255, 0.62], wide: 1.8, rim: 'rgba(250,252,255,0.95)', fx: 'speckle' },
+    iceblue: { tint: [150, 200, 255, 0.2], edge: [190, 225, 255, 0.4], rim: 'rgba(235,246,255,0.95)', fx: 'crisp' },
     frozen: { tint: [190, 226, 255, 0.07], edge: [230, 244, 255, 0.34], rim: 'rgba(225,240,255,0.95)', fx: 'frozen' },
     breezeblue: { tint: [140, 214, 204, 0.13], edge: [90, 186, 176, 0.3], rim: 'rgba(80,160,150,0.9)' },
     seed: { tint: [200, 230, 220, 0.05], edge: [210, 235, 228, 0.16], fx: 'bubbles' },
     whirl: { tint: [200, 220, 255, 0.05], edge: [210, 228, 255, 0.16], fx: 'whirl' },
-    smoky: { tint: [66, 58, 60, 0.17], edge: [36, 32, 38, 0.42], rim: 'rgba(70,64,70,0.95)' },
+    smoky: { tint: [66, 58, 60, 0.24], edge: [36, 32, 38, 0.5], rim: 'rgba(70,64,70,0.95)' },
     crackle: { tint: [220, 232, 255, 0.04], edge: [220, 232, 255, 0.14], fx: 'crackle' },
     charged: { tint: [120, 170, 255, 0.06], edge: [110, 160, 255, 0.3], rim: 'rgba(130,175,255,0.95)', fx: 'spark' },
     misted: { edge: [244, 247, 252, 0.42], wide: 1.9, fx: 'mistdrops' },
     moonstone: { tint: [200, 214, 255, 0.06], edge: [205, 220, 255, 0.2], fx: 'sheen' },
     opal: { tint: [240, 240, 255, 0.04], fx: 'opal' },
-    twilight: { tint: [92, 62, 172, 0.16], edge: [70, 40, 150, 0.36], rim: 'rgba(110,80,190,0.9)' },
-    starlight: { tint: [40, 50, 110, 0.06], edge: [160, 170, 255, 0.16], fx: 'glints' },
+    twilight: { tint: [92, 62, 172, 0.22], edge: [70, 40, 150, 0.44], rim: 'rgba(110,80,190,0.9)' },
+    starlight: { tint: [40, 50, 110, 0.12], edge: [160, 170, 255, 0.24], rim: 'rgba(170,180,255,0.9)', fx: 'glints' },
     aurora: { tint: [120, 255, 200, 0.03], fx: 'aurora' },
     dawn: { fx: 'dawn', edge: [255, 200, 170, 0.18] },
     dew: { tint: [210, 236, 220, 0.04], edge: [215, 240, 225, 0.16], fx: 'dew' },
-    dichroic: { fx: 'dichroic' }
+    dichroic: { fx: 'dichroic' },
+    // the animals' glasses: garden, beach and coast, countryside and zoo
+    greenhouse: { tint: [150, 210, 160, 0.13], edge: [110, 180, 120, 0.3], rim: 'rgba(100,160,110,0.9)' },
+    pressed: { tint: [250, 220, 232, 0.08], edge: [240, 200, 220, 0.22], rim: 'rgba(214,150,180,0.9)', fx: 'pressed' },
+    honey: { tint: [255, 196, 80, 0.18], edge: [235, 165, 50, 0.38], rim: 'rgba(214,150,40,0.95)', fx: 'honeycomb' },
+    bottle: { tint: [60, 140, 90, 0.24], edge: [30, 110, 60, 0.46], rim: 'rgba(40,120,70,0.95)' },
+    sandetch: { tint: [240, 228, 200, 0.08], rim: 'rgba(214,196,160,0.95)', fx: 'etch' },
+    pearl: { tint: [255, 236, 244, 0.1], edge: [255, 230, 240, 0.3], rim: 'rgba(240,215,228,0.95)', fx: 'pearl' },
+    meadow: { tint: [240, 210, 120, 0.13], edge: [220, 180, 90, 0.3], rim: 'rgba(200,160,70,0.9)' },
+    hedgerow: { tint: [220, 230, 210, 0.03], edge: [210, 220, 200, 0.12], fx: 'bramble' },
+    harvest: { tint: [255, 220, 140, 0.05], edge: [240, 200, 110, 0.16], fx: 'wheat' },
+    safari: { tint: [230, 190, 120, 0.14], edge: [200, 160, 90, 0.32], rim: 'rgba(180,140,80,0.9)' },
+    jungle: { tint: [200, 235, 200, 0.03], edge: [180, 220, 180, 0.12], fx: 'leafetch' },
+    goldleaf: { tint: [255, 230, 160, 0.08], edge: [240, 210, 130, 0.22], rim: 'rgba(214,170,70,0.95)', fx: 'goldleaf' }
   };
   function rgbaA(c, a) { return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')'; }
   /* a soft band of colour round the inside of the jar: the jar's own outline, stroked wide and clipped to the inside */
@@ -1105,6 +1118,88 @@
       case 'mistdrops':
         drops(ctx, r, gd.fx, bx, by, bw, bh, k, 0);
         break;
+      case 'pressed':
+        // little flowers pressed into the glass round the bottom
+        var pcols = ['rgba(240,150,180,0.6)', 'rgba(250,215,110,0.6)', 'rgba(190,160,235,0.6)', 'rgba(255,255,255,0.55)'];
+        for (i = 0; i < 9; i++) {
+          var pfx = bx + bw * (0.06 + i * 0.11 + (r() - 0.5) * 0.04), pfy = by + bh * (0.86 + r() * 0.1), ps = (1.6 + r() * 1.2) * k;
+          ctx.fillStyle = pcols[i % pcols.length];
+          for (var pp = 0; pp < 5; pp++) { var pa = pp * TAU / 5 + r(); ctx.beginPath(); ctx.ellipse(pfx + Math.cos(pa) * ps * 0.6, pfy + Math.sin(pa) * ps * 0.6, ps * 0.5, ps * 0.3, pa, 0, TAU); ctx.fill(); }
+          ctx.fillStyle = 'rgba(255,240,180,0.7)'; ctx.beginPath(); ctx.arc(pfx, pfy, ps * 0.22, 0, TAU); ctx.fill();
+          if (i % 2) { ctx.strokeStyle = 'rgba(120,170,110,0.45)'; ctx.lineWidth = Math.max(0.6, 0.4 * k); ctx.beginPath(); ctx.moveTo(pfx, pfy + ps * 0.5); ctx.quadraticCurveTo(pfx + ps, pfy + ps * 1.4, pfx + ps * 0.4, pfy + ps * 2.4); ctx.stroke(); }
+        }
+        break;
+      case 'honeycomb': {
+        // a band of honeycomb round the bottom
+        ctx.strokeStyle = 'rgba(255,214,130,0.36)';
+        ctx.lineWidth = Math.max(0.7, 0.55 * k);
+        var hs2 = 3.4 * k, hw2 = hs2 * Math.sqrt(3);
+        for (var hy = by + bh * 0.82, hrow = 0; hy < by + bh + hs2; hy += hs2 * 1.5, hrow++) for (var hx = bx + (hrow % 2) * hw2 / 2; hx < bx + bw + hw2; hx += hw2) {
+          ctx.beginPath();
+          for (var hk = 0; hk < 6; hk++) { var ha = Math.PI / 6 + hk * Math.PI / 3; ctx.lineTo(hx + Math.cos(ha) * hs2, hy + Math.sin(ha) * hs2); }
+          ctx.closePath(); ctx.stroke();
+        }
+        break;
+      }
+      case 'etch': {
+        // worn frosty by the sand, most at the bottom
+        var eg = ctx.createLinearGradient(0, by + bh * 0.62, 0, by + bh);
+        eg.addColorStop(0, 'rgba(255,255,255,0)'); eg.addColorStop(1, 'rgba(255,252,245,0.5)');
+        ctx.fillStyle = eg; ctx.fillRect(x, by + bh * 0.6, w, bh * 0.42);
+        ctx.fillStyle = 'rgba(255,255,255,0.45)';
+        for (i = 0; i < 60; i++) ctx.fillRect(bx + bw * r(), by + bh * (0.72 + r() * 0.28), 0.8 * k, 0.8 * k);
+        break;
+      }
+      case 'bramble':
+        // brambles and blackberries etched round the bottom
+        ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+        ctx.lineWidth = Math.max(0.7, 0.55 * k);
+        ctx.beginPath();
+        ctx.moveTo(bx, by + bh * 0.9);
+        for (i = 1; i <= 8; i++) ctx.quadraticCurveTo(bx + bw * (i - 0.5) / 8, by + bh * (i % 2 ? 0.8 : 0.96), bx + bw * i / 8, by + bh * 0.88);
+        ctx.stroke();
+        for (i = 0; i < 8; i++) {
+          var bxx = bx + bw * (0.07 + i * 0.12), byy = by + bh * (i % 2 ? 0.84 : 0.92);
+          ctx.fillStyle = i % 3 ? 'rgba(90,40,90,0.35)' : 'rgba(170,60,80,0.35)';
+          for (var bb = 0; bb < 4; bb++) { ctx.beginPath(); ctx.arc(bxx + (bb % 2) * 1.1 * k, byy + (bb > 1 ? 1.1 : 0) * k, 0.8 * k, 0, TAU); ctx.fill(); }
+          ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.beginPath(); ctx.ellipse(bxx + 3 * k, byy - 2.4 * k, 2 * k, 1 * k, -0.6, 0, TAU); ctx.stroke();
+        }
+        break;
+      case 'wheat':
+        // ears of wheat etched in gold, standing round the glass
+        ctx.strokeStyle = 'rgba(240,200,110,0.55)';
+        ctx.fillStyle = 'rgba(240,200,110,0.55)';
+        ctx.lineWidth = Math.max(0.7, 0.5 * k);
+        [0.05, 0.14, 0.86, 0.95].forEach(function (f, j) {
+          var sx2 = bx + bw * f, sy2 = by + bh, top2 = by + bh * (0.55 + (j % 2) * 0.1);
+          ctx.beginPath(); ctx.moveTo(sx2, sy2); ctx.quadraticCurveTo(sx2 + (f < 0.5 ? 1 : -1) * 2 * k, (sy2 + top2) / 2, sx2, top2); ctx.stroke();
+          for (var g2 = 0; g2 < 5; g2++) {
+            var gy = top2 + g2 * 2.2 * k;
+            ctx.beginPath(); ctx.ellipse(sx2 - 1.2 * k, gy, 0.9 * k, 1.6 * k, -0.5, 0, TAU); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(sx2 + 1.2 * k, gy, 0.9 * k, 1.6 * k, 0.5, 0, TAU); ctx.fill();
+          }
+        });
+        break;
+      case 'leafetch':
+        // leaves etched round the bottom
+        ctx.strokeStyle = 'rgba(255,255,255,0.32)';
+        ctx.lineWidth = Math.max(0.7, 0.5 * k);
+        for (i = 0; i < 10; i++) {
+          var lx = bx + bw * (0.04 + i * 0.1), ly = by + bh * (0.86 + (i % 3) * 0.04), la = -Math.PI / 2 + (r() - 0.5) * 1.6, ll = (4 + r() * 3) * k;
+          ctx.save(); ctx.translate(lx, ly); ctx.rotate(la);
+          ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(ll * 0.5, -ll * 0.35, ll, 0); ctx.quadraticCurveTo(ll * 0.5, ll * 0.35, 0, 0); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(ll * 0.85, 0); ctx.stroke();
+          ctx.restore();
+        }
+        break;
+      case 'goldleaf':
+        // flakes of gold leaf round the top of the jar
+        for (i = 0; i < 22; i++) {
+          var gx = bx + bw * (0.04 + r() * 0.92), gy2 = by + bh * (r() * 0.12) + (r() < 0.3 ? bh * 0.05 : 0), gs3 = (0.8 + r() * 1.4) * k;
+          ctx.fillStyle = r() < 0.5 ? 'rgba(232,190,80,0.85)' : 'rgba(250,218,120,0.8)';
+          ctx.beginPath(); ctx.moveTo(gx, gy2 - gs3); ctx.lineTo(gx + gs3, gy2 - gs3 * 0.2); ctx.lineTo(gx + gs3 * 0.3, gy2 + gs3); ctx.lineTo(gx - gs3 * 0.8, gy2 + gs3 * 0.3); ctx.closePath(); ctx.fill();
+        }
+        break;
     }
   }
   /* beads of water on the glass. Raindrops run down now and then, leaving a trail */
@@ -1213,6 +1308,19 @@
       case 'sheen':
         spot(ctx, bx + bw * (0.5 + 0.38 * Math.sin(t * 0.32)), by + bh * (0.45 + 0.2 * Math.cos(t * 0.27)), bw * 0.45, [190, 215, 255], 0.26);
         break;
+      case 'pearl':
+        spot(ctx, bx + bw * (0.5 + 0.36 * Math.sin(t * 0.3)), by + bh * (0.5 + 0.22 * Math.cos(t * 0.25)), bw * 0.42, [255, 228, 240], 0.24);
+        spot(ctx, bx + bw * (0.5 - 0.3 * Math.sin(t * 0.22)), by + bh * (0.4 + 0.2 * Math.sin(t * 0.31)), bw * 0.3, [215, 235, 255], 0.16);
+        break;
+      case 'goldleaf': {
+        // now and then a flake catches the light
+        var cyc2 = (t * 0.35) % 1;
+        if (cyc2 < 0.25) {
+          var gr2 = rng(mix(seedOf(key), Math.floor(t * 0.35)));
+          star4(ctx, bx + bw * (0.1 + gr2() * 0.8), by + bh * gr2() * 0.12, 3.2 * k * Math.sin(cyc2 / 0.25 * Math.PI), 'rgba(255,240,190,0.9)');
+        }
+        break;
+      }
       case 'opal':
       case 'aurora': {
         var cols = gd.fx === 'opal' ? [[255, 140, 200], [120, 240, 190], [130, 170, 255], [255, 220, 120]] : [[80, 255, 170], [190, 120, 255], [110, 220, 255]];
@@ -1275,6 +1383,18 @@
         star4(ctx, p0[0], p0[1], 5 * k * Math.sin(f * Math.PI), 'rgba(255,255,255,0.95)');
       }
     }
+  }
+  /* a pearl on top of the lid, for Pearl Glass */
+  function pearl(ctx, cx, y, r) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(40,30,40,0.25)';
+    ctx.beginPath(); ctx.ellipse(cx, y, r * 1.1, r * 0.35, 0, 0, TAU); ctx.fill();
+    var g = ctx.createRadialGradient(cx - r * 0.35, y - r * 1.2, r * 0.1, cx, y - r * 0.8, r * 1.1);
+    g.addColorStop(0, '#FFFFFF'); g.addColorStop(0.5, '#F4ECEE'); g.addColorStop(1, '#C9C2D0');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(cx, y - r * 0.8, r, 0, TAU); ctx.fill();
+    ctx.fillStyle = 'rgba(255,220,235,0.35)'; ctx.beginPath(); ctx.arc(cx + r * 0.3, y - r * 0.5, r * 0.45, 0, TAU); ctx.fill();
+    ctx.restore();
   }
   /* a wax seal pressed onto the jar, just under the lid. Nothing says what it means */
   function waxSeal(ctx, cx, cy, s, t) {
@@ -1393,6 +1513,9 @@
         var fy = top + h * (0.35 + 0.1 * f) + Math.sin(t * 1.2 + f) * 2 * k;
         ctx.fillRect(x, fy, w, 1.2 * k);
       }
+    } else if (st.animal && WC.zoo) {
+      // an animal at home
+      WC.zoo.paint(ctx, W, H, st.animal, st.home || 'h1', t, mk);
     } else if (st.img && typeof st.img === 'object' && (st.img.naturalWidth || st.img.width)) {
       cover(ctx, st.img, x, top, w, h);
       decoOver(ctx, W, H, st.id, t, mk);
@@ -1412,7 +1535,7 @@
     jarShape(ctx, x, top, w, h);
     var gl = mk && mk.glass ? GLASS[mk.glass] : null;
     ctx.strokeStyle = lg ? 'rgba(214,160,60,0.95)' : gl && gl.rim ? gl.rim : look.glass;
-    ctx.lineWidth = Math.max(1, (lg ? 2 : 1.5) * k);
+    ctx.lineWidth = Math.max(1, (lg ? 2 : gl && gl.rim ? 2.2 : 1.5) * k);
     if (st.locked && !st.ghost) ctx.setLineDash([5 * k, 3.5 * k]);
     ctx.stroke();
     ctx.restore();
@@ -1423,6 +1546,7 @@
     ctx.fill();
     if (gl) glassOut(ctx, W, H, x, top, w, h, k, t, mk.glass);
     lid(ctx, cx, top + 1 - (st.lift || 0) * h * 0.3, w * 0.66, h * 0.11, k, st.lidTone);
+    if (gl && gl.fx === 'pearl') pearl(ctx, cx, top + 1 - (st.lift || 0) * h * 0.3 - h * 0.11, 4.8 * k);
     if (mk && mk.seal && !st.preview) waxSeal(ctx, x + w * 0.78, top + h * 0.2, 7.5 * k, t);
     if (st.hat) {
       var hy = top + 1 - h * 0.11;

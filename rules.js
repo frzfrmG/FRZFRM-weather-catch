@@ -18,12 +18,12 @@
   };
 
   var ELEMENTS = [
-    { id: 'sun', name: 'Sun' },
-    { id: 'rain', name: 'Rain' },
-    { id: 'frost', name: 'Frost' },
-    { id: 'wind', name: 'Wind' },
-    { id: 'storm', name: 'Storm' },
-    { id: 'mist', name: 'Mist' },
+    { id: 'sun', name: 'Sunny' },
+    { id: 'rain', name: 'Rainy' },
+    { id: 'frost', name: 'Snowy & Icy' },
+    { id: 'wind', name: 'Windy' },
+    { id: 'storm', name: 'Stormy' },
+    { id: 'mist', name: 'Misty & Cloudy' },
     { id: 'wonder', name: 'Sky Wonders' },
     { id: 'change', name: 'Change moments' }
   ];
@@ -983,47 +983,33 @@
     return 'c';
   }
 
-  /* ---------- jar glass ----------
-     Every catch is also put in a glass, rolled on its own after the variant: plain glass most of the time, and now and
-     then one of its row's three special glasses. The odds are published and add up to exactly 1: plain 4 in 5, then
-     1 in 8, 1 in 20 and 1 in 40. Glass only tints the jar and touches its edges, so the picture inside stays clear.
-     key: how the glass is drawn (sky.js) */
-  var GLASS_SLOTS = [['p', 32, '4 in 5'], ['a', 5, '1 in 8'], ['b', 2, '1 in 20'], ['c', 1, '1 in 40']];
-  var GRANK = { p: 0, a: 1, b: 2, c: 3 };
-  var GLASSES = {
-    sun: [['amber', 'Amber Glass', 'Warm honey-coloured glass.'], ['sunstone', 'Sunstone Glass', 'Flecks of gold glint round the edges.'], ['burning', 'Burning Glass', 'The jar works like a magnifying glass: it gathers the sun to a point, and the card gets scorched.']],
-    rain: [['seaglass', 'Sea Glass', 'Soft, frosted blue-green, like glass worn smooth by the sea.'], ['ripple', 'Rippled Glass', 'Old wavy glass, rippled at the sides.'], ['raindrop', 'Raindrop Glass', 'Raindrops on the glass, running down now and then.']],
-    frost: [['frosted', 'Frosted Glass', 'Milky frost round the edges.'], ['iceblue', 'Ice Blue Glass', 'Cold blue glass with a crisp white rim.'], ['frozen', 'Frozen Glass', 'Ice creeping up from the bottom, with icicles under the lid.']],
-    wind: [['breezeblue', 'Breeze Glass', 'Pale blue-green glass.'], ['seed', 'Seed Glass', 'Old glass with tiny air bubbles caught in it.'], ['whirl', 'Whirlwind Glass', 'Faint swirls etched in the glass, slowly turning.']],
-    storm: [['smoky', 'Smoky Glass', 'Smoke-grey glass, darker at the edges.'], ['crackle', 'Crackle Glass', 'A fine crackle runs through the glass.'], ['charged', 'Charged Glass', 'Now and then a spark runs round the rim.']],
-    mist: [['misted', 'Misted Glass', 'Misted up round the edges.'], ['moonstone', 'Moonstone Glass', 'A pearly blue sheen drifts across it.'], ['opal', 'Opal Glass', 'Colours play round the edges as it turns.']],
-    wonder: [['twilight', 'Twilight Glass', 'Deep violet, like the sky after sunset.'], ['starlight', 'Starlight Glass', 'Tiny stars twinkle in the glass.'], ['aurora', 'Aurora Glass', 'Green and violet light drifts round the rim.']],
-    change: [['dawn', 'Dawn Glass', 'Warm at the top, cool at the bottom.'], ['dew', 'Dewdrop Glass', 'Dewdrops cling to the glass.'], ['dichroic', 'Dichroic Glass', 'It changes colour as the light moves.']]
-  };
-  /* the four glasses for a row: plain first, then its three special ones */
-  function glasses(el) {
-    var row = GLASSES[el];
-    if (!row) return [];
-    return GLASS_SLOTS.map(function (s, i) {
-      var d = i ? row[i - 1] : ['plain', 'Plain Glass', 'Clear, plain glass.'];
-      return { id: s[0], key: d[0], name: d[1], line: d[2], odds: s[2], chance: s[1] / 40, pct: pctText(s[1] / 40), rank: i };
-    });
-  }
-  /* one glass of a row, plain if it isn't known */
-  function glass(el, g) {
-    var list = glasses(el);
-    for (var i = 0; i < list.length; i++) if (list[i].id === g) return list[i];
-    return list[0] || { id: 'p', key: 'plain', name: 'Plain Glass', line: '', odds: '4 in 5', chance: 0.8, pct: '80%', rank: 0 };
-  }
-  function glassRank(g) { return GRANK[g] || 0; }
-  /* r: a random number from 0 up to 1. The rarest glass takes the lowest numbers */
-  function rollGlass(r) {
-    var k = Math.floor(r * 40), acc = 0;
-    for (var i = GLASS_SLOTS.length - 1; i > 0; i--) { acc += GLASS_SLOTS[i][1]; if (k < acc) return GLASS_SLOTS[i][0]; }
-    return 'p';
-  }
-  /* the best a jar can be: its rarest variant in its rarest glass. The app never says so; the jar just wears a wax seal */
-  function sealed(v, g) { return v === 'p' && g === 'c'; }
+  /* ---------- jar looks ----------
+     Each section of the shelf can have a jar look of its own, picked in Shelf style. More looks unlock as you level up.
+     key: how sky.js draws the glass (none for clear glass) */
+  var JAR_LOOKS = [
+    { id: 'plain', name: 'Clear Glass', level: 1, about: 'Plain, clear glass.' },
+    { id: 'amber', key: 'amber', name: 'Amber Glass', level: 2, about: 'Warm honey-coloured glass.' },
+    { id: 'seaglass', key: 'seaglass', name: 'Sea Glass', level: 3, about: 'Soft, frosted blue-green, like glass worn smooth by the sea.' },
+    { id: 'frosted', key: 'frosted', name: 'Frosted Glass', level: 4, about: 'Milky frost round the edges.' },
+    { id: 'pressed', key: 'pressed', name: 'Pressed Flower Glass', level: 5, about: 'Little flowers pressed into the glass round the bottom.' },
+    { id: 'bottle', key: 'bottle', name: 'Bottle Green Glass', level: 6, about: 'Deep green, like a bottle washed up on the beach.' },
+    { id: 'iceblue', key: 'iceblue', name: 'Ice Blue Glass', level: 7, about: 'Cold blue glass with a crisp white rim.' },
+    { id: 'honey', key: 'honey', name: 'Honey Glass', level: 9, about: 'Golden glass with honeycomb round the bottom.' },
+    { id: 'smoky', key: 'smoky', name: 'Smoky Glass', level: 10, about: 'Smoke-grey glass, darker at the edges.' },
+    { id: 'sandetch', key: 'sandetch', name: 'Sand-etched Glass', level: 11, about: 'Frosted round the bottom, as if the sand had worn it.' },
+    { id: 'twilight', key: 'twilight', name: 'Twilight Glass', level: 13, about: 'Deep violet, like the sky after sunset.' },
+    { id: 'pearl', key: 'pearl', name: 'Pearl Glass', level: 14, about: 'A pearly sheen, with a pearl on the lid.' },
+    { id: 'frozen', key: 'frozen', name: 'Frozen Glass', level: 16, about: 'Ice creeping up from the bottom, with icicles under the lid.' },
+    { id: 'starlight', key: 'starlight', name: 'Starlight Glass', level: 18, about: 'Tiny stars twinkle in the glass.' },
+    { id: 'goldleaf', key: 'goldleaf', name: 'Gold Leaf Glass', level: 20, about: 'Flecks of gold leaf round the rim.' },
+    { id: 'charged', key: 'charged', name: 'Charged Glass', level: 22, about: 'Now and then a spark runs round the rim.' },
+    { id: 'burning', key: 'burning', name: 'Burning Glass', level: 24, about: 'It works like a magnifying glass, gathering the light to a point, and scorches the edge of a jar’s card.' },
+    { id: 'aurora', key: 'aurora', name: 'Aurora Glass', level: 27, about: 'Green and violet light drifts round the rim.' },
+    { id: 'dichroic', key: 'dichroic', name: 'Dichroic Glass', level: 30, about: 'It changes colour as the light moves.' }
+  ];
+  function jarLook(id) { for (var i = 0; i < JAR_LOOKS.length; i++) if (JAR_LOOKS[i].id === id) return JAR_LOOKS[i]; return null; }
+  /* the jar looks that unlock at exactly level L */
+  function jarLooksAt(L) { return JAR_LOOKS.filter(function (lk) { return lk.level === L && lk.level > 1; }); }
 
   /* ---------- strength: how strong a catch was ----------
      Each kind of weather is measured by one reading, and graded from 1 to 5 stars by where it sits in that weather's own range,
@@ -1119,7 +1105,7 @@
     WOODS: WOODS, LIGHTS: LIGHTS, JAR_REWARDS: JAR_REWARDS, ROW_LOOKS: ROW_LOOKS, KEEPER: KEEPER,
     reward: reward, shelfProgress: shelfProgress, rewardsEarned: rewardsEarned, nextJarReward: nextJarReward, styleReward: styleReward,
     variants: variants, variant: variant, variantRank: variantRank, pctText: pctText, rollVariant: rollVariant, VARIANT_SLOTS: SLOTS.map(function (x) { return x[0]; }), DECO_NAMES: DECO_NAMES,
-    GLASSES: GLASSES, GLASS_SLOTS: GLASS_SLOTS.map(function (x) { return x[0]; }), glasses: glasses, glass: glass, glassRank: glassRank, rollGlass: rollGlass, sealed: sealed,
+    JAR_LOOKS: JAR_LOOKS, jarLook: jarLook, jarLooksAt: jarLooksAt,
     strength: strength, hasStrength: hasStrength, strengthText: strengthText, starBonus: starBonus,
     activeStorm: activeStorm, stormList: stormList, okStormName: okStormName, STORM_AREA: STORM_AREA
   };
