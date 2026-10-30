@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en-GB" data-v="0.12.0">
+<html lang="en-GB" data-v="0.13.0">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -18,7 +18,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap">
 <!-- on every release, bump data-v above and ?v= below to match VERSION in app.js, so a phone never mixes old and new files -->
-<link rel="stylesheet" href="app.css?v=0.12.0">
+<link rel="stylesheet" href="app.css?v=0.13.0">
 </head>
 <body>
 <div class="app" id="app">
@@ -183,6 +183,11 @@
         <button class="btn btn-primary btn-scan" type="button" id="scan-btn"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2.2l1.4-2h5.8l1.4 2h2.2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z"></path><circle cx="12" cy="13" r="3.4"></circle></svg>Scan an animal</button>
         <p class="small" id="scan-note">Your first scan downloads the animal spotter: about 88 MB, just once. The photo is never kept or sent anywhere.</p>
       </div>
+      <button class="seek-card" type="button" id="seek-btn">
+        <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"></circle><path d="M15 15l5 5"></path><path d="M8 9.2c.6-1 1.6-1.6 2.8-1.6"></path></svg>
+        <span class="seek-card-t"><strong>Hide &amp; seek</strong><span id="seek-note">Find the animal hiding in a busy picture.</span></span>
+        <span class="seek-play">Play</span>
+      </button>
       <div class="row-chips" id="an-chips" role="group" aria-label="Jump to a row"></div>
       <div class="shelves cabinet" id="an-shelves"></div>
     </section>
@@ -206,6 +211,7 @@
           <li><strong>Flying?</strong> Keep the app open on the plane. When the sun sets while you&rsquo;re flying, you can catch <strong>Sunset Over the Clouds</strong>. Your phone&rsquo;s GPS can tell you&rsquo;re flying, even without wifi.</li>
           <li><strong>Levels:</strong> tap your level to see what&rsquo;s ahead: new titles, new powers and new looks for your shelf. The next ones are shown in full, and the rest are only hinted at.</li>
           <li><strong>Animals:</strong> scan a real animal with your camera and it goes in its jar. There are garden animals, pets, and beach, countryside and zoo animals. The photo is looked at on your phone and thrown away. Each animal can be caught once every 30 minutes, and it earns points by how rare it is: 5 for a seagull, up to 100 for a zoo animal, and a fifth of that for the same animal again that day. Its first catch moves into its everyday home. After that, each catch turns up in one of its five homes (1 in 2 up to 1 in 24 for its favourite).</li>
+          <li><strong>Hide &amp; seek:</strong> in the Animals tab, find the animal hiding in a busy picture, among things its own colours, like a brown dog among shoes. There are hundreds of pictures, and when one comes round again the animal is somewhere new. The first 10 finds each day earn points: 6 for a find in 15 seconds, 4 within 45 seconds, then 2. A hint halves them.</li>
           <li><strong>Strength:</strong> each catch gets 1 to 5 stars for how strong the weather really was, like how hard it rained, how hot it got, how deep the snow was or how thick the fog. 4 stars are worth half as many points again, and 5 stars double. Each jar remembers its strongest catch.</li>
           <li><strong>Shelf rewards:</strong> every 10 jars unlocks a new wood or lights for your shelf, with bonus points. Finish a row and that shelf changes for good. Get every jar in a row to gold and the shelf turns gold. Fill the whole shelf to earn the Sky Jar.</li>
         </ul>
@@ -293,6 +299,16 @@
       <p class="g-instr scan-msg" id="s-msg" role="status" aria-live="polite"></p>
       <div class="actions" id="s-actions"></div>
     </div>
+    <div class="view" id="seek-view" hidden>
+      <div class="ov-label seek-lab"><span>Hide &amp; seek</span><span class="seek-time" id="k-time">0:00</span></div>
+      <div class="seek-head">
+        <canvas class="seek-who" id="k-who" width="120" height="120" aria-hidden="true"></canvas>
+        <div class="seek-tt"><h2 class="g-title" id="k-title">Find the animal</h2><p class="seek-where" id="k-where"></p></div>
+      </div>
+      <div class="seek-stage" id="k-stage" role="img" aria-label="A busy picture with an animal hiding in it"><canvas id="k-canvas"></canvas><canvas id="k-fx" aria-hidden="true"></canvas></div>
+      <p class="seek-msg" id="k-msg" role="status" aria-live="polite"></p>
+      <div class="actions" id="k-actions"></div>
+    </div>
     <div class="view" id="card-view" hidden>
       <div class="ov-label" id="c-label">New jar</div>
       <div class="ov-jar" id="c-jar"><canvas id="c-canvas" aria-hidden="true"></canvas><button class="jar-nav prev" type="button" id="c-prev" aria-label="Previous variant" hidden><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg></button><button class="jar-nav next" type="button" id="c-next" aria-label="Next variant" hidden><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></button></div>
@@ -344,19 +360,20 @@
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 <input type="file" id="photo-input" accept="image/*" capture="environment" hidden>
 
-<script src="rules.js?v=0.12.0" defer></script>
-<script src="sky.js?v=0.12.0" defer></script>
-<script src="variants.js?v=0.12.0" defer></script>
-<script src="kit.js?v=0.12.0" defer></script>
-<script src="jars-rain.js?v=0.12.0" defer></script>
-<script src="jars-wonders.js?v=0.12.0" defer></script>
-<script src="jars-storm.js?v=0.12.0" defer></script>
-<script src="animals.js?v=0.12.0" defer></script>
-<script src="zoo.js?v=0.12.0" defer></script>
-<script src="zoo-art.js?v=0.12.0" defer></script>
-<script src="spotter.js?v=0.12.0" defer></script>
-<script src="game.js?v=0.12.0" defer></script>
-<script src="photocheck.js?v=0.12.0" defer></script>
-<script src="app.js?v=0.12.0" defer></script>
+<script src="rules.js?v=0.13.0" defer></script>
+<script src="sky.js?v=0.13.0" defer></script>
+<script src="variants.js?v=0.13.0" defer></script>
+<script src="kit.js?v=0.13.0" defer></script>
+<script src="jars-rain.js?v=0.13.0" defer></script>
+<script src="jars-wonders.js?v=0.13.0" defer></script>
+<script src="jars-storm.js?v=0.13.0" defer></script>
+<script src="animals.js?v=0.13.0" defer></script>
+<script src="zoo.js?v=0.13.0" defer></script>
+<script src="zoo-art.js?v=0.13.0" defer></script>
+<script src="seek.js?v=0.13.0" defer></script>
+<script src="spotter.js?v=0.13.0" defer></script>
+<script src="game.js?v=0.13.0" defer></script>
+<script src="photocheck.js?v=0.13.0" defer></script>
+<script src="app.js?v=0.13.0" defer></script>
 </body>
 </html>

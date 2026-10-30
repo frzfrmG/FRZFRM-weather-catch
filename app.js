@@ -4,8 +4,8 @@
 (function () {
   'use strict';
   var WC = window.WC;
-  var RU = WC.rules, SKY = WC.sky, AN = WC.animals, SP = WC.spotter;
-  var VERSION = '0.12.0';
+  var RU = WC.rules, SKY = WC.sky, AN = WC.animals, SP = WC.spotter, SK = WC.seek;
+  var VERSION = '0.13.0';
   var TEST = /[?&]test=1(&|$)/.test(location.search);
   var KEY = 'frzfrm-wc-state-1';
   var WX_KEY = 'frzfrm-wc-weather-1';
@@ -45,7 +45,7 @@
   function freshState() {
     return {
       v: 1, created: Date.now(), points: 0, book: {}, caught: {}, cool: {}, recent: {}, names: {}, log: [], haul: null, drive: false, passengerUntil: 0, onboarded: false,
-      rewards: {}, style: { wood: 'pine', lights: 'off', jars: {} }, oldJars: null, vmap: 2, animals: freshAnimals()
+      rewards: {}, style: { wood: 'pine', lights: 'off', jars: {} }, oldJars: null, vmap: 2, animals: freshAnimals(), seek: freshSeek()
     };
   }
   function known(list, id) { return list.some(function (x) { return x.id === id; }); }
@@ -140,6 +140,7 @@
     delete o.glassNote; delete o.glassDone;
     delete o.games;
     o.animals = cleanAnimals(o.animals);
+    o.seek = cleanSeek(o.seek);
     if (o.photoNote && !Array.isArray(o.photoNote)) o.photoNote = null;
     if (o.day && (typeof o.day !== 'object' || typeof o.day.d !== 'string' || !o.day.n || typeof o.day.n !== 'object')) o.day = null;
     if (o.tripNote && (typeof o.tripNote !== 'object' || !Array.isArray(o.tripNote.trips))) o.tripNote = null;
@@ -1783,6 +1784,17 @@
      straight after. Each animal can be caught once every 30 minutes. Its first catch moves into its everyday home;
      after that, every catch turns up in one of its five homes. */
   function freshAnimals() { return { book: {}, day: null, rows: {} }; }
+  /* Hide & seek: finds that earned points today (d is the day), every find ever, and each animal's quickest find in ms */
+  function freshSeek() { return { d: '', n: 0, total: 0, best: {} }; }
+  function cleanSeek(k) {
+    var out = freshSeek();
+    if (!k || typeof k !== 'object' || Array.isArray(k)) return out;
+    if (typeof k.d === 'string') out.d = k.d;
+    if (typeof k.n === 'number' && isFinite(k.n)) out.n = Math.max(0, Math.floor(k.n));
+    if (typeof k.total === 'number' && isFinite(k.total)) out.total = Math.max(0, Math.floor(k.total));
+    if (k.best && typeof k.best === 'object') Object.keys(k.best).forEach(function (id) { if (AN && AN.type(id) && typeof k.best[id] === 'number' && k.best[id] > 0) out.best[id] = k.best[id]; });
+    return out;
+  }
   function cleanAnimals(a) {
     var out = freshAnimals();
     if (!a || typeof a !== 'object' || Array.isArray(a) || !AN) return out;
@@ -1906,6 +1918,7 @@
     for (var i = 0; i < cvs.length; i++) { R.animalJars.push(cvs[i]); if (jarObserver) jarObserver.observe(cvs[i]); }
     requestAnimationFrame(function () { drawAnimals(2, true); });
     if (SP && R.spotterHere === undefined) SP.stored().then(function (have) { R.spotterHere = have; renderAnimalHead(); });
+    seekNote();
   }
   function drawAnimals(t, all) {
     var look = glassLook();
@@ -2218,6 +2231,183 @@
     readyToScan(SCAN_TIPS[res && res.kind] || SCAN_TIPS.unsure);
   }
 
+  /* ---------- Hide & seek ----------
+     One animal hides in a busy picture, among things its own colours; tap it to find it. The quicker the find, the more
+     points, for the first SEEK_DAY finds each day. seek.js makes and draws the pictures; this runs the game */
+  var SEEK_DAY = 10;
+  function seekToday() { if (S.seek.d !== today()) { S.seek.d = today(); S.seek.n = 0; } return S.seek; }
+  function seekLeft() { return Math.max(0, SEEK_DAY - seekToday().n); }
+  function seekNote() {
+    var el = $('seek-note');
+    if (!el) return;
+    var left = seekLeft();
+    el.textContent = left === SEEK_DAY ? 'Find the animal hiding in a busy picture. The first ' + SEEK_DAY + ' finds each day earn points.' :
+      left ? 'Find the animal hiding in a busy picture. ' + left + ' more ' + plural(left, 'find') + ' earn points today.' : 'Today’s points are all found. You can keep playing for fun.';
+  }
+  function seekPoints(ms, hint) { var p = ms <= 15000 ? 6 : ms <= 45000 ? 4 : 2; return hint ? Math.max(1, Math.round(p / 2)) : p; }
+  function clock(ms) { var s = Math.floor(ms / 1000); return Math.floor(s / 60) + ':' + pad(s % 60); }
+  function secs1(ms) { return (Math.round(ms / 100) / 10).toFixed(1) + ' seconds'; }
+  function openSeek() {
+    if (!SK) return;
+    showView('seek');
+    openSheet();
+    seekRound();
+  }
+  function seekRound() {
+    var old = R.seek || {}, recent = (old.recent || []).slice(-8), rand = Math.random, round = null;
+    stopSeek();
+    for (var i = 0; i < 6 && !round; i++) {
+      var p = SK.pick(rand, recent), ph = SK.photo(p.id, p.scene, p.layout), sp = ph && SK.hide(ph, rand);
+      if (sp) round = { ph: ph, sp: sp };
+    }
+    if (!round) {
+      $('k-msg').textContent = 'That picture didn’t work out. Try another.';
+      setActions('k-actions', [{ label: 'Try another', primary: true, fn: seekRound }]);
+      return;
+    }
+    recent.push(round.ph.id);
+    var t = AN.type(round.ph.id), best = S.seek.best[t.id];
+    R.seek = { ph: round.ph, sp: round.sp, start: now(), found: false, hint: null, misses: [], recent: recent, timer: null, fx: null };
+    $('k-title').textContent = 'Find the ' + t.name;
+    $('k-where').textContent = SK.sceneName(round.ph.scene) + (best ? ' · your best: ' + secs1(best) : '');
+    $('k-msg').textContent = '';
+    var who = $('k-who'), wctx = who.getContext('2d');
+    wctx.clearRect(0, 0, who.width, who.height);
+    SK.portrait(wctx, who.width, who.height, t.id);
+    $('k-stage').setAttribute('aria-label', 'A busy picture: ' + SK.sceneName(round.ph.scene) + '. Somewhere in it is ' + aName(t) + '. Tap it when you find it.');
+    seekPaint();
+    seekActions();
+    R.seek.timer = setInterval(seekTick, 250);
+    seekTick();
+  }
+  /* the picture, drawn once at the phone's sharpness, and the animal on its own in a hidden canvas for taps */
+  function seekPaint() {
+    var K1 = R.seek;
+    if (!K1 || !K1.ph) return;
+    var st = $('k-stage'), w = st.clientWidth || 320, dpr = Math.min(2.5, window.devicePixelRatio || 1);
+    var W = Math.round(w * dpr), H = Math.round(w * SK.HU / 100 * dpr);
+    [$('k-canvas'), $('k-fx')].forEach(function (c) { c.width = W; c.height = H; });
+    SK.draw($('k-canvas').getContext('2d'), W, K1.ph, K1.sp);
+    var mw = Math.max(1, Math.round(w)), mh = Math.max(1, Math.round(w * SK.HU / 100));
+    var mk = document.createElement('canvas');
+    mk.width = mw; mk.height = mh;
+    var mctx = mk.getContext('2d');
+    SK.drawMask(mctx, mw, K1.sp);
+    K1.mdata = mctx.getImageData(0, 0, mw, mh).data; K1.mw = mw; K1.mh = mh;
+    seekFx();
+  }
+  function seekTick() {
+    var K1 = R.seek;
+    if (!K1 || !K1.start) return;
+    $('k-time').textContent = clock(K1.found ? K1.ms : now() - K1.start);
+  }
+  function seekActions() {
+    var K1 = R.seek;
+    if (K1.found) setActions('k-actions', [{ label: 'Done', fn: seekDone }, { label: 'Next picture', primary: true, fn: seekRound }]);
+    else setActions('k-actions', [{ label: K1.hint ? 'Show me' : 'Hint', fn: K1.hint ? function () { seekFound(true); } : seekHint }, { label: 'New picture', fn: seekRound }]);
+  }
+  function seekTap(ev) {
+    var K1 = R.seek;
+    if (!K1 || !K1.mdata || K1.found) return;
+    var rc = $('k-stage').getBoundingClientRect();
+    if (!rc.width) return;
+    var x = (ev.clientX - rc.left) / rc.width * K1.mw, y = (ev.clientY - rc.top) / rc.height * K1.mh;
+    // a finger's width round the tap counts
+    var hit = false, rad = Math.max(10, K1.mw * 0.035);
+    for (var a = 0; a < 16 && !hit; a++) for (var d = 0; d <= rad && !hit; d += rad / 2) {
+      var px = Math.round(x + Math.cos(a * Math.PI / 8) * d), py = Math.round(y + Math.sin(a * Math.PI / 8) * d);
+      if (px >= 0 && py >= 0 && px < K1.mw && py < K1.mh && K1.mdata[(py * K1.mw + px) * 4 + 3] > 60) hit = true;
+    }
+    if (hit) { seekFound(false); return; }
+    K1.misses.push({ x: x / K1.mw, y: y / K1.mh, t: performance.now() });
+    try { if (navigator.vibrate) navigator.vibrate(15); } catch (e) {}
+    seekFx();
+  }
+  function seekHint() {
+    var K1 = R.seek;
+    if (!K1 || K1.found) return;
+    var c = SK.centre(K1.sp), r = Math.max(15, c.r * 2.4), a = Math.random() * Math.PI * 2, off = Math.random() * r * 0.45;
+    K1.hint = { x: c.x + Math.cos(a) * off, y: c.y + Math.sin(a) * off, r: r };
+    $('k-msg').textContent = 'It’s somewhere in the circle. A hint halves the points.';
+    seekActions();
+    seekFx();
+  }
+  /* shown: true when Show me gave the game away, which earns nothing */
+  function seekFound(shown) {
+    var K1 = R.seek;
+    if (!K1 || K1.found) return;
+    K1.found = true; K1.ms = now() - K1.start;
+    clearInterval(K1.timer); K1.timer = null;
+    seekTick();
+    var t = AN.type(K1.ph.id), day = seekToday(), pts = 0, before = RU.levelFor(S.points), best = S.seek.best[t.id], quickest = false;
+    if (!shown) {
+      S.seek.total += 1;
+      if (!best || K1.ms < best) { S.seek.best[t.id] = K1.ms; quickest = !!best; }
+      if (day.n < SEEK_DAY) { pts = seekPoints(K1.ms, !!K1.hint); day.n += 1; S.points += pts; }
+    }
+    save();
+    var left = seekLeft(), msg;
+    if (shown) msg = 'There it is! Try another picture.';
+    else {
+      msg = 'Found it in ' + secs1(K1.ms) + '!' + (quickest ? ' Your quickest ' + t.name.toLowerCase() + ' yet.' : '');
+      msg += pts ? ' +' + pts + ' ' + plural(pts, 'point') + (K1.hint ? ' (half, for the hint)' : '') + '. ' + (left ? left + ' more ' + plural(left, 'find') + ' earn points today.' : 'That’s today’s points all found.') : ' Today’s points are all found, so this one’s for fun.';
+    }
+    $('k-msg').textContent = msg;
+    var after = RU.levelFor(S.points);
+    if (after > before) { addLog('Level ' + after + '!'); toast('Level ' + after + '! ' + unlockText(after)); }
+    K1.foundAt = performance.now();
+    seekActions();
+    seekFx();
+    if (!shown) confetti(12);
+    try { if (navigator.vibrate) navigator.vibrate(shown ? 20 : [30, 40, 30]); } catch (e) {}
+    render();
+  }
+  /* rewards earned by levelling up here are shown when you're done */
+  function seekDone() {
+    var cards = claimRewards();
+    if (cards.length) { save(); openReveal(cards); } else closeSheet();
+  }
+  /* on top of the picture: the hint's circle, a cross where a tap missed, and the animal lit up once it's found */
+  function seekFx() {
+    var K1 = R.seek, fx = $('k-fx');
+    if (!K1 || !fx || !K1.ph) return;
+    if (K1.fx) { cancelAnimationFrame(K1.fx); K1.fx = null; }
+    var ctx = fx.getContext('2d'), W = fx.width, H = fx.height, k = W / 100, tn = performance.now(), more = false, TWO = Math.PI * 2;
+    ctx.clearRect(0, 0, W, H);
+    var hole = function (x, y, r, a) {
+      ctx.fillStyle = 'rgba(10,14,30,' + a + ')';
+      ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, TWO, true); ctx.fill('evenodd');
+    };
+    if (K1.found) {
+      var c = SK.centre(K1.sp), p = Math.min(1, (tn - K1.foundAt) / 450), r = Math.max(9, c.r * 1.45) * k, g = 1 + 0.14 * p;
+      hole(c.x * k, c.y * k, r, 0.5 * p);
+      ctx.save(); ctx.translate(c.x * k, c.y * k); ctx.scale(g, g); ctx.translate(-c.x * k, -c.y * k); SK.drawHidden(ctx, K1.sp, k); ctx.restore();
+      ctx.strokeStyle = '#FFD24A'; ctx.lineWidth = Math.max(2, 0.8 * k); ctx.beginPath(); ctx.arc(c.x * k, c.y * k, r, 0, TWO); ctx.stroke();
+      if (p < 1) more = true;
+    } else if (K1.hint) {
+      var h = K1.hint;
+      hole(h.x * k, h.y * k, h.r * k, 0.38);
+      ctx.strokeStyle = 'rgba(255,255,255,0.92)'; ctx.lineWidth = Math.max(2, 0.6 * k); ctx.setLineDash([2 * k, 1.6 * k]);
+      ctx.beginPath(); ctx.arc(h.x * k, h.y * k, h.r * k, 0, TWO); ctx.stroke(); ctx.setLineDash([]);
+    }
+    K1.misses = K1.misses.filter(function (m) { return tn - m.t < 700; });
+    K1.misses.forEach(function (m) {
+      var a = 1 - (tn - m.t) / 700, x = m.x * W, y = m.y * H, s = 2.2 * k;
+      ctx.strokeStyle = 'rgba(214,40,50,' + a + ')'; ctx.lineWidth = Math.max(2, 0.7 * k); ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(x - s, y - s); ctx.lineTo(x + s, y + s); ctx.moveTo(x + s, y - s); ctx.lineTo(x - s, y + s); ctx.stroke();
+      more = true;
+    });
+    if (more) K1.fx = requestAnimationFrame(seekFx);
+  }
+  function stopSeek() {
+    var K1 = R.seek;
+    if (!K1) return;
+    if (K1.timer) clearInterval(K1.timer);
+    if (K1.fx) cancelAnimationFrame(K1.fx);
+    R.seek = { recent: K1.recent || [] };
+    seekNote();
+  }
+
   /* ---------- sharing a jar ----------
      A picture of the jar with its label, for the phone's share menu. It's drawn as soon as a card with a
      Share button opens, so the share menu can open straight away when the button is tapped. */
@@ -2426,10 +2616,12 @@
     $('game-view').hidden = name !== 'game';
     if ($('scan-view')) $('scan-view').hidden = name !== 'scan';
     if (name !== 'scan') stopCamera();
+    if ($('seek-view')) $('seek-view').hidden = name !== 'seek';
+    if (name !== 'seek') stopSeek();
     $('card-view').hidden = name !== 'card';
     if ($('reward-view')) $('reward-view').hidden = name !== 'reward';
     $('info-view').hidden = name !== 'info';
-    $('sheet').setAttribute('aria-labelledby', name === 'game' ? 'g-title' : name === 'scan' ? 's-title' : name === 'card' ? 'c-title' : name === 'reward' ? 'r-title' : 'i-title');
+    $('sheet').setAttribute('aria-labelledby', name === 'game' ? 'g-title' : name === 'scan' ? 's-title' : name === 'seek' ? 'k-title' : name === 'card' ? 'c-title' : name === 'reward' ? 'r-title' : 'i-title');
   }
   function setActions(boxId, list) {
     var box = $(boxId);
@@ -2450,7 +2642,7 @@
     ov.hidden = false;
     kick();
     if (R.view !== 'game') {
-      var btns = $(R.view === 'card' ? 'c-actions' : R.view === 'reward' ? 'r-actions' : R.view === 'scan' ? 's-actions' : 'i-actions').querySelectorAll('button');
+      var btns = $(R.view === 'card' ? 'c-actions' : R.view === 'reward' ? 'r-actions' : R.view === 'scan' ? 's-actions' : R.view === 'seek' ? 'k-actions' : 'i-actions').querySelectorAll('button');
       var target = btns[btns.length - 1];
       if (target) try { target.focus({ preventScroll: true }); } catch (e) { target.focus(); }
     }
@@ -2460,6 +2652,7 @@
     freeThumbs();
     $('sheet').classList.remove('scorched');
     stopCamera();
+    stopSeek();
     $('overlay').hidden = true;
     R.game = null;
     R.cardState = null;
@@ -4106,6 +4299,8 @@
       if (to) try { to.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' }); } catch (e) { to.scrollIntoView(); }
     });
     if ($('scan-btn')) $('scan-btn').addEventListener('click', openScan);
+    if ($('seek-btn')) $('seek-btn').addEventListener('click', openSeek);
+    if ($('k-stage')) $('k-stage').addEventListener('pointerdown', seekTap);
     if ($('an-shelves')) $('an-shelves').addEventListener('click', function (ev) {
       var b = ev.target.closest ? ev.target.closest('[data-animal]') : null;
       if (b) openAnimal(b.getAttribute('data-animal'));
