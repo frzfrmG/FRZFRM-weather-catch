@@ -7,6 +7,7 @@
   'use strict';
   var WC = root.WC = root.WC || {};
   var TAU = Math.PI * 2;
+  function sfx(n) { if (WC.sfx) WC.sfx.play(n); }
 
   var DIFF = {
     common:    { need: 12, time: 12, half: 0.15, band: 0.30, fill: 0.30, zone: 0.26, speed: 0.85, hits: 1, win: 0.80, flashes: 1, flee: 0 },
@@ -115,6 +116,7 @@
         p.x += (Math.sin(this.t * 2 + p.ph) * (p.kind === 'flake' ? 0.08 : 0.01) + drift * Math.sin(this.t * 0.7) + (DRIFT[this.id] || 0) * 0.6) * dt;
         if (prevY < JAR_TOP && p.y >= JAR_TOP && Math.abs(p.x - this.jx) <= d.half * 0.85) {
           this.caught += 1;
+          sfx('drop');
           this.splash.push({ x: p.x, t: 0 });
           this.parts.splice(i, 1);
           continue;
@@ -161,6 +163,7 @@
     if (this.mech === 'timing') {
       if (Math.abs(this.pos - this.zone) <= this.d.zone / 2) {
         this.hits += 1;
+        sfx('hit');
         this.flashT = 0.3;
         if (this.hits >= this.d.hits) { this.prog = 1; this.win(); return; }
         var z = this.zone, tries = 0;
@@ -172,6 +175,7 @@
     } else if (this.mech === 'flash') {
       if (!this.flashOn) { this.miss('Too early! Wait for the flash.'); return; }
       this.hits += 1;
+      sfx('zap');
       this.flashOn = false;
       this.sparkT = 0.8;
       if (this.hits >= this.d.flashes) { this.prog = 1; this.win(); return; }

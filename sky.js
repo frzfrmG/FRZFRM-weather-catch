@@ -930,6 +930,34 @@
     ctx.fillStyle = gl;
     ctx.fillRect(0, 0, W, H);
   }
+  /* a rare catch catches the light now and then: a soft band of light sweeps across the glass. Each jar has its own
+     moment (from its seed), so a shelf of them glints here and there rather than all at once */
+  function glint(ctx, x, top, w, h, t, mk) {
+    var per = mk.shine >= 3 ? 4.2 : mk.shine === 2 ? 5.2 : 6.5;
+    var ph = (((t + ((mk.seed || 0) % 1000) * 0.173) % per) + per) % per / per, u = ph / 0.26;
+    if (u >= 1) return;
+    var col = mk.shine >= 3 ? '255,236,180' : mk.shine === 2 ? '238,228,255' : '232,244,255', a = 0.5 * Math.sin(u * Math.PI);
+    [[0, 0.17, 1], [0.24, 0.07, 0.7]].forEach(function (b) {
+      ctx.save();
+      ctx.translate(x - w * 0.55 + (u - b[0] * 0.5) * w * 2.3, top + h * 0.5);
+      ctx.rotate(0.4);
+      var bw = w * b[1], g = ctx.createLinearGradient(-bw, 0, bw, 0);
+      g.addColorStop(0, 'rgba(' + col + ',0)');
+      g.addColorStop(0.5, 'rgba(' + col + ',' + (a * b[2]).toFixed(3) + ')');
+      g.addColorStop(1, 'rgba(' + col + ',0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(-bw, -h, bw * 2, h * 2);
+      ctx.restore();
+    });
+  }
+  /* an epic catch twinkles too */
+  function shineStars(ctx, x, top, w, h, t, k, mk) {
+    [[0.86, 0.27], [0.13, 0.68], [0.72, 0.9]].forEach(function (p, i) {
+      var a = Math.max(0, Math.sin(t * 1.7 + i * 2.1 + ((mk.seed || 0) % 7)));
+      if (a < 0.3) return;
+      star4(ctx, x + w * p[0], top + h * p[1], (1.8 + 2.6 * a) * k, 'rgba(238,228,255,' + (0.9 * a).toFixed(3) + ')');
+    });
+  }
   function legendGlints(ctx, x, top, w, h, t, k) {
     [[0.86, 0.3], [0.16, 0.78], [0.66, 0.1], [0.92, 0.72], [0.1, 0.36]].forEach(function (p, i) {
       var a = Math.max(0, Math.sin(t * 2.2 + i * 2.3));
@@ -1530,6 +1558,7 @@
     sh.addColorStop(1, 'rgba(0,0,0,0.2)');
     ctx.fillStyle = sh;
     ctx.fillRect(x, top, w, h);
+    if (mk && mk.shine && !st.preview && !st.locked) glint(ctx, x, top, w, h, t, mk);
     ctx.restore();
     ctx.save();
     jarShape(ctx, x, top, w, h);
@@ -1540,6 +1569,7 @@
     ctx.stroke();
     ctx.restore();
     if (lg) legendGlints(ctx, x, top, w, h, t, k);
+    else if (mk && mk.shine >= 2 && !st.preview && !st.locked) shineStars(ctx, x, top, w, h, t, k, mk);
     if (st.preview) padlock(ctx, x + w * 0.8, top + h * 0.85, 8 * k);
     ctx.fillStyle = 'rgba(255,255,255,0.3)';
     roundRect(ctx, x + w * 0.12, top + h * 0.3, w * 0.07, h * 0.42, w * 0.035);

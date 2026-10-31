@@ -5,7 +5,8 @@
   'use strict';
   var WC = window.WC;
   var RU = WC.rules, SKY = WC.sky, AN = WC.animals, SP = WC.spotter, SK = WC.seek, LV = WC.seekLevels || [], ZA = WC.zoo;
-  var VERSION = '0.16.2';
+  function sfx(n) { if (WC.sfx && S && S.sound !== false) WC.sfx.play(n); }
+  var VERSION = '0.17.0';
   var TEST = /[?&]test=1(&|$)/.test(location.search);
   var KEY = 'frzfrm-wc-state-1';
   var WX_KEY = 'frzfrm-wc-weather-1';
@@ -45,7 +46,7 @@
   function freshState() {
     return {
       v: 1, created: Date.now(), points: 0, book: {}, caught: {}, cool: {}, recent: {}, names: {}, log: [], haul: null, drive: false, passengerUntil: 0, onboarded: false,
-      rewards: {}, style: { wood: 'pine', lights: 'off', jars: {} }, oldJars: null, vmap: 2, animals: freshAnimals(), seek: freshSeek(), hop: freshHop()
+      rewards: {}, style: { wood: 'pine', lights: 'off', jars: {} }, oldJars: null, vmap: 2, animals: freshAnimals(), seek: freshSeek(), hop: freshHop(), sound: true
     };
   }
   function known(list, id) { return list.some(function (x) { return x.id === id; }); }
@@ -142,6 +143,7 @@
     o.animals = cleanAnimals(o.animals);
     o.seek = cleanSeek(o.seek);
     o.hop = cleanHop(o.hop);
+    o.sound = o.sound !== false;
     if (o.photoNote && !Array.isArray(o.photoNote)) o.photoNote = null;
     if (o.day && (typeof o.day !== 'object' || typeof o.day.d !== 'string' || !o.day.n || typeof o.day.n !== 'object')) o.day = null;
     if (o.tripNote && (typeof o.tripNote !== 'object' || !Array.isArray(o.tripNote.trips))) o.tripNote = null;
@@ -1528,8 +1530,9 @@
     };
     var celebrate = function () {
       confetti(rw.kind === 'jars' || rw.kind === 'level' ? 36 : rw.kind === 'full' ? 70 : 50);
+      sfx(rw.kind === 'full' ? 'legend' : 'reward');
       try { if (navigator.vibrate) navigator.vibrate([30, 60, 30]); } catch (e) {}
-      if (r.lvUp) toast('Level ' + r.lvUp + '! ' + unlockText(r.lvUp));
+      if (r.lvUp) { setTimeout(function () { sfx('level'); }, 700); toast('Level ' + r.lvUp + '! ' + unlockText(r.lvUp)); }
     };
     if (!boxOn()) {
       prev.innerHTML = rewardPreview(rw, false);
@@ -1551,6 +1554,7 @@
     var open = function () {
       if (opened || R.rewardToken !== token) return;
       opened = true;
+      sfx('swirl');
       $('r-gift').classList.add('open');
       var hint = prev.querySelector('.gift-hint');
       if (hint) hint.style.visibility = 'hidden';
@@ -1904,6 +1908,8 @@
     var e = S.animals.book[id], x = e && e.homes[h], lk = jarLook(AN.type(id).row);
     var mk = { seed: x ? x.seed : PREVIEW_SEED };
     if (lk) mk.glass = lk;
+    var hk = AN.homeRank ? AN.homeRank(h) : 0;
+    if (x && hk >= 2) mk.shine = hk >= 4 ? 3 : hk >= 3 ? 2 : 1;
     return { animal: id, home: h, id: 'a:' + id, lidTone: e ? tierOf(e.n) || null : null, preview: !x, mark: mk };
   }
   /* an animal's jar on the shelf: its best home, or an empty jar still to fill */
@@ -2202,6 +2208,9 @@
     var land = function () {
       setHome(id, r.h, r.newH);
       updateScorch();
+      var hk = AN.homeRank ? AN.homeRank(r.h) : 0, tier = hk >= 4 ? 3 : hk >= 3 ? 2 : hk >= 2 ? 1 : 0;
+      if (r.isNew) tier = Math.max(tier, t.r === 'epic' ? 2 : t.r === 'rare' ? 1 : 0);
+      landFx(tier, t.row, r.isNew || r.newH);
       if (r.h === 'h5') {
         // its favourite home: a long buzz and a lot of confetti
         confetti(70);
@@ -2219,7 +2228,7 @@
         during: function () { setHome(id, null); }
       });
     } else land();
-    if (r.lvUp) toast('Level ' + r.lvUp + '! ' + unlockText(r.lvUp));
+    if (r.lvUp) { sfx('level'); toast('Level ' + r.lvUp + '! ' + unlockText(r.lvUp)); }
   }
 
   /* ---------- scanning an animal ----------
@@ -2363,6 +2372,7 @@
     var v = $('s-video');
     if (!R.forceScan && (!R.cam || !v || !v.videoWidth)) { scanMsg('The camera isn’t ready yet. Give it a moment.'); return; }
     R.scanning = true;
+    sfx('shutter');
     $('s-busy').hidden = false;
     if ($('s-go')) $('s-go').disabled = true;
     scanMsg('Looking…');
@@ -2408,6 +2418,7 @@
       afterAward([r], before);
       return;
     }
+    sfx('miss');
     readyToScan(SCAN_TIPS[res && res.kind] || SCAN_TIPS.unsure);
   }
 
@@ -2484,6 +2495,7 @@
     var K1 = R.seek, t = AN.type(K1.ph.id);
     $('k-cover').hidden = false;
     $('k-cover-t').textContent = 'Boss level ' + K1.lv;
+    sfx('boss');
     $('k-time').textContent = clock(K1.limit);
     $('k-msg').textContent = 'Find the ' + t.name.toLowerCase() + ' within ' + timeWords(K1.limit) + '. No hints, and ' + BOSS_LIVES + ' wrong taps ends it. If it gets away, you go back to level ' + blockStart(K1.lv) + '.';
     setActions('k-actions', [{ label: 'Not now', fn: closeSheet }, { label: 'Start', primary: true, fn: seekGo }]);
@@ -2492,7 +2504,7 @@
     var K1 = R.seek;
     if (!K1 || K1.live || K1.over) return;
     K1.start = now(); K1.live = true;
-    if (K1.boss) { S.seek.bossOn = K1.lv; save(); }
+    if (K1.boss) { S.seek.bossOn = K1.lv; save(); sfx('go'); }
     $('k-cover').hidden = true;
     $('k-msg').textContent = '';
     seekPaint();
@@ -2547,8 +2559,9 @@
     if (!K1 || !K1.start) return;
     var el = K1.over ? K1.ms : now() - K1.start;
     if (!K1.boss) { $('k-time').textContent = clock(el); return; }
-    var left = Math.max(0, K1.limit - el);
-    $('k-time').textContent = clock(Math.ceil(left / 1000) * 1000);
+    var left = Math.max(0, K1.limit - el), secLeft = Math.ceil(left / 1000);
+    if (K1.live && left < 10000 && secLeft > 0 && secLeft !== K1.lastSec) { K1.lastSec = secLeft; sfx('tick'); }
+    $('k-time').textContent = clock(secLeft * 1000);
     $('k-time').classList.toggle('low', K1.live && left < 10000);
     if (K1.live && left <= 0) bossLost(K1.lv, 'time');
   }
@@ -2576,6 +2589,7 @@
     }
     if (hit) { seekFound(); return; }
     K1.misses.push({ x: x / K1.mw, y: y / K1.mh, t: performance.now() });
+    sfx('miss');
     try { if (navigator.vibrate) navigator.vibrate(15); } catch (e) {}
     if (K1.boss) {
       K1.lives -= 1;
@@ -2591,6 +2605,7 @@
     var c = SK.centre(K1.sp), r = Math.max(15, c.r * 2.4), a = Math.random() * Math.PI * 2, off = Math.random() * r * 0.45;
     K1.hint = { x: c.x + Math.cos(a) * off, y: c.y + Math.sin(a) * off, r: r };
     $('k-msg').textContent = 'It’s somewhere in the circle. A hint halves the points.';
+    sfx('hint');
     seekActions();
     seekFx();
   }
@@ -2619,11 +2634,12 @@
     else if (!K1.bonus && isBoss(S.seek.lv)) msg += ' Next up: the boss!';
     $('k-msg').textContent = msg;
     var after = RU.levelFor(S.points);
-    if (after > before) { addLog('Level ' + after + '!'); toast('Level ' + after + '! ' + unlockText(after)); }
+    if (after > before) { addLog('Level ' + after + '!'); sfx('level'); toast('Level ' + after + '! ' + unlockText(after)); }
     seekPath();
     seekActions();
     seekFx();
     confetti(K1.boss ? 50 : 12);
+    sfx(K1.boss ? 'win' : 'find');
     try { if (navigator.vibrate) navigator.vibrate(K1.boss ? [40, 50, 40, 50, 90] : [30, 40, 30]); } catch (e) {}
     render();
   }
@@ -2633,6 +2649,7 @@
     if (!K1 || K1.over || K1.boss) return;
     seekStop(K1);
     K1.shown = true;
+    sfx('hint');
     $('k-msg').textContent = 'There it is! Try again and it’ll hide somewhere new.';
     seekActions();
     seekFx();
@@ -2647,6 +2664,7 @@
     if (!K1 || K1.lv !== lv || K1.over) { seekNote(); render(); return; }
     seekStop(K1);
     K1.lost = true;
+    sfx('lose');
     var t = AN.type(K1.ph.id);
     $('k-msg').textContent = (why === 'time' ? 'Time’s up!' : BOSS_LIVES + ' wrong taps!') + ' The ' + t.name.toLowerCase() + ' got away, so it’s back to level ' + back + '. Make it back here to try the boss again.';
     seekPath();
@@ -2712,6 +2730,22 @@
       toast('You left boss level ' + K1.lv + ', so it counts as a loss. Back to level ' + blockStart(K1.lv) + '.');
     }
     seekNote();
+  }
+
+  /* sound effects: on unless switched off in More */
+  function renderSound() {
+    var b = $('sound-btn');
+    if (!b) return;
+    var on = S.sound !== false;
+    b.textContent = on ? 'Turn sounds off' : 'Turn sounds on';
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    $('sound-text').textContent = on ? 'Sounds are on: chimes when you catch, clinks as jars land, and game sounds. They follow your phone’s silent switch where it allows.' : 'Sounds are off.';
+  }
+  function toggleSound() {
+    S.sound = S.sound === false;
+    save();
+    if (WC.sfx) { WC.sfx.setOn(S.sound); if (S.sound) { WC.sfx.unlock(); sfx('clink'); } }
+    renderSound();
   }
 
   /* ---------- Weather Hop ----------
@@ -2810,10 +2844,11 @@
         if ((st.day - 1) * 5 + st.stage > (H.reached.d - 1) * 5 + H.reached.g) H.reached = { d: st.day, g: st.stage };
         if (st.first) hopBanner(st.day > 1 ? 'Day ' + st.day : st.name, st.day > 1 ? st.name + '. ' + st.note : st.note, true);
         else if (st.newDay) {
+          sfx('day');
           hopBanner('Day ' + st.day, st.note, true);
           // a finished day is a checkpoint, kept straight away in case the app closes mid-run
           if (st.day > (S.hop.ck[id] || 1)) { S.hop.ck[id] = st.day; save(); }
-        } else hopBanner(st.name, st.note);
+        } else { sfx('stage'); hopBanner(st.name, st.note); }
       },
       onEnd: function (e) { hopEnd(H, e); }
     });
@@ -2840,7 +2875,7 @@
       { label: 'Done', fn: closeHop }
     ]);
     hopPanel('hop-end');
-    if (newBest) confetti(30);
+    if (newBest) { confetti(30); setTimeout(function () { sfx('best'); }, 500); }
   }
   /* tap to hop forward; swipe left, right or back */
   function hopInput() {
@@ -3037,6 +3072,7 @@
   function isIOS() { return /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); }
   function renderMore() {
     $('version').textContent = VERSION;
+    renderSound();
     renderPhotosCard();
     var text = $('install-text'), btn = $('install-btn');
     if (isStandalone()) { text.textContent = 'You’re using it from your home screen. Your jars are safest here.'; btn.hidden = true; }
@@ -3048,6 +3084,7 @@
   /* ---------- tabs ---------- */
 
   function selectTab(tab) {
+    var changed = R.tab !== tab;
     R.tab = tab;
     ['catch', 'shelf', 'animals', 'more'].forEach(function (k) {
       if (!$('panel-' + k)) return;
@@ -3059,6 +3096,9 @@
     if (tab === 'animals') renderAnimals();
     render();
     window.scrollTo(0, 0);
+    // the new tab eases in
+    var pn = $('panel-' + tab);
+    if (changed && pn && !reduce) { pn.classList.remove('enter'); void pn.offsetWidth; pn.classList.add('enter'); }
     kick();
   }
 
@@ -3066,6 +3106,7 @@
 
   function showView(name) {
     stopSpin();
+    clearJarFx();
     R.view = name;
     R.previewJars = null;
     $('sheet').classList.remove('scorched');
@@ -3108,6 +3149,7 @@
   }
   function closeSheet() {
     stopSpin();
+    clearJarFx();
     freeThumbs();
     $('sheet').classList.remove('scorched');
     stopCamera();
@@ -3211,6 +3253,7 @@
   function handleMiss() {
     var G = R.game;
     G.missHandled = true;
+    sfx('miss');
     var chance = WC.game.fleeChance(G.id);
     var name = liveName(G.id);
     if (chance && Math.random() < chance) {
@@ -3335,6 +3378,9 @@
     var lk = T(id) ? jarLook(T(id).el) : null;
     if (!vr || (!seed && !vr.deco && !vr.legend && pw === undefined && !lk)) return null;
     var mk = { seed: seed, deco: vr.deco, legend: vr.legend };
+    // rare, epic and legendary variants catch the light now and then
+    var vk = RU.variantRank(vr.id);
+    if (vk >= 3) mk.shine = vk >= 7 ? 3 : vk >= 5 ? 2 : 1;
     if (pw !== undefined) mk.power = pw;
     if (lk) mk.glass = lk;
     return mk;
@@ -3541,6 +3587,10 @@
       if (r.v && R.cardState) R.cardState.mark = markOf(r.id, r.v, r.seed, r.rec && r.rec.power);
       setVariant(r.id, v, r.newV);
       updateScorch();
+      var vk = RU.variantRank(v), tk = RU.rank(r.id);
+      var tier = v === 'p' ? 3 : vk >= 5 ? 2 : vk >= 3 ? 1 : 0;
+      if (r.isNew) tier = Math.max(tier, tk >= 5 ? 3 : tk >= 4 ? 2 : tk >= 3 ? 1 : 0);
+      landFx(tier, t.el, r.isNew || r.newV);
       if (v === 'p') {
         confetti(60);
         try { if (navigator.vibrate) navigator.vibrate([40, 60, 40, 60, 80]); } catch (err) {}
@@ -3548,7 +3598,7 @@
       else if (RU.variantRank(v) >= 1) { try { if (navigator.vibrate) navigator.vibrate(30); } catch (err) {} }
     };
     if (r.v && spinOn()) spinReveal(r, land); else land();
-    if (r.lvUp) toast('Level ' + r.lvUp + '! ' + unlockText(r.lvUp));
+    if (r.lvUp) { sfx('level'); toast('Level ' + r.lvUp + '! ' + unlockText(r.lvUp)); }
   }
   /* how a jar levels up: bronze, silver, gold, then rainbow (RU.TIERS). Every catch counts, and nothing is used up.
      reached: the tier's name when this catch got it there */
@@ -3657,6 +3707,44 @@
       cv.style.opacity = '';
     }, 150);
   }
+  /* the moment a jar lands on its card: the weather (or the animal's world) swirls into the jar, the jar drops onto the
+     card with a clink and a bounce, and rarer finds glow behind it: blue for rare, purple for epic, gold rays for legendary */
+  var SWIRL = {
+    sun: ['#FFD27A', '#F5B759', '#FFF1C6'], rain: ['#7DB4FF', '#BFDBFF', '#5C8FD8'], frost: ['#FFFFFF', '#CFE8FF', '#9FD0FF'],
+    wind: ['#B8E3DC', '#E6F4F1', '#7CC4BA'], storm: ['#C4A0FF', '#7D88B8', '#FFE58A'], mist: ['#E3E8F0', '#C2CAD8', '#FFFFFF'],
+    wonder: ['#FF94A8', '#FFD27A', '#7DB4FF', '#6FD6A8', '#C4A0FF'], change: ['#FFC47A', '#9FC0F0', '#FFFFFF'],
+    garden: ['#8DCB69', '#F2C230', '#FFFFFF'], pets: ['#F5B759', '#FF94A8', '#FFFFFF'], coast: ['#7DD3F0', '#F2E2B0', '#FFFFFF'],
+    country: ['#A8D46F', '#E2BE5A', '#FFFFFF'], zoo: ['#E2BE5A', '#F28C28', '#FFF1C6']
+  };
+  var fxTimers = [];
+  function clearJarFx() {
+    fxTimers.forEach(clearTimeout);
+    fxTimers = [];
+    if ($('c-halo')) $('c-halo').className = 'jar-halo';
+    if ($('c-swirl')) $('c-swirl').innerHTML = '';
+    if ($('c-canvas')) $('c-canvas').classList.remove('pop');
+  }
+  function landFx(tier, pal, fresh) {
+    clearJarFx();
+    var later = function (ms, fn) { fxTimers.push(setTimeout(fn, ms)); };
+    var tierSound = tier >= 3 ? 'legend' : tier === 2 ? 'epic' : tier === 1 ? 'rare' : fresh ? 'reward' : '';
+    var halo = $('c-halo'), sw = $('c-swirl'), cv = $('c-canvas');
+    if (halo && tier) { void halo.offsetWidth; halo.className = 'jar-halo h' + tier; }
+    if (reduce) { sfx('clink'); if (tierSound) later(150, function () { sfx(tierSound); }); return; }
+    if (cv) { void cv.offsetWidth; cv.classList.add('pop'); }
+    if (sw) {
+      var cols = SWIRL[pal] || SWIRL.mist, html = '', n = 14 + tier * 5;
+      for (var i = 0; i < n; i++) {
+        html += '<i style="--a:' + Math.round(Math.random() * 360) + 'deg;--r:' + Math.round(84 + Math.random() * 46) + 'px;--s:' + (4 + Math.random() * 5).toFixed(1) +
+          'px;background:' + cols[i % cols.length] + ';animation-delay:' + (Math.random() * 0.25).toFixed(2) + 's"></i>';
+      }
+      sw.innerHTML = html;
+      later(1500, function () { sw.innerHTML = ''; });
+    }
+    sfx('swirl');
+    later(240, function () { sfx('clink'); });
+    if (tierSound) later(430, function () { sfx(tierSound); });
+  }
   /* the reveal: a reel of jars spins past a marker, slows down and lands on the variant caught, then the jar opens.
      The jars on the reel turn up at the real odds, and what's caught is decided before the reel starts. Tap to skip */
   function spinOn() { return !reduce && !(TEST && !/[?&]spin=1(&|$)/.test(location.search)); }
@@ -3750,10 +3838,6 @@
         if (R.spin !== sp) return;
         stopSpin();
         land();
-        var cv = $('c-canvas');
-        cv.classList.remove('pop');
-        void cv.offsetWidth;
-        cv.classList.add('pop');
       }, crown ? 1200 : 520);
     };
     var step = function (ts) {
@@ -3767,6 +3851,7 @@
       var under = Math.floor((x + width / 2) / (TILE_W + TILE_GAP));
       if (under !== lastTile) {
         lastTile = under;
+        sfx('tick');
         if (f > 0.55) { try { if (navigator.vibrate) navigator.vibrate(4); } catch (err) {} }
       }
       if (f >= 1) { sp.finish(); return; }
@@ -4656,7 +4741,7 @@
         var st = G.g.status();
         if ($('g-status').textContent !== st) $('g-status').textContent = st;
         if (G.g.state === 'won') {
-          if (G.g.wonT === undefined || G.g.wonT < 0.05) { showGameMsg('Caught!'); setActions('g-actions', []); }
+          if (G.g.wonT === undefined || G.g.wonT < 0.05) { showGameMsg('Caught!'); setActions('g-actions', []); if (!G.sfxWon) { G.sfxWon = 1; sfx('catch'); } }
           if (G.g.wonT > 0.9) finishCatch();
         } else if (G.g.state === 'missed' && !G.missHandled) handleMiss();
       } else if (R.cardState && R.view === 'card') {
@@ -4763,6 +4848,8 @@
     if ($('scan-btn')) $('scan-btn').addEventListener('click', openScan);
     if ($('seek-btn')) $('seek-btn').addEventListener('click', openSeek);
     if ($('s-zoom')) zoomPinch();
+    if (WC.sfx) WC.sfx.setOn(S.sound !== false);
+    if ($('sound-btn')) $('sound-btn').addEventListener('click', toggleSound);
     if ($('hop-btn')) { $('hop-btn').addEventListener('click', openHop); $('hop-x').addEventListener('click', closeHop); hopInput(); }
     if ($('k-stage')) $('k-stage').addEventListener('pointerdown', seekTap);
     if ($('an-shelves')) $('an-shelves').addEventListener('click', function (ev) {
