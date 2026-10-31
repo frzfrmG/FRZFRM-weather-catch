@@ -837,7 +837,7 @@ textarea{width:100%;min-height:110px;padding:10px;border-radius:12px;border:1px 
 }
 
 /* Weather Hop */
-html.hopping,html.hopping body{overflow:hidden}
+html.hopping,html.hopping body{overflow:hidden;overscroll-behavior:none}
 .hop{position:fixed;inset:0;z-index:72;background:#2E3A2A;color:#fff;touch-action:none;-webkit-user-select:none;user-select:none;overscroll-behavior:none}
 .hop-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
 .hop-hud{position:absolute;left:0;right:0;top:0;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:max(12px,env(safe-area-inset-top,0px)) 70px 0 max(16px,env(safe-area-inset-left,0px));pointer-events:none}
