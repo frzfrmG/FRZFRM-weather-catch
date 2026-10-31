@@ -4,8 +4,8 @@
 (function () {
   'use strict';
   var WC = window.WC;
-  var RU = WC.rules, SKY = WC.sky, AN = WC.animals, SP = WC.spotter, SK = WC.seek, LV = WC.seekLevels || [];
-  var VERSION = '0.15.0';
+  var RU = WC.rules, SKY = WC.sky, AN = WC.animals, SP = WC.spotter, SK = WC.seek, LV = WC.seekLevels || [], ZA = WC.zoo;
+  var VERSION = '0.16.0';
   var TEST = /[?&]test=1(&|$)/.test(location.search);
   var KEY = 'frzfrm-wc-state-1';
   var WX_KEY = 'frzfrm-wc-weather-1';
@@ -45,7 +45,7 @@
   function freshState() {
     return {
       v: 1, created: Date.now(), points: 0, book: {}, caught: {}, cool: {}, recent: {}, names: {}, log: [], haul: null, drive: false, passengerUntil: 0, onboarded: false,
-      rewards: {}, style: { wood: 'pine', lights: 'off', jars: {} }, oldJars: null, vmap: 2, animals: freshAnimals(), seek: freshSeek()
+      rewards: {}, style: { wood: 'pine', lights: 'off', jars: {} }, oldJars: null, vmap: 2, animals: freshAnimals(), seek: freshSeek(), hop: freshHop()
     };
   }
   function known(list, id) { return list.some(function (x) { return x.id === id; }); }
@@ -141,6 +141,7 @@
     delete o.games;
     o.animals = cleanAnimals(o.animals);
     o.seek = cleanSeek(o.seek);
+    o.hop = cleanHop(o.hop);
     if (o.photoNote && !Array.isArray(o.photoNote)) o.photoNote = null;
     if (o.day && (typeof o.day !== 'object' || typeof o.day.d !== 'string' || !o.day.n || typeof o.day.n !== 'object')) o.day = null;
     if (o.tripNote && (typeof o.tripNote !== 'object' || !Array.isArray(o.tripNote.trips))) o.tripNote = null;
@@ -1788,6 +1789,16 @@
   function freshAnimals() { return { book: {}, day: null, rows: {} }; }
   /* Hide & seek: finds that earned points today (d is the day), every find ever, each animal's quickest find in ms, and
      how hard the pictures are now (skill, 0 to 1: it goes up with quick finds and down with hints) */
+  /* Weather Hop: each animal's best score (s), furthest day (d) and stage (g) and runs (n); and checkpoints, the day each
+     animal can start from */
+  function freshHop() { return { best: {}, ck: {} }; }
+  function cleanHop(h) {
+    var out = freshHop(), num = function (v) { return typeof v === 'number' && isFinite(v) && v >= 0 ? Math.floor(v) : 0; };
+    if (!h || typeof h !== 'object' || Array.isArray(h)) return out;
+    if (h.best && typeof h.best === 'object') Object.keys(h.best).forEach(function (id) { var b = h.best[id]; if (AN && AN.type(id) && b && typeof b === 'object') out.best[id] = { s: num(b.s), d: Math.max(1, num(b.d)), g: Math.min(4, num(b.g)), n: num(b.n), t: num(b.t) }; });
+    if (h.ck && typeof h.ck === 'object') Object.keys(h.ck).forEach(function (id) { var d = num(h.ck[id]); if (AN && AN.type(id) && d >= 2) out.ck[id] = d; });
+    return out;
+  }
   function freshSeek() { return { d: '', n: 0, total: 0, best: {}, lv: 1, top: 1, plays: {}, boss: {}, t: {}, bossOn: 0, left: 0 }; }
   function cleanSeek(k) {
     var out = freshSeek();
@@ -1946,7 +1957,7 @@
 
   /* ---------- taking back a wrong catch ----------
      The spotter can get an animal wrong (a hamster taken for a dog). For a day afterwards, the latest catch of an animal
-     can be taken back: off the shelf, with its points. Catches from before 0.15.0 can only be taken back when they were
+     can be taken back: off the shelf, with its points. Catches from before 0.16.0 can only be taken back when they were
      the animal's only one */
   function canTakeBack(id) {
     var e = S.animals.book[id];
@@ -2041,6 +2052,7 @@
     requestAnimationFrame(function () { drawAnimals(2, true); });
     if (SP && R.spotterHere === undefined) SP.stored().then(function (have) { R.spotterHere = have; renderAnimalHead(); });
     seekNote();
+    hopNote();
   }
   function drawAnimals(t, all) {
     var look = glassLook();
@@ -2131,7 +2143,8 @@
   function animalStats(id, e) {
     if (!e || !e.n) return 'Scan a real ' + AN.type(id).name.toLowerCase() + ' to catch it.';
     var cool = animalCool(id);
-    return '×' + e.n + ' · ' + homesFound(e) + ' of 5 homes' + (cool ? ' · next catch in ' + minutes(cool) : '');
+    var hb = S.hop && S.hop.best[id];
+    return '×' + e.n + ' · ' + homesFound(e) + ' of 5 homes' + (hb && hb.s ? ' · Weather Hop best ' + hb.s : '') + (cool ? ' · next catch in ' + minutes(cool) : '');
   }
   function openAnimal(id) {
     var t = AN.type(id), e = S.animals.book[id], n = e ? e.n : 0;
@@ -2662,6 +2675,158 @@
       toast('You left boss level ' + K1.lv + ', so it counts as a loss. Back to level ' + blockStart(K1.lv) + '.');
     }
     seekNote();
+  }
+
+  /* ---------- Weather Hop ----------
+     A road-crossing game (hop.js) played as one of your caught animals. Each animal keeps its own records: its best
+     score, the furthest day and stage it reached and how many runs; and every day it finishes is a checkpoint it can start
+     a later run from */
+  var HOP_WORDS = { water: 'Splash! Into the river.', swept: 'Swept off the edge on a log!', bolt: 'Struck by lightning!', pylon: 'Flattened by a falling pylon!', tree: 'Flattened by a falling tree!', train: 'Hit by a train!' };
+  function hopCaught() { return AN.ORDERED.filter(function (t) { var e = S.animals.book[t.id]; return e && e.n > 0 && ZA && ZA.A[t.id]; }); }
+  function hopNote() {
+    var el = $('hop-note');
+    if (!el) return;
+    var have = hopCaught(), best = null;
+    Object.keys(S.hop.best).forEach(function (id) { var b = S.hop.best[id]; if (AN.type(id) && (!best || b.s > best.s)) best = { id: id, s: b.s }; });
+    el.textContent = !have.length ? 'Catch an animal, then hop it across roads and rivers through a day of weather.' :
+      best ? 'Your best: ' + AN.type(best.id).name + ', ' + best.s + ' ' + plural(best.s, 'hop') + '.' : 'Hop your animals across roads and rivers through a day of weather.';
+  }
+  function hopStageName(day, stage) { return 'Day ' + day + ' · ' + WC.hop.STAGES[stage].name; }
+  function openHop() {
+    if (!WC.hop || !ZA) return;
+    closeSheet();
+    $('hop').hidden = false;
+    document.documentElement.classList.add('hopping');
+    hopPick();
+  }
+  function closeHop() {
+    hopStop();
+    $('hop').hidden = true;
+    document.documentElement.classList.remove('hopping');
+    render();
+    hopNote();
+  }
+  function hopStop() {
+    var H = R.hop;
+    if (H && H.game) H.game.stop();
+    R.hop = null;
+    clearTimeout(hopBannerT);
+    $('hop-banner').hidden = true;
+  }
+  function hopPanel(id) { ['hop-pick', 'hop-end'].forEach(function (p) { $(p).hidden = p !== id; }); $('hop-hud').hidden = !!id; }
+  /* pick an animal: the ones you've caught, with their best */
+  function hopPick() {
+    hopStop();
+    hopPanel('hop-pick');
+    $('hop-ck').hidden = true;
+    var list = hopCaught(), grid = $('hop-grid');
+    grid.innerHTML = '';
+    $('hop-pick-sub').textContent = list.length ? 'Play as one of your animals. Each one keeps its own best score.' : 'Catch an animal first: scan one with your camera in the Animals tab, then come back and play as it.';
+    list.forEach(function (t) {
+      var b = S.hop.best[t.id], btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'hop-pet';
+      btn.innerHTML = '<canvas width="96" height="96" aria-hidden="true"></canvas><strong></strong><span></span>';
+      btn.querySelector('strong').textContent = t.name;
+      btn.querySelector('span').textContent = b ? 'Best ' + b.s + (b.d > 1 ? ' · Day ' + b.d : '') : 'New';
+      btn.setAttribute('aria-label', t.name + (b ? ', best ' + b.s : ''));
+      SK.portrait(btn.querySelector('canvas').getContext('2d'), 96, 96, t.id);
+      btn.addEventListener('click', function () { hopChoose(t.id); });
+      grid.appendChild(btn);
+    });
+    setActions('hop-pick-actions', [{ label: 'Close', fn: closeHop }]);
+  }
+  /* a checkpoint: start from the last day this animal reached, or from the beginning */
+  function hopChoose(id) {
+    var ck = S.hop.ck[id] || 1;
+    if (ck < 2) { hopStart(id, 1); return; }
+    $('hop-ck').hidden = false;
+    $('hop-ck-t').textContent = 'Your ' + AN.type(id).name.toLowerCase() + ' has reached Day ' + ck + '. Start from there, or from the beginning?';
+    setActions('hop-ck-actions', [{ label: 'Day 1', fn: function () { hopStart(id, 1); } }, { label: 'Day ' + ck, primary: true, fn: function () { hopStart(id, ck); } }]);
+    $('hop-ck').scrollIntoView({ block: 'nearest' });
+  }
+  var hopBannerT = 0;
+  function hopBanner(title, sub, long) {
+    $('hop-banner-t').textContent = title;
+    $('hop-banner-s').textContent = sub || '';
+    $('hop-banner').hidden = false;
+    $('hop-banner').classList.remove('go'); void $('hop-banner').offsetWidth; $('hop-banner').classList.add('go');
+    clearTimeout(hopBannerT);
+    hopBannerT = setTimeout(function () { $('hop-banner').hidden = true; }, long ? 4200 : 3000);
+  }
+  function hopStart(id, day) {
+    hopStop();
+    hopPanel(null);
+    var t = AN.type(id), b = S.hop.best[id];
+    $('hop-score').textContent = '0';
+    $('hop-best').textContent = b ? 'Best ' + b.s : '';
+    $('hop-hint').hidden = false;
+    var H = R.hop = { id: id, day: day, score: 0, startDay: day, game: null, reached: { d: day, g: 0 } };
+    H.game = WC.hop.create($('hop-canvas'), {
+      animal: id, theme: WC.hop.themeFor(id), day: day, test: TEST && !!window.__hopTest,
+      onScore: function (s) {
+        H.score = s;
+        $('hop-score').textContent = s;
+        if (s === 1) $('hop-hint').hidden = true;
+      },
+      onStage: function (st) {
+        $('hop-stage').textContent = hopStageName(st.day, st.stage);
+        if ((st.day - 1) * 5 + st.stage > (H.reached.d - 1) * 5 + H.reached.g) H.reached = { d: st.day, g: st.stage };
+        if (st.first) hopBanner(st.day > 1 ? 'Day ' + st.day : st.name, st.day > 1 ? st.name + '. ' + st.note : st.note, true);
+        else if (st.newDay) {
+          hopBanner('Day ' + st.day, st.note, true);
+          // a finished day is a checkpoint, kept straight away in case the app closes mid-run
+          if (st.day > (S.hop.ck[id] || 1)) { S.hop.ck[id] = st.day; save(); }
+        } else hopBanner(st.name, st.note);
+      },
+      onEnd: function (e) { hopEnd(H, e); }
+    });
+    H.game.resize();
+  }
+  function hopEnd(H, e) {
+    if (R.hop !== H) return;
+    var id = H.id, t = AN.type(id), old = S.hop.best[id], b = old ? JSON.parse(JSON.stringify(old)) : { s: 0, d: 1, g: 0, n: 0, t: 0 };
+    var newBest = e.score > b.s && e.score > 0;
+    b.n += 1; b.t = now();
+    if (newBest) b.s = e.score;
+    if ((H.reached.d - 1) * 5 + H.reached.g > (b.d - 1) * 5 + b.g) { b.d = H.reached.d; b.g = H.reached.g; }
+    S.hop.best[id] = b;
+    save();
+    var cause = e.cause === 'car' || e.cause === 'roller' ? 'Hit by ' + (WC.hop.NAMES[e.kind] || 'a car') + '!' : e.cause === 'caught' ? e.caught : HOP_WORDS[e.cause] || 'Out!';
+    if (e.cause === 'water' && WC.hop.themeFor(id) === 'coast') cause = 'Splash! Into the sea.';
+    $('hop-cause').textContent = cause;
+    $('hop-endscore').textContent = e.score;
+    $('hop-endline').textContent = (newBest ? 'A new best for your ' + t.name.toLowerCase() + '!' : 'Best for your ' + t.name.toLowerCase() + ': ' + b.s + '.') + ' Reached ' + hopStageName(e.day, e.stage) + '.';
+    $('hop-endline').classList.toggle('new', newBest);
+    setActions('hop-end-actions', [
+      { label: 'Play again', primary: true, fn: function () { if ((S.hop.ck[id] || 1) >= 2) { hopPick(); hopChoose(id); } else hopStart(id, 1); } },
+      { label: 'Another animal', fn: hopPick },
+      { label: 'Done', fn: closeHop }
+    ]);
+    hopPanel('hop-end');
+    if (newBest) confetti(30);
+  }
+  /* tap to hop forward; swipe left, right or back */
+  function hopInput() {
+    var cv = $('hop-canvas'), st = null;
+    cv.addEventListener('pointerdown', function (ev) { st = { x: ev.clientX, y: ev.clientY, t: performance.now() }; ev.preventDefault(); });
+    cv.addEventListener('pointerup', function (ev) {
+      if (!st || !R.hop || !R.hop.game) return;
+      var dx = ev.clientX - st.x, dy = ev.clientY - st.y, d = Math.max(Math.abs(dx), Math.abs(dy));
+      st = null;
+      if (R.hop.paused) { R.hop.paused = false; R.hop.game.resume(); $('hop-hint').hidden = true; return; }
+      R.hop.game.move(d < 18 ? 'up' : Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy < 0 ? 'up' : 'down'));
+    });
+    cv.addEventListener('pointercancel', function () { st = null; });
+    document.addEventListener('keydown', function (ev) {
+      if ($('hop').hidden || !R.hop || !R.hop.game) return;
+      var k = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', w: 'up', s: 'down', a: 'left', d: 'right', ' ': 'up' }[ev.key];
+      if (k) { ev.preventDefault(); R.hop.game.move(k); }
+    });
+    window.addEventListener('resize', function () { if (R.hop && R.hop.game) R.hop.game.resize(); });
+    document.addEventListener('visibilitychange', function () {
+      // away from the app, the game waits; it carries on with your next tap
+      if (document.hidden && R.hop && R.hop.game && !$('hop').hidden) { R.hop.game.pause(); R.hop.paused = true; $('hop-hint').textContent = 'Paused. Tap to carry on.'; $('hop-hint').hidden = false; }
+    });
   }
 
   /* ---------- sharing a jar ----------
@@ -4560,6 +4725,7 @@
     });
     if ($('scan-btn')) $('scan-btn').addEventListener('click', openScan);
     if ($('seek-btn')) $('seek-btn').addEventListener('click', openSeek);
+    if ($('hop-btn')) { $('hop-btn').addEventListener('click', openHop); $('hop-x').addEventListener('click', closeHop); hopInput(); }
     if ($('k-stage')) $('k-stage').addEventListener('pointerdown', seekTap);
     if ($('an-shelves')) $('an-shelves').addEventListener('click', function (ev) {
       var b = ev.target.closest ? ev.target.closest('[data-animal]') : null;

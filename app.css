@@ -835,3 +835,38 @@ textarea{width:100%;min-height:110px;padding:10px;border-radius:12px;border:1px 
   .w-storm{--wc:rgba(120,126,200,.26)}.w-mist{--wc:rgba(170,180,200,.2)}.w-wonder{--wc:rgba(120,100,230,.28)}.w-change{--wc:rgba(255,150,110,.22)}
   .w-garden{--wc:rgba(110,195,90,.22)}.w-pets{--wc:rgba(240,130,165,.2)}.w-coast{--wc:rgba(70,185,215,.22)}.w-country{--wc:rgba(225,185,80,.22)}.w-zoo{--wc:rgba(230,150,70,.22)}
 }
+
+/* Weather Hop */
+html.hopping,html.hopping body{overflow:hidden}
+.hop{position:fixed;inset:0;z-index:72;background:#2E3A2A;color:#fff;touch-action:none;-webkit-user-select:none;user-select:none;overscroll-behavior:none}
+.hop-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.hop-hud{position:absolute;left:0;right:0;top:0;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:max(12px,env(safe-area-inset-top,0px)) 70px 0 max(16px,env(safe-area-inset-left,0px));pointer-events:none}
+.hop-score{display:flex;flex-direction:column;line-height:1}
+.hop-score strong{font-family:var(--font-display);font-stretch:112%;font-size:46px;font-weight:800;color:#fff;text-shadow:0 2px 0 rgba(0,0,0,.35),0 0 12px rgba(0,0,0,.25)}
+.hop-score span{margin-top:4px;font-size:13px;font-weight:700;color:rgba(255,255,255,.9);text-shadow:0 1px 2px rgba(0,0,0,.5)}
+.hop-stage{margin-top:6px;padding:6px 12px;border-radius:999px;background:rgba(10,14,30,.45);font-size:13px;font-weight:700;white-space:nowrap;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
+.hop-x{position:absolute;top:max(10px,env(safe-area-inset-top,0px));right:max(12px,env(safe-area-inset-right,0px));z-index:3;display:grid;place-items:center;width:46px;height:46px;border-radius:50%;border:0;background:rgba(10,14,30,.5);color:#fff}
+.hop-banner{position:absolute;left:16px;right:16px;top:26%;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;pointer-events:none}
+.hop-banner strong{font-family:var(--font-display);font-stretch:112%;font-size:34px;font-weight:800;text-shadow:0 2px 0 rgba(0,0,0,.35),0 0 18px rgba(0,0,0,.35)}
+.hop-banner span{max-width:320px;padding:8px 14px;border-radius:14px;background:rgba(10,14,30,.55);font-size:14px;font-weight:600;line-height:1.4}
+.hop-banner.go{animation:hopBanner 3s ease both}
+@keyframes hopBanner{0%{opacity:0;transform:translateY(10px)}10%{opacity:1;transform:none}82%{opacity:1}100%{opacity:0}}
+.hop-hint{position:absolute;left:16px;right:16px;bottom:max(28px,env(safe-area-inset-bottom,0px));margin:0;text-align:center;font-size:15px;font-weight:700;text-shadow:0 1px 3px rgba(0,0,0,.6);pointer-events:none;animation:hopPulse 1.6s ease-in-out infinite}
+@keyframes hopPulse{50%{opacity:.55}}
+.hop-panel{position:absolute;left:0;right:0;bottom:0;max-height:88%;overflow:auto;padding:20px max(16px,env(safe-area-inset-right,0px)) max(20px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));border-radius:24px 24px 0 0;background:var(--surface);color:var(--ink);box-shadow:0 -10px 40px rgba(0,0,0,.35)}
+.hop-h{margin:0 0 4px;font-family:var(--font-display);font-stretch:112%;font-size:26px}
+.hop-sub{margin:0 0 14px;color:var(--muted);font-size:14px;line-height:1.45}
+.hop-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:10px;margin-bottom:14px}
+.hop-pet{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 6px 10px;border-radius:16px;border:1px solid var(--line);background:var(--surface-2);color:var(--ink);font:inherit}
+.hop-pet canvas{width:64px;height:64px}
+.hop-pet strong{font-size:14px}
+.hop-pet span{font-size:12px;color:var(--muted)}
+.hop-pet:active{transform:scale(.97)}
+.hop-ck{margin:0 0 14px;padding:12px;border-radius:16px;background:var(--surface-2)}
+.hop-ck p{margin:0 0 10px;font-weight:600;line-height:1.4}
+.hop-endp{text-align:center}
+.hop-cause{margin:0;font-size:18px;font-weight:800}
+.hop-big{font-family:var(--font-display);font-stretch:112%;font-size:64px;font-weight:800;line-height:1.1}
+.hop-endline{margin:0 0 16px;color:var(--muted);font-size:14px;line-height:1.45}
+.hop-endline.new{color:var(--ink);font-weight:700}
+.hop-acts{flex-wrap:wrap}
