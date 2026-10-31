@@ -5,7 +5,7 @@
   'use strict';
   var WC = window.WC;
   var RU = WC.rules, SKY = WC.sky, AN = WC.animals, SP = WC.spotter, SK = WC.seek, LV = WC.seekLevels || [], ZA = WC.zoo;
-  var VERSION = '0.16.0';
+  var VERSION = '0.16.1';
   var TEST = /[?&]test=1(&|$)/.test(location.search);
   var KEY = 'frzfrm-wc-state-1';
   var WX_KEY = 'frzfrm-wc-weather-1';
@@ -1957,7 +1957,7 @@
 
   /* ---------- taking back a wrong catch ----------
      The spotter can get an animal wrong (a hamster taken for a dog). For a day afterwards, the latest catch of an animal
-     can be taken back: off the shelf, with its points. Catches from before 0.16.0 can only be taken back when they were
+     can be taken back: off the shelf, with its points. Catches from before 0.16.1 can only be taken back when they were
      the animal's only one */
   function canTakeBack(id) {
     var e = S.animals.book[id];
@@ -2289,7 +2289,7 @@
     // the spotter gets ready meanwhile, from the phone
     if (!R.forceScan && !SP.ready()) SP.load().catch(function () {});
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { camProblem('This browser can’t use the camera.'); return; }
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 1280 } }, audio: false }).then(function (stream) {
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1920 } }, audio: false }).then(function (stream) {
       if (R.view !== 'scan') { stream.getTracks().forEach(function (tr) { tr.stop(); }); return; }
       stopCamera();
       R.cam = stream;
@@ -2297,6 +2297,11 @@
       v.srcObject = stream;
       var p = v.play();
       if (p && p.catch) p.catch(function () {});
+      // zoom: the camera's own where the phone allows it, otherwise the middle of the picture made bigger
+      var tr = stream.getVideoTracks()[0], caps = tr && tr.getCapabilities ? tr.getCapabilities() : {};
+      R.camHw = caps && caps.zoom && caps.zoom.max > 1 ? caps.zoom : null;
+      setZoom(1);
+      $('s-zoom').hidden = false;
       readyToScan();
     }, function (err) {
       if (R.view !== 'scan') return;
@@ -2310,12 +2315,44 @@
     scanMsg(text);
     setActions('s-actions', [{ label: 'Close', fn: closeSheet }, { label: 'Try again', primary: true, fn: startCamera }]);
   }
+  /* zoom from 1 to 4 times: the camera's zoom as far as it goes, then the rest by taking a smaller middle square */
+  var ZOOM_MAX = 4, zoomT = 0;
+  function setZoom(z) {
+    z = Math.max(1, Math.min(ZOOM_MAX, z));
+    R.zoom = z;
+    var hw = R.camHw, hz = 1;
+    if (hw) {
+      hz = Math.max(hw.min || 1, Math.min(hw.max, z));
+      if (hw.step) hz = Math.round(hz / hw.step) * hw.step;
+      var track = R.cam && R.cam.getVideoTracks()[0];
+      clearTimeout(zoomT);
+      zoomT = setTimeout(function () { if (track && track.readyState === 'live') track.applyConstraints({ advanced: [{ zoom: hz }] }).catch(function () { R.camHw = null; setZoom(R.zoom); }); }, 60);
+    }
+    R.zoomDigital = Math.max(1, z / hz);
+    var v = $('s-video');
+    if (v) v.style.transform = R.zoomDigital > 1.001 ? 'scale(' + R.zoomDigital.toFixed(3) + ')' : '';
+    var btns = document.querySelectorAll('#s-zoom button');
+    for (var i = 0; i < btns.length; i++) btns[i].classList.toggle('on', Math.abs(+btns[i].getAttribute('data-z') - z) < 0.25);
+    $('s-zoom-v').textContent = (Math.round(z * 10) / 10) + '×';
+  }
+  /* pinching the camera picture zooms too */
+  function zoomPinch() {
+    var st = $('s-stage'), pts = {}, start = null;
+    var dist = function () { var k = Object.keys(pts); if (k.length < 2) return 0; var a = pts[k[0]], b = pts[k[1]]; return Math.hypot(a.x - b.x, a.y - b.y); };
+    st.addEventListener('pointerdown', function (e) { if (e.target.closest && e.target.closest('#s-zoom')) return; pts[e.pointerId] = { x: e.clientX, y: e.clientY }; if (Object.keys(pts).length === 2) start = { d: dist(), z: R.zoom || 1 }; });
+    st.addEventListener('pointermove', function (e) { if (!pts[e.pointerId]) return; pts[e.pointerId] = { x: e.clientX, y: e.clientY }; if (start && start.d > 10) { setZoom(start.z * dist() / start.d); e.preventDefault(); } });
+    var up = function (e) { delete pts[e.pointerId]; if (Object.keys(pts).length < 2) start = null; };
+    st.addEventListener('pointerup', up); st.addEventListener('pointercancel', up);
+    document.querySelectorAll('#s-zoom button').forEach(function (b) { b.addEventListener('click', function () { setZoom(+b.getAttribute('data-z')); }); });
+  }
   function readyToScan(text) {
-    scanMsg(text || 'Get the whole animal in the square, then tap Scan.');
+    scanMsg(text || 'Get the whole animal in the square, then tap Scan. For small ones like bees, zoom in.');
     setActions('s-actions', [{ label: 'Close', fn: closeSheet }, { label: 'Scan', primary: true, id: 's-go', fn: doScan }]);
   }
   function stopCamera() {
     if (R.cam) { R.cam.getTracks().forEach(function (tr) { try { tr.stop(); } catch (e) {} }); R.cam = null; }
+    R.camHw = null;
+    if ($('s-zoom')) $('s-zoom').hidden = true;
     var v = $('s-video');
     if (v && v.srcObject) { try { v.pause(); } catch (e) {} v.srcObject = null; }
     R.scanning = false;
@@ -2335,7 +2372,7 @@
     else job = SP.load().then(function () {
       // a quick burst of three frames where the phone is quick enough, one where it isn't: they're averaged
       var embs = [];
-      var grab = function () { return SP.embed(SP.pixels(v, v.videoWidth, v.videoHeight)).then(function (em) { embs.push(em); }); };
+      var grab = function () { return SP.embed(SP.pixels(v, v.videoWidth, v.videoHeight, R.zoomDigital || 1)).then(function (em) { embs.push(em); }); };
       return grab().then(function () {
         if (SP.backend() !== 'gpu') return null;
         return wait(120).then(grab).then(function () { return wait(120); }).then(grab);
@@ -4725,6 +4762,7 @@
     });
     if ($('scan-btn')) $('scan-btn').addEventListener('click', openScan);
     if ($('seek-btn')) $('seek-btn').addEventListener('click', openSeek);
+    if ($('s-zoom')) zoomPinch();
     if ($('hop-btn')) { $('hop-btn').addEventListener('click', openHop); $('hop-x').addEventListener('click', closeHop); hopInput(); }
     if ($('k-stage')) $('k-stage').addEventListener('pointerdown', seekTap);
     if ($('an-shelves')) $('an-shelves').addEventListener('click', function (ev) {

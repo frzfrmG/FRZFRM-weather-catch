@@ -125,10 +125,12 @@
      src: a video or canvas; the middle square of it, squeezed to 224 by 224. Returns the patches the model reads:
      49 patches of 32 by 32 pixels, each as its red, then green, then blue values, normalised */
   var work = null;
-  function pixels(src, sw, sh) {
+  /* the middle square of a picture, made small for the model. zoom (1 or more) takes a smaller middle square, for
+     zooming in on small animals: the camera's picture is much bigger than the model's, so it stays sharp */
+  function pixels(src, sw, sh, zoom) {
     var S = M ? M.size : 224;
     if (!work) { work = document.createElement('canvas'); work.width = S; work.height = S; }
-    var side = Math.min(sw, sh), sx = (sw - side) / 2, sy = (sh - side) / 2;
+    var side = Math.min(sw, sh) / Math.max(1, zoom || 1), sx = (sw - side) / 2, sy = (sh - side) / 2;
     var ctx = work.getContext('2d', { willReadFrequently: true });
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
