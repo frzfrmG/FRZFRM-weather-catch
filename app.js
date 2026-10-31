@@ -5,7 +5,7 @@
   'use strict';
   var WC = window.WC;
   var RU = WC.rules, SKY = WC.sky, AN = WC.animals, SP = WC.spotter, SK = WC.seek, LV = WC.seekLevels || [], ZA = WC.zoo;
-  var VERSION = '0.16.1';
+  var VERSION = '0.16.2';
   var TEST = /[?&]test=1(&|$)/.test(location.search);
   var KEY = 'frzfrm-wc-state-1';
   var WX_KEY = 'frzfrm-wc-weather-1';
@@ -1957,7 +1957,7 @@
 
   /* ---------- taking back a wrong catch ----------
      The spotter can get an animal wrong (a hamster taken for a dog). For a day afterwards, the latest catch of an animal
-     can be taken back: off the shelf, with its points. Catches from before 0.16.1 can only be taken back when they were
+     can be taken back: off the shelf, with its points. Catches from before 0.16.2 can only be taken back when they were
      the animal's only one */
   function canTakeBack(id) {
     var e = S.animals.book[id];
