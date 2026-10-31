@@ -916,3 +916,30 @@ html.hopping,html.hopping body{overflow:hidden;overscroll-behavior:none}
   .jar-halo.h1,.jar-halo.h2,.jar-halo.h3{opacity:.8}
   .btn,.chip,.jarcell,.nav-btn,.seek-card,.vjar,.lvl,.link-btn{transition:none}
 }
+
+/* ---------- 0.17.1: a simpler start ---------- */
+/* the tab bar fits whatever tabs are open */
+.nav{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr)}
+.nav-btn{position:relative}
+.nav-btn.has-new::after{content:'';position:absolute;top:7px;left:calc(50% + 9px);width:9px;height:9px;border-radius:50%;background:var(--sun);box-shadow:0 0 0 2px var(--surface)}
+/* the welcome: three steps */
+.ob-steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px;counter-reset:ob}
+.ob-steps li{position:relative;padding-left:42px;font-size:15px;line-height:1.45;color:var(--muted);counter-increment:ob;min-height:30px}
+.ob-steps li strong{display:block;color:var(--ink);font-size:16px}
+.ob-steps li::before{content:counter(ob);position:absolute;left:0;top:0;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--sun);color:var(--sun-ink);font-weight:800;font-size:15px}
+/* the catch card keeps to the jar, its name, the variant and the stars */
+#card-view.brief .ov-points,#card-view.brief .ov-line,#card-view.brief .ov-stats,#card-view.brief .ov-verify{display:none}
+/* a card when something new opens */
+.unlock-art{display:flex;justify-content:center;align-items:flex-end;gap:6px;margin:2px 0 6px}
+.unlock-art canvas{width:72px;height:96px;display:block}
+.unlock-games span{display:grid;place-items:center;width:72px;height:72px;border-radius:20px;background:var(--surface-2);border:1px solid var(--line);color:var(--ink)}
+/* More: a short guide, with the details folded away */
+.guide .mc-text{margin-bottom:2px}
+.mc-more{border-top:1px solid var(--line)}
+.mc-more summary{min-height:48px;display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px;cursor:pointer;list-style:none}
+.mc-more summary::-webkit-details-marker{display:none}
+.mc-more summary::after{content:'';flex:none;margin-left:auto;width:8px;height:8px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:translateY(-2px) rotate(45deg)}
+.mc-more[open] summary::after{transform:translateY(2px) rotate(225deg)}
+.mc-more summary:focus-visible{outline:2px solid var(--ice);outline-offset:2px;border-radius:8px}
+.mc-more p{margin:0 0 10px;color:var(--muted);line-height:1.5}
+.mc-more p strong{color:var(--ink)}

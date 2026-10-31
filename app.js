@@ -6,7 +6,7 @@
   var WC = window.WC;
   var RU = WC.rules, SKY = WC.sky, AN = WC.animals, SP = WC.spotter, SK = WC.seek, LV = WC.seekLevels || [], ZA = WC.zoo;
   function sfx(n) { if (WC.sfx && S && S.sound !== false) WC.sfx.play(n); }
-  var VERSION = '0.17.0';
+  var VERSION = '0.17.1';
   var TEST = /[?&]test=1(&|$)/.test(location.search);
   var KEY = 'frzfrm-wc-state-1';
   var WX_KEY = 'frzfrm-wc-weather-1';
@@ -46,7 +46,7 @@
   function freshState() {
     return {
       v: 1, created: Date.now(), points: 0, book: {}, caught: {}, cool: {}, recent: {}, names: {}, log: [], haul: null, drive: false, passengerUntil: 0, onboarded: false,
-      rewards: {}, style: { wood: 'pine', lights: 'off', jars: {} }, oldJars: null, vmap: 2, animals: freshAnimals(), seek: freshSeek(), hop: freshHop(), sound: true
+      rewards: {}, style: { wood: 'pine', lights: 'off', jars: {} }, oldJars: null, vmap: 2, animals: freshAnimals(), seek: freshSeek(), hop: freshHop(), sound: true, open: { animals: 0, games: 0 }, newTab: ''
     };
   }
   function known(list, id) { return list.some(function (x) { return x.id === id; }); }
@@ -96,7 +96,7 @@
   }
   function cleanState(o) {
     if (!o || o.v !== 1 || typeof o.points !== 'number' || !isFinite(o.points) || !o.book || typeof o.book !== 'object') return null;
-    var oldMap = !(o.vmap >= 2);
+    var oldMap = !(o.vmap >= 2), hadOpen = !!(o.open && typeof o.open === 'object' && !Array.isArray(o.open));
     var f = freshState();
     Object.keys(f).forEach(function (k) { if (!(k in o)) o[k] = f[k]; });
     ['caught', 'cool', 'recent', 'names', 'rewards'].forEach(function (k) { if (!o[k] || typeof o[k] !== 'object' || Array.isArray(o[k])) o[k] = {}; });
@@ -144,10 +144,26 @@
     o.seek = cleanSeek(o.seek);
     o.hop = cleanHop(o.hop);
     o.sound = o.sound !== false;
+    // saved before 0.17.1: whatever they'd already reached is open, with no new cards
+    if (!hadOpen) { var op = openState(o); o.open = { animals: op.animals ? 1 : 0, games: op.games ? 1 : 0 }; o.newTab = ''; }
+    else o.open = { animals: o.open.animals ? o.open.animals : 0, games: o.open.games ? o.open.games : 0 };
+    if (typeof o.newTab !== 'string') o.newTab = '';
     if (o.photoNote && !Array.isArray(o.photoNote)) o.photoNote = null;
     if (o.day && (typeof o.day !== 'object' || typeof o.day.d !== 'string' || !o.day.n || typeof o.day.n !== 'object')) o.day = null;
     if (o.tripNote && (typeof o.tripNote !== 'object' || !Array.isArray(o.tripNote.trips))) o.tripNote = null;
     return o;
+  }
+  /* what's open. A new player starts with Catch and Shelf (and More). Animals open with the first weather jar, and the
+     two animal games with the first animal, or at Level 3 for anyone without an animal to scan. Once open, always open */
+  function hasWeather(o) { for (var k in o.book) if (o.book[k] && o.book[k].n) return true; return false; }
+  function hasAnimal(o) { var b = o.animals && o.animals.book; if (b) for (var k in b) if (b[k] && b[k].n) return true; return false; }
+  function gamesPlayed(o) {
+    var k = o.seek || {}, h = o.hop || {};
+    return (k.lv > 1) || (k.top > 1) || (k.total > 0) || !!(h.best && Object.keys(h.best).length);
+  }
+  function openState(o) {
+    var an = hasWeather(o) || hasAnimal(o) || gamesPlayed(o) || (o.points || 0) > 0;
+    return { animals: an, games: an && (hasAnimal(o) || gamesPlayed(o) || RU.levelFor(o.points || 0) >= 3) };
   }
   function loadState() {
     try {
@@ -792,7 +808,23 @@
 
   /* ---------- rendering ---------- */
 
+  /* anything that's just opened is kept, and returned so a card can say so */
+  function newlyOpen() {
+    var st = openState(S), out = [];
+    ['animals', 'games'].forEach(function (k) { if (st[k] && !S.open[k]) { S.open[k] = Date.now(); out.push(k); } });
+    if (out.length) { if (R.tab !== 'animals') S.newTab = 'animals'; save(); }
+    return out;
+  }
+  function applyOpen() {
+    var an = !!S.open.animals, gm = !!S.open.games, nav = $('nav-animals');
+    if (nav) { nav.hidden = !an; nav.classList.toggle('has-new', an && S.newTab === 'animals'); }
+    if ($('seek-btn')) $('seek-btn').hidden = !gm;
+    if ($('hop-btn')) $('hop-btn').hidden = !gm;
+    Array.prototype.forEach.call(document.querySelectorAll('[data-open]'), function (el) { el.hidden = !S.open[el.getAttribute('data-open')]; });
+    if (!an && R.tab === 'animals') selectTab('catch');
+  }
   function render() {
+    applyOpen();
     renderTop();
     if (R.tab === 'catch') renderCatch();
     else if (R.tab === 'shelf') renderShelfHead();
@@ -841,6 +873,7 @@
     renderAlso();
     renderWonders();
     renderSpotTip();
+    $('spot-btn').hidden = flying() || !spotUseful();
     renderNearby();
     renderComing();
     renderLog();
@@ -955,7 +988,8 @@
     if (!list.length) {
       btn.disabled = true;
       btn.textContent = 'Nothing to catch right now';
-      hint.innerHTML = R.reading && !R.reading.isDay ? 'A quiet night. Look for Sky Wonders below, or come back when the weather changes.' : 'Nothing to catch here right now. If you can see rain or fog, tap Spot something.';
+      hint.innerHTML = spotUseful() ? 'Nothing in the weather data here right now. If you can see something, tap Spot something.' :
+        R.reading && !R.reading.isDay ? 'A quiet night. Come back when the weather changes, or look out for Sky Wonders.' : 'Nothing to catch here right now. Come back when the weather changes, or try a new area.';
       return;
     }
     if (!target) {
@@ -1025,14 +1059,11 @@
     tip.hidden = false;
     tip.innerHTML = '<strong>' + esc(T(s.id).name) + ' weather.</strong> ' + esc(s.why);
   }
-  function lockedCard(level, text) {
-    var L = RU.levelFor(S.points);
-    return '<div class="locked-card">' + icon('lock', 20) + '<span><strong>Unlocks at Level ' + level + '.</strong> ' + esc(text) + ' You’re Level ' + L + ', with ' + (RU.pointsFor(level) - S.points) + ' points to go.</span></div>';
-  }
   function renderNearby() {
     var box = $('nearby');
     var L = RU.levelFor(S.points);
-    if (!RU.unlocked('nearby', L)) { box.innerHTML = lockedCard(5, 'See what the weather is doing in the areas around you.'); return; }
+    // hidden until it opens at Level 5 (Levels ahead shows what's coming)
+    if (!RU.unlocked('nearby', L)) { box.parentNode.hidden = true; box.innerHTML = ''; return; }
     if (!R.area || !R.wx || !R.wx.cells) { box.innerHTML = '<p class="small">Nearby weather appears once the weather has loaded.</p>'; return; }
     var cellById = {};
     R.wx.cells.forEach(function (c) { cellById[c.id] = c; });
@@ -1057,7 +1088,7 @@
   function renderComing() {
     var box = $('comingup');
     var L = RU.levelFor(S.points);
-    if (!RU.unlocked('comingup', L)) { box.innerHTML = lockedCard(10, 'See the rare weather forecast for your area over the next two days.'); return; }
+    if (!RU.unlocked('comingup', L)) { box.parentNode.hidden = true; box.innerHTML = ''; return; }
     if (!R.coming.length) { box.innerHTML = '<p class="small">The forecast appears once the weather has loaded.</p>'; return; }
     var rare = R.coming.filter(function (s) { return s.id !== 'quiet' && RU.rank(s.id) >= 3 && s.from > now() - HOUR; });
     var rows = rare.length ? rare.slice(0, 6) : R.coming.slice(0, 5);
@@ -1071,6 +1102,7 @@
   function renderLog() {
     var d = today();
     var items = S.log.filter(function (e) { return RU.dayKey(e.t) === d; }).slice(-8).reverse();
+    if ($('log-block')) $('log-block').hidden = !items.length;
     $('log').innerHTML = items.length ? items.map(function (e) {
       return '<li><span class="lt">' + hm(e.t) + '</span><span>' + esc(e.text) + '</span></li>';
     }).join('') : '<li class="empty">Nothing caught yet today.</li>';
@@ -2181,9 +2213,10 @@
   function revealAnimal(r) {
     var id = r.animal, t = AN.type(id), e = S.animals.book[id];
     showView('card');
+    $('card-view').classList.add('brief');
     R.cardKind = 'animal';
     R.cardId = id;
-    $('c-label').textContent = r.isNew ? 'New animal' : 'Caught again';
+    $('c-label').textContent = (r.isNew ? 'New animal' : 'Caught again') + ' · +' + r.pts + ' points';
     $('c-label').className = 'ov-label rc-' + t.r;
     $('c-title').textContent = t.name;
     setAnimalPill(id);
@@ -2194,6 +2227,7 @@
     $('c-line').textContent = r.isNew ? 'It’s moved into its everyday home, the ' + AN.home(id, 'h1').name + '. Catch it again to find its other homes.' : t.line;
     $('c-stats').textContent = r.isNew ? 'First one on your animal shelf.' : '×' + r.n + ' · ' + homesFound(e) + ' of 5 homes';
     setTier(e.n, r.tier);
+    if (!r.tier) $('c-tier').hidden = true;
     setPhotoLine(null);
     setVerify('');
     setStrength(null);
@@ -3084,6 +3118,8 @@
   /* ---------- tabs ---------- */
 
   function selectTab(tab) {
+    if (tab === 'animals' && !S.open.animals) tab = 'catch';
+    if (tab === 'animals' && S.newTab === 'animals') { S.newTab = ''; save(); }
     var changed = R.tab !== tab;
     R.tab = tab;
     ['catch', 'shelf', 'animals', 'more'].forEach(function (k) {
@@ -3107,6 +3143,7 @@
   function showView(name) {
     stopSpin();
     clearJarFx();
+    if ($('card-view')) $('card-view').classList.remove('brief');
     R.view = name;
     R.previewJars = null;
     $('sheet').classList.remove('scorched');
@@ -3523,10 +3560,38 @@
       cards[cards.length - 1].lvUp = after;
       addLog('Level ' + after + '!');
     }
+    var opened = newlyOpen();
+    if (opened.length) cards.push({ unlock: opened });
     save();
     render();
     try { if (navigator.vibrate) navigator.vibrate(40); } catch (e) {}
     openReveal(cards);
+  }
+  /* a short card when something new opens: Animals, or the two animal games */
+  var GAME_ICONS = {
+    seek: '<svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"></circle><path d="M15 15l5 5"></path><path d="M8 9.2c.6-1 1.6-1.6 2.8-1.6"></path></svg>',
+    hop: '<svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 20h18M6 20v-3h3v3M15 20v-3h3v3"></path><path d="M5 12c1.5-5 7-7 11-4"></path><path d="M13.5 5.5L16 8l-3 1.2"></path></svg>'
+  };
+  function showUnlock(list) {
+    var an = list.indexOf('animals') !== -1, gm = list.indexOf('games') !== -1;
+    var body = '';
+    if (an) body += '<div class="unlock-art" id="unlock-jars" aria-hidden="true"></div>' +
+      '<p>Scan real animals with your camera to catch them in jars, like your weather. Each one has five homes to find.</p>';
+    if (gm) body += (an ? '' : '<div class="unlock-art unlock-games" aria-hidden="true"><span>' + GAME_ICONS.seek + '</span><span>' + GAME_ICONS.hop + '</span></div>') +
+      '<p><strong>Hide &amp; seek:</strong> find the animal hiding in a busy picture.</p><p><strong>Weather Hop:</strong> hop your animals across roads and rivers through a day of weather.</p>';
+    body += '<p class="muted">' + (an ? 'Find ' + (gm ? 'them' : 'it') + ' in the new Animals tab.' : 'Both are in the Animals tab.') + '</p>';
+    showInfo({
+      label: 'Now open', labelClass: 'rc-rare', title: an && gm ? 'Animals, and two games' : an ? 'Animals' : 'Two animal games',
+      body: body,
+      actions: [{ label: R.queue.length ? 'Next' : 'Later', fn: nextReveal }, { label: 'Take a look', primary: true, fn: function () { closeSheet(); selectTab('animals'); } }]
+    });
+    var box = $('unlock-jars');
+    if (box) [['robin', 'h2'], ['fox', 'h3'], ['dog', 'h4']].forEach(function (a) {
+      var dpr = Math.min(2, window.devicePixelRatio || 1), cv = animalPicture(a[0], a[1], 7, Math.round(72 * dpr), Math.round(96 * dpr));
+      box.appendChild(cv);
+    });
+    confetti(16);
+    sfx('reward');
   }
   function unlockText(L) {
     var bits = [];
@@ -3542,13 +3607,16 @@
     var r = R.queue.shift();
     if (!r) { closeSheet(); return; }
     if (r.reward) { showReward(r); return; }
+    if (r.unlock) { showUnlock(r.unlock); return; }
     if (r.oldJars) { showOldJars(r); return; }
     if (r.animal) { revealAnimal(r); return; }
     var t = T(r.id);
     var e = S.book[r.id];
     showView('card');
+    // the catch card keeps to the jar, its name, the variant and the stars; the rest is on the jar's own card
+    $('card-view').classList.add('brief');
     var label = r.trip ? 'From your trip' : r.spotted ? (r.isNew ? 'Spotted · New jar' : 'Spotted') : r.isNew ? (t.el === 'change' ? 'New Change moment' : t.el === 'wonder' ? 'New Sky Wonder' : 'New jar') : 'Caught again';
-    $('c-label').textContent = label;
+    $('c-label').textContent = label + ' · +' + r.pts + ' points';
     $('c-label').className = 'ov-label rc-' + t.r;
     $('c-title').textContent = recName(r.id, r.rec);
     setPill(r.id);
@@ -3566,6 +3634,7 @@
     else stats = '×' + r.n + ' · ' + e.places.length + ' ' + plural(e.places.length, 'place') + (r.newPlace ? ' · new place: ' + r.place : '');
     $('c-stats').textContent = stats;
     setTier(e.n, r.tier);
+    if (!r.tier) $('c-tier').hidden = true;
     setPhotoLine(null);
     setVerify(r.verify);
     R.cardState = jarState(r.id);
@@ -3998,6 +4067,13 @@
     var s = R.seen.filter(function (x) { return x.id === id; })[0];
     return s && s.possible ? s.why : '';
   }
+  /* Spot something only shows when there's something that could be spotted right now */
+  function spotUseful() {
+    if (!R.area || !R.cls) return false;
+    var d = today();
+    return seenList().some(function (s) { return s.possible && !s.caught && !s.cool; }) ||
+      R.spots.some(function (s) { return s.possible && !S.caught[s.id + '|' + d]; });
+  }
   /* one list: what can be caught right now first, then a folded list of what can't and why */
   function openSpot() {
     if (!R.area || !R.cls) { toast('Spotting works once the weather has loaded.'); return; }
@@ -4282,6 +4358,7 @@
     photoList().then(function (items) {
       var n = items.length;
       txt.textContent = n ? n + ' ' + plural(n, 'photo') + ' on this phone. See them all, and delete any you don’t want in a jar.' : 'Photos you take for your jars show here. They’re only kept on this phone.';
+      if ($('photos-card')) $('photos-card').hidden = !n;
     });
   }
 
